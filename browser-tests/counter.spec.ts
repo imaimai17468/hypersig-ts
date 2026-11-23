@@ -5,6 +5,56 @@ const main = '[data-count="main"]';
 const ready = "html[data-hs-connection=ready]";
 const stream = "**/_hypersig/stream/**";
 
+test("keeps order lines and total on the same snapshot during a delayed price read", async ({
+  page,
+}) => {
+  const initial = await page.goto("/order");
+  expect(await initial?.text()).toContain("data-order-lines=");
+  await expect(page.locator(ready)).toHaveCount(1);
+  const quantity = Number(await page.locator("#order-quantity").textContent());
+  await page.evaluate(() => {
+    const order = document.querySelector('[data-hs-view="order-summary"]');
+    if (!(order instanceof HTMLElement))
+      throw new Error("Missing order boundary");
+    const observer = new MutationObserver(() => {
+      const lines = order
+        .querySelector("[data-order-lines]")
+        ?.getAttribute("data-order-lines");
+      const total = order.querySelector("[data-order-total]");
+      const quantity = Number(
+        order.querySelector("#order-quantity")?.textContent
+      );
+      if (
+        !lines ||
+        lines !== total?.getAttribute("data-order-total") ||
+        total.textContent !== `${quantity * 500 + 200}円`
+      ) {
+        order.setAttribute("data-mixed-order", "");
+        observer.disconnect();
+      }
+    });
+    observer.observe(order, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    });
+  });
+  const [firstAction] = await Promise.all([
+    page.waitForResponse("**/_hypersig/actions/add-notebook"),
+    page.getByRole("button", { name: "ノートを追加" }).click(),
+  ]);
+  expect(firstAction.status()).toBe(200);
+  await page.getByRole("button", { name: "ノートを追加" }).click();
+  await expect(page.locator("#order-quantity")).toHaveText(
+    String(quantity + 2)
+  );
+  await expect(page.locator("#order-total")).toHaveText(
+    `${(quantity + 2) * 500 + 200}円`
+  );
+  await expect(page.locator("[data-mixed-order]")).toHaveCount(0);
+});
+
 async function readRenders(page: Page) {
   const response = await page.request.get("/metrics");
   const metrics: unknown = await response.json();

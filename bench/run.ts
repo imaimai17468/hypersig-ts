@@ -10,6 +10,9 @@ import type { Browser, Page } from "@playwright/test";
 import * as v from "valibot";
 
 const rounds = Number(process.env.BENCH_ROUNDS ?? 25);
+const shareLoad = process.env.BENCH_SHARE_LOAD === "1";
+const shareRender = shareLoad || process.env.BENCH_SHARE_RENDER === "1";
+const readDelayMs = Number(process.env.BENCH_READ_DELAY_MS ?? 0);
 const rows = Number(process.env.BENCH_ROWS ?? 500);
 const connectionCounts = (process.env.BENCH_CONNECTIONS ?? "1,25,100,200")
   .split(",")
@@ -30,6 +33,7 @@ const startupSchema = v.object({ origin: v.string(), bun: v.string() });
 
 const metricsSchema = v.object({
   renderTimes: v.array(v.number()),
+  counterLoads: v.number(),
   independentRenders: v.number(),
   independentChecks: v.number(),
   rss: v.number(),
@@ -294,14 +298,25 @@ async function runProfile(
     }
     const after = await readMetrics(origin, true);
     const renderTimes = after.renderTimes.slice(before.renderTimes.length);
+    const counterLoads = after.counterLoads - before.counterLoads;
     if (
-      renderTimes.length !== connections * rounds ||
+      renderTimes.length !== (shareRender ? rounds : connections * rounds) ||
       after.independentRenders !== before.independentRenders
     ) {
       throw new Error("Unexpected numbers of affected or independent renders");
     }
+    if (
+      counterLoads < rounds ||
+      counterLoads > connections * rounds ||
+      (!shareLoad && counterLoads !== connections * rounds)
+    )
+      throw new Error("Unexpected number of snapshot loads");
     return {
       profile,
+      shareRender,
+      shareLoad,
+      readDelayMs,
+      counterLoads,
       connections,
       bun: boot.bun,
       coldSsrMs: Math.round(coldSsrMs * 1000) / 1000,

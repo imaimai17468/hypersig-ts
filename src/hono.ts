@@ -5,12 +5,13 @@ import type { SSEStreamingApi } from "hono/streaming";
 import type { HtmlEscapedString } from "hono/utils/html";
 import { registerAction } from "./action.js";
 import type { ActionDefinition } from "./action.js";
+import type { LiveRuntimeOptions } from "./live-runtime.js";
 import { createLiveRuntime } from "./live-runtime.js";
 import type { LiveRenderContext, Principal } from "./live.js";
 import { events } from "./protocol.js";
 import type { LiveRenderer } from "./render.js";
 import type { LiveConnection } from "./stream.js";
-import type { PubSub, Topic } from "./topic.js";
+import type { Topic } from "./topic.js";
 
 type Markup = HtmlEscapedString;
 
@@ -28,11 +29,15 @@ export interface Page<
   runtime(src: string): Markup | Promise<Markup>;
 }
 
-export interface HypersigOptions<User extends Principal, Event extends Topic> {
+export interface HypersigOptions<
+  User extends Principal,
+  Event extends Topic,
+> extends Omit<LiveRuntimeOptions<Event, Markup>, "renderer"> {
   /** Public origin to compare against the Origin header of every Action. */
   origin: string;
   authenticate: (request: Request) => User | null | Promise<User | null>;
-  pubsub: PubSub<Event>;
+  /** Non-secret and stable across server restarts, unique to the authenticated session. */
+  draftScope?: (user: User) => string;
 }
 
 const renderer: LiveRenderer<Markup> = {
@@ -90,13 +95,16 @@ function connectSse(stream: SSEStreamingApi): LiveConnection {
 export function createHypersig<User extends Principal, Event extends Topic>(
   options: HypersigOptions<User, Event>
 ) {
-  const { authenticate, pubsub } = options;
+  const { authenticate } = options;
   const origin = new URL(options.origin).origin;
   if (!/^https?:\/\//.test(origin))
     throw new Error("Expected an HTTP(S) origin");
   const basePath = "/_hypersig";
   const routes = new Hono().basePath(basePath);
-  const runtime = createLiveRuntime<User, Event, Markup>({ renderer, pubsub });
+  const runtime = createLiveRuntime<User, Event, Markup>({
+    ...options,
+    renderer,
+  });
   const actions = new Set<string>();
 
   routes.get(
@@ -135,6 +143,7 @@ export function createHypersig<User extends Principal, Event extends Topic>(
   return {
     routes,
     live: runtime.live,
+    liveShared: runtime.liveShared,
     publish: runtime.publish,
     action<Wire, Input, Value, Output>(
       name: string,
@@ -179,6 +188,11 @@ export function createHypersig<User extends Principal, Event extends Topic>(
                   type="module"
                   src="${src}"
                   data-hs-stream="${basePath}/stream/${token}"
+                  ${
+                    options.draftScope
+                      ? html`data-hs-draft-scope="${options.draftScope(user)}"`
+                      : ""
+                  }
                 ></script>`;
               },
             })}`

@@ -20,9 +20,11 @@ type CounterId = keyof typeof counts;
 
 const counterChanged = topic("counter", (id: CounterId) => id);
 const layoutChanged = topic("counter-layout", () => "nested");
+const orderChanged = topic("order", () => "demo");
 type CounterEvent =
   | ReturnType<typeof counterChanged>
-  | ReturnType<typeof layoutChanged>;
+  | ReturnType<typeof layoutChanged>
+  | ReturnType<typeof orderChanged>;
 const hypersig = createHypersig({
   origin,
   pubsub: createMemoryPubSub<CounterEvent>(),
@@ -133,8 +135,58 @@ const nestedCounter = hypersig.live({
   },
 });
 
+let order = { revision: 1, notebooks: 1 };
+const priceDelayMs = Number(Bun.env.ORDER_PRICE_DELAY_MS ?? 0);
+const addNotebook = hypersig.action("add-notebook", {
+  input: v.object({}),
+  output: v.number(),
+  authorize: () => true,
+  async execute() {
+    const next = {
+      revision: order.revision + 1,
+      notebooks: order.notebooks + 1,
+    };
+    order = next;
+    await hypersig.publish(orderChanged());
+    return next.revision;
+  },
+});
+const orderSummary = hypersig.live({
+  key: () => "order-summary",
+  subscribe: () => [orderChanged()],
+  authorize: () => true,
+  async load() {
+    const snapshot = order;
+    // Simulate asynchronous pricing while retaining the same order snapshot.
+    if (priceDelayMs > 0) await Bun.sleep(priceDelayMs);
+    return { ...snapshot, total: snapshot.notebooks * 500 + 200 };
+  },
+  render({ revision, notebooks, total }) {
+    return (
+      <section aria-label="注文明細">
+        <h2>注文明細</h2>
+        <ul data-order-lines={revision}>
+          <li>
+            ノート 500円 × <span id="order-quantity">{notebooks}</span>
+          </li>
+          <li>送料 200円</li>
+        </ul>
+        <p>
+          合計{" "}
+          <output id="order-total" data-order-total={revision}>
+            {total}円
+          </output>
+        </p>
+        <button type="button" {...addNotebook.bind({})}>
+          ノートを追加
+        </button>
+      </section>
+    );
+  },
+});
+
 app.route("/", hypersig.routes);
-app.on("GET", ["/", "/nested"], async (c) => {
+app.on("GET", ["/", "/nested", "/order"], async (c) => {
   const current = getCookie(c, "counter-session");
   if (!current || !sessions.has(current)) {
     const sessionId = crypto.randomUUID();
@@ -150,18 +202,22 @@ app.on("GET", ["/", "/nested"], async (c) => {
     "Content-Security-Policy",
     "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
   );
+  const isOrder = c.req.path === "/order";
+  const title = isOrder ? "注文サマリー" : "hypersig Counter";
   return hypersig.page(c.req.raw, (page) => (
-    <html lang="en">
+    <html lang={isOrder ? "ja" : "en"}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>hypersig Counter</title>
+        <title>{title}</title>
         {page.runtime("/runtime.js")}
       </head>
       <body>
         <main>
-          <h1 id="heading">hypersig Counter</h1>
-          {c.req.path === "/nested" ? (
+          <h1 id="heading">{title}</h1>
+          {isOrder ? (
+            page.view(orderSummary, {})
+          ) : c.req.path === "/nested" ? (
             page.view(nestedCounter, {})
           ) : (
             <>

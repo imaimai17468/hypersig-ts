@@ -14,10 +14,9 @@
     single change could trigger 200 identical reads.
   </p>
   <p id="sharing">
-    To reduce that duplication, an implementation in development shares
-    overlapping reads inside the server when they need the same data, access
-    scope, and committed revision. The application specifies which reads and
-    revisions can be shared.
+    An application can opt into sharing overlapping reads inside the server when
+    they need the same data, access scope, and committed revision. The
+    application specifies which reads and revisions can be shared.
   </p>
   <p>
     In a local test with 200 connections to the same counter, the number of
@@ -30,6 +29,10 @@
   <p>
     Permission checks and delivery still run per connection. If the application
     uses a SQL query to select the revision, that read still happens.
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/bench/README.md#接続間での読み取り共有"
+      >Read sharing benchmark and reproduction steps</a
+    >
   </p>
 </section>
 
@@ -52,9 +55,9 @@
     >
   </p>
   <p>
-    The implementation in development can also share the work of generating the
-    same HTML from identical load results. This reduces rendering work. Each
-    browser still receives its own update.
+    The server can also share the work of generating the same HTML from
+    identical load results. This reduces rendering work. Each browser still
+    receives its own update.
   </p>
 </section>
 

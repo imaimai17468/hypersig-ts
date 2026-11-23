@@ -1,6 +1,20 @@
-import type { LiveRenderContext, LiveView, Principal } from "./live.js";
+import { report } from "./diagnostics.js";
+import type { LiveDiagnostic } from "./diagnostics.js";
+import type {
+  LiveRenderContext,
+  LiveView,
+  Principal,
+  SharedLiveView,
+  SharedLoadOptions,
+  SharedValue,
+} from "./live.js";
 import { maxViews, renderContext } from "./render.js";
-import type { LiveRenderer, ViewInstance } from "./render.js";
+import type {
+  LeafSnapshot,
+  LiveRenderer,
+  SharedFragments,
+  ViewInstance,
+} from "./render.js";
 import { streamPage } from "./stream.js";
 import type { LiveConnection } from "./stream.js";
 import type { PubSub, Topic } from "./topic.js";
@@ -29,6 +43,11 @@ export type OpenPage<User> =
 export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   renderer: LiveRenderer<Markup>;
   pubsub: PubSub<Event>;
+  onDiagnostic?: (event: LiveDiagnostic<Event>) => void;
+  /** Re-read subscribed views periodically to recover missed notifications. */
+  reconcileIntervalMs?: number;
+  /** Close a connection when accepting one frame takes longer (default 30 seconds). */
+  sendTimeoutMs?: number;
 }
 
 const pageLifetime = 30 * 60_000;
@@ -38,8 +57,29 @@ export function createLiveRuntime<
   User extends Principal,
   Event extends Topic,
   Markup,
->({ renderer, pubsub }: LiveRuntimeOptions<Event, Markup>) {
+>({
+  renderer,
+  pubsub,
+  onDiagnostic,
+  reconcileIntervalMs,
+  sendTimeoutMs = 30_000,
+}: LiveRuntimeOptions<Event, Markup>) {
+  if (
+    reconcileIntervalMs !== undefined &&
+    (!Number.isSafeInteger(reconcileIntervalMs) ||
+      reconcileIntervalMs < 1 ||
+      reconcileIntervalMs > 2_147_483_647)
+  ) {
+    throw new RangeError("Invalid Live View reconciliation interval");
+  }
+  if (
+    !Number.isSafeInteger(sendTimeoutMs) ||
+    sendTimeoutMs < 1 ||
+    sendTimeoutMs > 2_147_483_647
+  )
+    throw new RangeError("Invalid Live View send timeout");
   const pages = new Map<string, PageSession<User, Event>>();
+  const shared: SharedFragments = new WeakMap();
 
   function evict(token: string, page: PageSession<User, Event>) {
     pages.delete(token);
@@ -53,7 +93,52 @@ export function createLiveRuntime<
     ) {
       return definition;
     },
-    publish: (event: Event) => pubsub.publish(event),
+    liveShared<Params, Data extends SharedValue>(
+      this: void,
+      definition: SharedLiveView<Params, Data, User, Event, Markup>,
+      options?: SharedLoadOptions<Params, Data, User>
+    ): SharedLiveView<Params, Data, User, Event, Markup> {
+      if (!options) return definition;
+      const inFlight = new Map<string, Promise<Data>>();
+      const revision = definition.revision?.bind(definition);
+      return {
+        key: (params) => definition.key(params),
+        authorize: (params, user) => definition.authorize(params, user),
+        subscribe: (params, user) => definition.subscribe(params, user),
+        renderShared: (data) => definition.renderShared(data),
+        ...(revision && { revision }),
+        async load(params: Params, user: User) {
+          const snapshot = await options.shareLoad(params, user);
+          if (!snapshot) return definition.load(params, user);
+
+          const { scope, revision } = snapshot;
+          const key = JSON.stringify([
+            scope,
+            typeof revision,
+            String(revision),
+          ]);
+          const current = inFlight.get(key);
+          if (current) return current;
+
+          const pending = Promise.resolve()
+            .then(() => snapshot.load())
+            .finally(() => {
+              inFlight.delete(key);
+            });
+          inFlight.set(key, pending);
+          return pending;
+        },
+      };
+    },
+    async publish(this: void, event: Event) {
+      try {
+        await pubsub.publish(event);
+      } catch (error) {
+        report(onDiagnostic, { type: "publish-error", topic: event });
+        throw error;
+      }
+      report(onDiagnostic, { type: "publish", topic: event });
+    },
     async renderPage(
       user: User,
       render: (
@@ -64,9 +149,16 @@ export function createLiveRuntime<
       const token = crypto.randomUUID();
       const views = new Map<string, ViewInstance<User, Event>>();
       let count = 0;
-      const context = renderContext(renderer, user, views, "initial", () => {
-        if (++count > maxViews) throw new Error("Too many Live Views");
-      });
+      const context = renderContext(
+        renderer,
+        user,
+        views,
+        "initial",
+        () => {
+          if (++count > maxViews) throw new Error("Too many Live Views");
+        },
+        shared
+      );
       const document = await renderer.serialize(render(context, token));
 
       const now = Date.now();
@@ -119,11 +211,18 @@ export function createLiveRuntime<
           page.close?.();
           const close = () => connection.close();
           page.close = close;
+          const initialSnapshots = new Map<string, LeafSnapshot>();
+          for (const [key, view] of page.views) {
+            if (view.initialSnapshot && views.has(key))
+              initialSnapshots.set(key, view.initialSnapshot);
+            delete view.initialSnapshot;
+          }
           try {
             await streamPage(
               connection,
               {
                 views,
+                initialSnapshots,
                 async refresh() {
                   const current = await refreshUser();
                   if (pages.get(token) !== page) return { status: "expired" };
@@ -134,7 +233,7 @@ export function createLiveRuntime<
                 },
                 nextVersion: () => ++page.version,
               },
-              pubsub
+              { pubsub, onDiagnostic, reconcileIntervalMs, sendTimeoutMs }
             );
           } finally {
             if (page.close === close) delete page.close;

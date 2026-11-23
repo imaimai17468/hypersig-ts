@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import { Idiomorph } from "idiomorph";
+import { preserveDrafts, restoreDrafts } from "./drafts.js";
 import { events } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
 
@@ -42,20 +43,24 @@ function isTextControl(element: Element | null) {
   );
 }
 
-function updateViews(endpoint: URL) {
+function updateViews(endpoint: URL, draftScope: string | undefined) {
   let active = true;
   let connection: EventSource | undefined;
   let views = new Map<string, HTMLElement>();
   const versions = new WeakMap<HTMLElement, number>();
 
-  function setStatus(status: "connecting" | "ready" | "disconnected") {
+  function setStatus(
+    status: "connecting" | "ready" | "disconnected" | "reload-required"
+  ) {
     document.documentElement.dataset.hsConnection = status;
     const outlet = document.querySelector("[data-hs-connection-status]");
     if (outlet)
       outlet.textContent =
-        status === "disconnected" && views.size
-          ? "Live updates disconnected."
-          : "";
+        status === "reload-required"
+          ? "Live updates require reloading this page. Copy your draft before reloading."
+          : status === "disconnected" && views.size
+            ? "Live updates disconnected."
+            : "";
   }
 
   function synchronize() {
@@ -183,7 +188,11 @@ function updateViews(endpoint: URL) {
     source.addEventListener(events.reset, () => {
       if (source !== connection) return;
       source.close();
-      location.reload();
+      if (preserveDrafts(draftScope)) location.reload();
+      else {
+        clearViews();
+        setStatus("reload-required");
+      }
     });
   }
 
@@ -227,10 +236,18 @@ function handleActions(stream: URL) {
     body: string | FormData
   ) {
     if (pending.has(control)) return false;
-    const outlet = document.querySelector("[data-hs-error]");
+    const outlet =
+      control.closest("form")?.querySelector("[data-hs-error]") ??
+      document.querySelector("[data-hs-error]");
+    const fields = control
+      .closest("form")
+      ?.querySelectorAll<HTMLElement>("[data-hs-field-error]");
     if (outlet) outlet.textContent = "";
+    for (const field of fields ?? []) field.textContent = "";
     pending.add(control);
+    control.setAttribute("data-hs-pending", "");
     let status = 0;
+    let failure: unknown;
     try {
       const url = new URL(target, location.href);
       if (
@@ -242,23 +259,80 @@ function handleActions(stream: URL) {
       const response = await fetch(url, {
         method: "POST",
         body,
-        headers:
-          typeof body === "string"
+        headers: {
+          Accept: "application/json",
+          ...(typeof body === "string"
             ? { "Content-Type": "application/json" }
-            : {},
+            : {}),
+        },
         redirect: "error",
       });
-      if (response.ok) return true;
+      if (response.ok) {
+        if (control.hasAttribute("data-hs-action-result")) {
+          const result: unknown = await response.json().catch(() => null);
+          const data =
+            result && typeof result === "object" && "data" in result
+              ? result.data
+              : undefined;
+          control.dispatchEvent(
+            new CustomEvent("hypersig:action-success", {
+              bubbles: true,
+              detail: { data },
+            })
+          );
+        }
+        return true;
+      }
       status = response.status;
+      failure = await response.json().catch(() => null);
     } catch {
       // A status of zero represents a network error.
     } finally {
       pending.delete(control);
+      control.removeAttribute("data-hs-pending");
     }
-    if (outlet)
-      outlet.textContent = status
-        ? `Action failed (${status}).`
-        : "Action request failed.";
+    let message = status
+      ? `Action failed (${status}).`
+      : "Action request failed.";
+    if (failure && typeof failure === "object" && "error" in failure) {
+      if (
+        failure.error === "action" &&
+        "message" in failure &&
+        typeof failure.message === "string"
+      ) {
+        message = failure.message;
+      }
+      if (
+        failure.error === "input" &&
+        "fieldIssues" in failure &&
+        Array.isArray(failure.fieldIssues) &&
+        fields?.length
+      ) {
+        const unmatched: string[] = [];
+        for (const issue of failure.fieldIssues as unknown[]) {
+          if (
+            !issue ||
+            typeof issue !== "object" ||
+            !("message" in issue) ||
+            typeof issue.message !== "string"
+          )
+            continue;
+          const field =
+            "field" in issue
+              ? [...fields].find(
+                  (node) => node.dataset.hsFieldError === issue.field
+                )
+              : undefined;
+          if (field)
+            field.textContent = field.textContent
+              ? `${field.textContent} ${issue.message}`
+              : issue.message;
+          else unmatched.push(issue.message);
+        }
+        message = unmatched.join(" ");
+      }
+    }
+    if (outlet) outlet.textContent = message;
     control.dispatchEvent(
       new CustomEvent("hypersig:action-error", {
         bubbles: true,
@@ -321,13 +395,16 @@ function handleActions(stream: URL) {
   });
 }
 
-const endpoint = document.querySelector<HTMLScriptElement>(
+const runtime = document.querySelector<HTMLScriptElement>(
   "script[data-hs-stream]"
-)?.dataset.hsStream;
+);
+const endpoint = runtime?.dataset.hsStream;
 if (endpoint) {
   const url = new URL(endpoint, location.href);
   if (url.origin === location.origin) {
-    updateViews(url);
+    const scope = runtime?.dataset.hsDraftScope;
+    restoreDrafts(scope);
+    updateViews(url, scope);
     handleActions(url);
   }
 }

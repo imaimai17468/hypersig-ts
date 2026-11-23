@@ -1,6 +1,6 @@
 # Project Instructions
 
-hypersig-ts is a TypeScript frontend framework.
+hypersig.ts is a TypeScript frontend framework.
 
 ## Workflow
 

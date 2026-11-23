@@ -249,6 +249,7 @@ await test(
 
       await runtime.dispose();
       runtime = startWorkers(location);
+      const restartedEntry = getFrontend(runtime, "entry-a");
       const restarted = getFrontend(runtime, "entry-b");
       const oldStream = await openStream(restarted, page.streamUrl, cookie);
       try {
@@ -256,14 +257,32 @@ await test(
       } finally {
         await oldStream.close();
       }
-      assert.match(
-        (await readPage(restarted, cookie)).html,
-        /<output id="counter-value">3<\/output>/
-      );
+      const recovered = await readPage(restartedEntry, cookie);
+      assert.match(recovered.html, /<output id="counter-value">3<\/output>/);
       assert.match(
         (await readPage(restarted, peerCookie, "other")).html,
         /<output id="counter-value">0<\/output>/
       );
+      const recoveredStream = await openStream(
+        restarted,
+        recovered.streamUrl,
+        cookie
+      );
+      try {
+        assert.match(
+          await recoveredStream.read(),
+          /<output id=\\"counter-value\\">3<\/output>/
+        );
+        assert.match(await recoveredStream.read(), /event: ready/);
+        const update = await post(restartedEntry, peerCookie);
+        assert.equal(update.status, 200);
+        assert.match(
+          await recoveredStream.read(),
+          /<output id=\\"counter-value\\">4<\/output>/
+        );
+      } finally {
+        await recoveredStream.close();
+      }
     } finally {
       await runtime.dispose();
       await rm(location, { recursive: true, force: true });

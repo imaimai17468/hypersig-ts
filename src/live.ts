@@ -16,14 +16,16 @@ export interface LiveRenderContext<
     definition: LiveView<Params, Data, User, Event, Markup>,
     params: NoInfer<Params>
   ): Promise<Markup>;
+  view<Params, Data extends SharedValue>(
+    definition: SharedLiveView<Params, Data, User, Event, Markup>,
+    params: NoInfer<Params>
+  ): Promise<Markup>;
 }
 
-export interface LiveView<
+interface LiveViewDefinition<
   Params,
-  Data,
   User extends Principal,
   Event extends Topic,
-  Markup,
 > {
   key(params: Params): string;
   /**
@@ -33,12 +35,66 @@ export interface LiveView<
   revision?(params: Params, user: User): string | number;
   subscribe(params: Params, user: User): readonly Event[];
   authorize(params: Params, user: User): MaybePromise<boolean>;
+}
+
+export type SharedValue = string | number | bigint | boolean | null | undefined;
+
+export interface SharedLoad<Data extends SharedValue> {
+  /** Resource and visibility scope. Every viewer in this scope must see the same value. */
+  readonly scope: string;
+  /** Committed revision selected for this load. */
+  readonly revision: string | number;
+  /** Read the snapshot bound to this scope and revision. */
+  load(): MaybePromise<Data>;
+}
+
+export interface SharedLoadOptions<
+  Params,
+  Data extends SharedValue,
+  User extends Principal,
+> {
+  /** Select a snapshot after authorization. Return undefined for an individual load. */
+  shareLoad(
+    this: void,
+    params: NoInfer<Params>,
+    user: User
+  ): MaybePromise<SharedLoad<NoInfer<Data>> | undefined>;
+}
+
+export interface SnapshotRevision<Params, Data, User extends Principal> {
+  /** Read the current revision without loading the full snapshot. */
+  read(params: Params, user: User): MaybePromise<string | number>;
+  /** Read the revision from the exact snapshot that will be rendered. */
+  from(data: NoInfer<Data>): string | number;
+}
+
+export interface LiveView<
+  Params,
+  Data,
+  User extends Principal,
+  Event extends Topic,
+  Markup,
+> extends LiveViewDefinition<Params, User, Event> {
   load(params: Params, user: User): MaybePromise<Data>;
+  /** Optional shortcut for periodic reconciliation. */
+  snapshotRevision?: SnapshotRevision<Params, NoInfer<Data>, User>;
   render(
     data: NoInfer<Data>,
     params: Params,
     context: LiveRenderContext<User, Event, NoInfer<Markup>>
   ): MaybePromise<Markup>;
+}
+
+export interface SharedLiveView<
+  Params,
+  Data extends SharedValue,
+  User extends Principal,
+  Event extends Topic,
+  Markup,
+> extends LiveViewDefinition<Params, User, Event> {
+  load(params: Params, user: User): MaybePromise<Data>;
+  /** Pure leaf renderer. Equal primitive snapshots can share rendered HTML. */
+  renderShared(data: NoInfer<Data>): MaybePromise<Markup>;
 }
 
 export function live<
