@@ -364,24 +364,24 @@ pre {
   }
   .topnav,
   .footer,
-  .home-section,
-  .flow-steps li + li,
-  .article .design-part {
+  .flow-steps li + li {
     border-top: 0;
   }
   .home {
     padding-bottom: 3rem;
   }
-  .hero {
-    padding-block: 2.4rem 0;
-  }
   .home-section,
   .article .design-part {
-    padding-top: 0;
+    padding-top: 1.2rem;
   }
-  .hero + .home-section,
+  .hero {
+    padding-block: 2.4rem 2rem;
+  }
   .home-section + .home-section {
-    margin-top: 2.6rem;
+    margin-top: 2rem;
+  }
+  .home-section h2 {
+    font-size: 1.375rem;
   }
   .flow-steps {
     display: grid;
@@ -391,6 +391,9 @@ pre {
   .flow-steps li {
     grid-template-columns: minmax(0, 1fr);
     padding-block: 0;
+  }
+  .flow-steps h3 {
+    font-size: 1rem;
   }
 }
 @media (max-width: 680px) {
