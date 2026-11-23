@@ -42,7 +42,21 @@
     別のインスタンスでデータが変わったときは、変更の通知を購読先に配る仕組み（Pub/Sub）を使って、画面を配信しているインスタンスにも通知します。プロキシを使う場合は、SSE
     の応答が途中でまとめられずに転送され、長時間の接続が維持されることを確認します。
   </p>
+</section>
+
+<section id="void">
+  <h2>Void に組み込む場合</h2>
   <p>
+    Void を使う場合は、ミドルウェアからページ表示、操作、画面更新のリクエストを
+    Hono アプリに渡します。Node で動かす例と、Workers
+    で共有データを扱う例があります。
+  </p>
+  <p>
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/README.md"
+      >Node での動作例</a
+    >
+    ·
     <a
       href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/worker/README.md"
       >Workers でのデプロイ例を見る</a
@@ -66,4 +80,17 @@
     </li>
   </ol>
   <p><a href="../limits/">読み取りや配信にかかる負荷</a></p>
+</section>
+
+<section id="notification-retry">
+  <h2>保存した変更の通知を再試行する</h2>
+  <p>
+    保存後に通知を送る前にプロセスが落ちると、その変更を開いている画面に届けられない場合があります。たとえば
+    SQLite
+    では、データの変更と送信待ちの通知を同じトランザクションに記録できます。この方式を
+    Outbox と呼びます。
+  </p>
+  <p>
+    保存が確定したあとで通知を送り、配信基盤が受理したら送信待ちの行を削除します。失敗した行は再試行します。再起動後も再試行するには、データと通知を永続ストレージに保存します。この保証は、通知を同時に記録する保存経路に限られます。
+  </p>
 </section>

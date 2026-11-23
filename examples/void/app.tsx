@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { hc } from "hono/client";
+import { validator } from "hono/validator";
 import * as v from "valibot";
 import { createHypersig, createMemoryPubSub, topic } from "../../src/index.js";
 import { createCounterSessions } from "./session.js";
@@ -8,6 +9,10 @@ import { counterKeys } from "./store.js";
 import type { CounterKey, CounterStore } from "./store.js";
 
 const keySchema = v.picklist(counterKeys);
+const querySchema = v.object({
+  view: v.optional(v.picklist(["edit", "display"])),
+});
+type CounterView = NonNullable<v.InferOutput<typeof querySchema>["view"]>;
 const changed = topic("counter", (key: CounterKey) => key);
 
 interface CounterAppOptions {
@@ -53,19 +58,39 @@ export function createCounterApp({
 
   const app = new Hono()
     .route("/", hypersig.routes)
-    .get("/", (c) => renderPage(c, "main"))
-    .get("/counters/:counterKey", async (c) => {
-      const parsed = v.safeParse(keySchema, c.req.param("counterKey"));
-      return parsed.success ? renderPage(c, parsed.output) : c.notFound();
-    });
+    .get("/", (c) => renderPage(c, "main", "edit"))
+    .get(
+      "/counters/:counterKey",
+      validator("query", (query, c) => {
+        const parsed = v.safeParse(querySchema, query);
+        return parsed.success ? parsed.output : c.text("Invalid view", 400);
+      }),
+      async (c) => {
+        const parsed = v.safeParse(keySchema, c.req.param("counterKey"));
+        if (!parsed.success) return c.notFound();
+        return renderPage(
+          c,
+          parsed.output,
+          c.req.valid("query").view ?? "edit"
+        );
+      }
+    );
   const links = hc<typeof app>("/");
-  const counterLink = (counterKey: CounterKey) =>
-    links.counters[":counterKey"].$path({ param: { counterKey } });
+  const counterLink = (counterKey: CounterKey, view?: CounterView) =>
+    links.counters[":counterKey"].$path({
+      param: { counterKey },
+      query: { view },
+    });
 
-  async function renderPage(c: Context, key: CounterKey): Promise<Response> {
+  async function renderPage(
+    c: Context,
+    key: CounterKey,
+    view: CounterView
+  ): Promise<Response> {
     if (!(await sessions.authenticate(c.req.raw))) {
       await sessions.issue(c);
-      return c.redirect(c.req.path);
+      const { pathname, search } = new URL(c.req.url);
+      return c.redirect(pathname + search);
     }
 
     const connections = development
@@ -91,9 +116,16 @@ export function createCounterApp({
               <a href={counterLink("other")}>Other</a>
             </nav>
             {page.view(counter, { key })}
-            <button type="button" {...increment.bind({ counterKey: key })}>
-              Increment
-            </button>
+            {view === "edit" && (
+              <button type="button" {...increment.bind({ counterKey: key })}>
+                Increment
+              </button>
+            )}
+            {view === "edit" ? (
+              <a href={counterLink(key, "display")}>Display only</a>
+            ) : (
+              <a href={counterLink(key, "edit")}>Edit view</a>
+            )}
             <p role="status" data-hs-connection-status=""></p>
             <p role="alert" data-hs-error=""></p>
           </main>

@@ -14,7 +14,7 @@ mise exec -- bun run dev
 
 `http://127.0.0.1:5173` でカウンターを開く。別セッションでも Main のカウンターは同期し、Other は別 Topic を購読する。サーバー側の `app.tsx` を保存すると、Vite の開発 WebSocket 経由でページを再取得し SSE を張り直す。サンプルのカウントはメモリに置いているため、サーバーモジュールの再読み込みで初期化される。既定のセッション署名キーも再生成される。固定キーで試す場合は `SESSION_SECRET` を設定する。[Vite の開発時更新 API](https://vite.dev/guide/api-environment-plugins#the-hotupdate-hook)
 
-Void のミドルウェアはカウンター画面、Action、SSE の元の Request を Hono アプリに渡す。`/health` は Void 自身のファイルルートとして処理する。画面リンクは Hono の `hc<typeof app>().$path()` から生成し、リクエスト時には URL の値を Valibot で検証する。[Hono の型付きパス](https://hono.dev/docs/guides/rpc#path)
+Void のミドルウェアはカウンター画面、Action、SSE の元の Request を Hono アプリに渡す。`/health` は Void 自身のファイルルートとして処理する。画面リンクは Hono の `hc<typeof app>().$path()` から生成する。`/counters/main?view=display` は操作ボタンを表示せず、変更通知は受け取る。リンク生成時はパス引数名と表示モードを型で確認し、リクエスト時には Valibot で実際の値を検証する。[Hono の型付きパス](https://hono.dev/docs/guides/rpc#path)
 
 ## ビルドと起動
 

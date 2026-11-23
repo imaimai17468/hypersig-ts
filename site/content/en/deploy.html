@@ -38,7 +38,21 @@
     Check that your proxy forwards SSE without buffering and allows long-lived
     connections.
   </p>
+</section>
+
+<section id="void">
+  <h2>Running with Void</h2>
   <p>
+    In a Void app, middleware forwards page, action, and live update requests to
+    Hono. The examples cover running on Node and handling shared data on
+    Workers.
+  </p>
+  <p>
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/README.md"
+      >Run on Node</a
+    >
+    ·
     <a
       href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/worker/README.md"
       >See the Workers deployment example</a
@@ -65,4 +79,20 @@
     </li>
   </ol>
   <p><a href="../limits/">Read about query and delivery costs</a></p>
+</section>
+
+<section id="notification-retry">
+  <h2>Retrying notifications after a save</h2>
+  <p>
+    If the process stops after a save and before publication, open pages can
+    miss the update. With SQLite, for example, you can record the data change
+    and the pending notification in the same transaction. This pattern is called
+    a transactional outbox.
+  </p>
+  <p>
+    After the save commits, the sender publishes the notification and removes it
+    once the delivery service accepts it. Failed sends are retried. Use
+    persistent storage to resume retries after a restart. This guarantee covers
+    writes that also record the notification.
+  </p>
 </section>

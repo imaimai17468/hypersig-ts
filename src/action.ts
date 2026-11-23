@@ -19,6 +19,11 @@ export interface ActionDefinition<
 }
 
 type FormValue = FormDataEntryValue | FormDataEntryValue[];
+type FormFieldName<Input> = Input extends readonly unknown[]
+  ? never
+  : Input extends object
+    ? `${Extract<keyof Input, string | number>}`
+    : never;
 
 function readForm(form: FormData): Record<string, FormValue> {
   const fields = new Map<string, FormValue>();
@@ -111,6 +116,10 @@ export function registerAction<
       if (json === undefined)
         throw new TypeError("Action input must serialize to JSON");
       return { "data-hs-action": url, "data-hs-input": json };
+    },
+    /** Check a top-level HTML field name against the schema's input type. */
+    field<Name extends FormFieldName<Wire>>(name: Name): Name {
+      return name;
     },
     form(options: { resetOnSuccess?: boolean } = {}): {
       action: string;

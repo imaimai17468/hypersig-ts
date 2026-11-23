@@ -134,7 +134,7 @@ async function openStream(app: Hono, path: string, keys = ["main"]) {
 }
 
 it("validates wire input, enforces origin and authorization, and accepts native form data", async () => {
-  const { action } = setup();
+  const { action, increment } = setup();
   const body = JSON.stringify({ amount: "2" });
   expect((await action(body, { "X-Session": "owner" })).status).toBe(403);
   expect((await action(body, { Origin: origin })).status).toBe(401);
@@ -146,10 +146,14 @@ it("validates wire input, enforces origin and authorization, and accepts native 
   expect((await action(JSON.stringify({ amount: "6" }))).status).toBe(403);
   expect((await action(" ".repeat(65_537))).status).toBe(413);
   const form = new FormData();
-  form.set("amount", "2");
+  form.set(increment.field("amount"), "2");
   const response = await action(form, { Origin: origin, "X-Session": "owner" });
   expect(response.status).toBe(200);
   await expect(response.json()).resolves.toEqual({ data: 2 });
+  form.set(increment.field("amount"), "invalid");
+  expect(
+    (await action(form, { Origin: origin, "X-Session": "owner" })).status
+  ).toBe(422);
 });
 
 it("scopes a page's authorized views to its session and catches changes made before connection", async () => {
@@ -369,6 +373,9 @@ it("binds schema wire input and accepts only the application's topic types", () 
   expectTypeOf<typeof increment.bind>()
     .parameter(0)
     .toEqualTypeOf<{ amount: string }>();
+  expectTypeOf(increment.field("amount")).toEqualTypeOf<"amount">();
+  // @ts-expect-error The schema does not accept a field named "ammount".
+  increment.field("ammount");
   expectTypeOf(publish).parameter(0).toEqualTypeOf<CounterEvent>();
   expectTypeOf(otherTopic("invoice-1")).not.toMatchTypeOf<CounterEvent>();
 });

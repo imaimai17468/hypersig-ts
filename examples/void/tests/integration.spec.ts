@@ -13,6 +13,9 @@ test("serves Void routes, typed SSR links and scoped SSE through the same host",
       host: "Void",
     });
     expect((await page.request.get("/counters/unknown")).status()).toBe(404);
+    expect(
+      (await page.request.get("/counters/main?view=unknown")).status()
+    ).toBe(400);
 
     const peer = await context.newPage();
     const response = await page.goto("/");
@@ -31,7 +34,16 @@ test("serves Void routes, typed SSR links and scoped SSE through the same host",
       expect(source).toContain('src="/assets/hypersig-runtime.js"');
     }
 
-    await peer.goto("/counters/main");
+    const display = page.getByRole("link", { name: "Display only" });
+    await expect(display).toHaveAttribute(
+      "href",
+      "/counters/main?view=display"
+    );
+    await peer.goto("/counters/main?view=display");
+    await expect(peer).toHaveURL(/\/counters\/main\?view=display$/);
+    await expect(peer.getByRole("button", { name: "Increment" })).toHaveCount(
+      0
+    );
     const ready = "html[data-hs-connection=ready]";
     await expect(page.locator(ready)).toHaveCount(1);
     await expect(peer.locator(ready)).toHaveCount(1);
@@ -46,6 +58,10 @@ test("serves Void routes, typed SSR links and scoped SSE through the same host",
     expect((await action).ok()).toBe(true);
     await expect(page.locator("#counter-value")).toHaveText("1");
     await expect(peer.locator("#counter-value")).toHaveText("1");
+
+    await peer.getByRole("link", { name: "Edit view" }).click();
+    await expect(peer).toHaveURL(/\/counters\/main\?view=edit$/);
+    await expect(peer.getByRole("button", { name: "Increment" })).toBeVisible();
 
     await peer.getByRole("link", { name: "Other" }).click();
     await expect(peer).toHaveURL(/\/counters\/other$/);

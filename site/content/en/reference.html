@@ -1,11 +1,35 @@
 <h1>API reference</h1>
 <p class="lead">
-  Set up the Hono adapter and declare how Actions and Live Views use server
-  data.
+  Use these APIs to handle actions on the server, publish changes, and update
+  parts of a page.
 </p>
+
+<section id="type-safety">
+  <h2>What TypeScript checks</h2>
+  <ul>
+    <li>
+      <a href="#actions">Actions</a> check button inputs and the form field
+      names passed to <code>action.field()</code> against the input schema. The
+      server validates submitted values and action results.
+    </li>
+    <li>
+      <a href="#topics">Change notifications</a> use the same type for
+      publishers and subscribers. The write operation declares which change to
+      publish.
+    </li>
+    <li>
+      <a href="#live-views">Views that update</a> check the arguments passed
+      from the page and the values passed from the loader to the renderer.
+    </li>
+  </ul>
+</section>
 
 <section id="adapter">
   <h2>Hono adapter</h2>
+  <p>
+    Use <code>createHypersig</code> in a Hono app. To supply your own renderer
+    and connection handling, use <code>hypersig.ts/core</code>.
+  </p>
   <dl>
     <dt><code>createHypersig(options)</code></dt>
     <dd>
@@ -19,6 +43,30 @@
     <dt><code>hypersig.page(request, render)</code></dt>
     <dd>Authenticate the request and render the page as HTML.</dd>
   </dl>
+</section>
+
+<section id="typed-links">
+  <h2>Typed links</h2>
+  <p>
+    Create <code>hc&lt;typeof app&gt;("/")</code> from the Hono routes and pass
+    the result of <code>$path()</code> to <code>href</code> in server-rendered
+    JSX. Hono checks the path parameter names and the query types inferred from
+    the route validator when you build the link.
+  </p>
+  <pre><code>const links = hc&lt;typeof app&gt;("/");
+const href = links.counters[":counterKey"].$path({
+  param: { counterKey: "main" },
+  query: { view: "display" },
+});</code></pre>
+  <p>
+    The Counter example uses Valibot to validate the received key and view mode.
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/app.tsx"
+      >Server example</a
+    >
+    ·
+    <a href="https://hono.dev/docs/guides/rpc#path">Hono typed paths</a>
+  </p>
 </section>
 
 <section id="actions">
@@ -35,6 +83,15 @@
     <code>action.bind(input)</code> binds typed data to a button.
     <code>action.form()</code> supplies attributes for an HTML form. The Action
     response reports the result. Subscribed Views update over SSE.
+  </p>
+  <pre><code>&lt;form {...increment.form()}&gt;
+  &lt;input type="hidden" name={increment.field("counterId")} value="main" /&gt;
+  &lt;button type="submit"&gt;Increment&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+  <p>
+    <code>action.field(name)</code> checks that the name belongs to a top-level
+    field in the input schema and returns it as an HTML field name. The server
+    validates submitted values when it receives the form.
   </p>
 </section>
 

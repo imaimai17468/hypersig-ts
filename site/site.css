@@ -234,12 +234,22 @@ pre {
   color: var(--muted);
   font-size: 0.95rem;
 }
-.update-flow {
+.update-flow,
+.home-detail {
   padding-top: 1.8rem;
   border-top: 1px solid var(--line);
 }
-.update-flow h2 {
+.update-flow h2,
+.home-detail h2 {
   font-size: clamp(1.45rem, 2.2vw, 1.85rem);
+}
+.home-detail {
+  margin-top: 2.75rem;
+}
+.home-detail p {
+  max-width: 44rem;
+  margin-top: 0.75rem;
+  color: var(--muted);
 }
 .flow-cards {
   display: grid;

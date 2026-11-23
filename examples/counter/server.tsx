@@ -67,7 +67,11 @@ const counter = live({
           </button>
         ) : (
           <form {...increment.form()}>
-            <input type="hidden" name="counterId" value={id} />
+            <input
+              type="hidden"
+              name={increment.field("counterId")}
+              value={id}
+            />
             <button type="submit">Increment other</button>
           </form>
         )}

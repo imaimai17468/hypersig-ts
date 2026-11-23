@@ -1,10 +1,36 @@
 <h1>API リファレンス</h1>
 <p class="lead">
-  Hono に組み込み、サーバーで入力を処理して画面の一部を更新します。
+  サーバーで操作を処理し、変更を通知して、画面の一部を更新するための API です。
 </p>
+
+<section id="type-safety">
+  <h2>型で確認できる範囲</h2>
+  <ul>
+    <li>
+      <a href="#actions">フォームやボタンからの操作</a>
+      では、ボタンが送る値と
+      <code>action.field()</code>
+      に渡すフォームの項目名を入力スキーマから確認します。受信した値と処理結果はサーバーで検証します。
+    </li>
+    <li>
+      <a href="#topics">データ変更の通知</a>
+      では、通知を送る側と受け取る側で同じ型を使います。どの変更を通知するかは、保存処理のコードで指定します。
+    </li>
+    <li>
+      <a href="#live-views">変更に合わせて更新する画面の一部</a>
+      では、ページから渡す引数と、取得処理から描画処理に渡す値を確認します。
+    </li>
+  </ul>
+</section>
 
 <section id="adapter">
   <h2>Hono への組み込み</h2>
+  <p>
+    Hono アプリでは
+    <code>createHypersig</code>
+    を使います。描画や通信を自分で組み合わせる場合は、実行処理を
+    <code>hypersig.ts/core</code> から使えます。
+  </p>
   <dl>
     <dt><code>createHypersig(options)</code></dt>
     <dd>
@@ -19,6 +45,29 @@
     <dt><code>hypersig.page(request, render)</code></dt>
     <dd>リクエストを認証し、ページの HTML を生成します。</dd>
   </dl>
+</section>
+
+<section id="typed-links">
+  <h2>型付きリンク</h2>
+  <p>
+    Hono のルート定義から <code>hc&lt;typeof app&gt;("/")</code> を作り、
+    <code>$path()</code> が返すパスをサーバー側の JSX で <code>href</code>
+    に渡せます。パスの引数名と、検証処理で定義したクエリの型をリンク生成時に確認できます。
+  </p>
+  <pre><code>const links = hc&lt;typeof app&gt;("/");
+const href = links.counters[":counterKey"].$path({
+  param: { counterKey: "main" },
+  query: { view: "display" },
+});</code></pre>
+  <p>
+    カウンターの例では、受信したキーと表示モードも Valibot で検証します。
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/app.tsx"
+      >サーバー側の例</a
+    >
+    ·
+    <a href="https://hono.dev/docs/guides/rpc#path">Hono の型付きパス</a>
+  </p>
 </section>
 
 <section id="actions">
@@ -40,6 +89,14 @@
       >action.form()</code
     >
     はフォームに渡す属性を返します。サーバーは処理結果を応答として返します。
+  </p>
+  <pre><code>&lt;form {...increment.form()}&gt;
+  &lt;input type="hidden" name={increment.field("counterId")} value="main" /&gt;
+  &lt;button type="submit"&gt;Increment&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+  <p>
+    <code>action.field(name)</code>
+    は、送信する名前が入力スキーマの最上位の項目にあるかを型で確認し、その名前を返します。入力値の検証は送信時にサーバーで行います。
   </p>
 </section>
 
