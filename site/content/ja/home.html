@@ -1,62 +1,58 @@
 <section class="hero">
-  <h1 lang="en">Stay in sync<br />with the server</h1>
-  <p class="hero-summary">
-    サーバーで変更が確定すると、画面の必要な箇所が更新されます。保存後の表示更新や再接続時の同期を、画面ごとに実装する手間を減らします。
-  </p>
-  <a class="button" href="./start/">サンプルを動かす</a>
+  <div>
+    <h1 lang="en">Live HTML from server state</h1>
+    <p class="hero-summary">
+      hypersig.ts は、サーバーで確定したデータから画面の一部を更新する
+      TypeScript の Web フレームワークです。変更があった箇所の HTML
+      を、開いている画面へ配信します。
+    </p>
+    <a class="button" href="./start/">カウンターを試す</a>
+  </div>
+
+  <figure class="hero-example">
+    <figcaption>カウンターの表示を定義する</figcaption>
+    <pre><code>const counter = live({
+  key: ({ id }: { id: CounterId }) =&gt; id,
+  subscribe: ({ id }) =&gt; [
+    counterChanged(id),
+  ],
+  authorize: () =&gt; true,
+  load: ({ id }) =&gt; counts[id],
+  render: (n) =&gt; &lt;output&gt;{n}&lt;/output&gt;,
+});</code></pre>
+    <p>
+      保存処理が
+      <code>counterChanged(id)</code>
+      を通知すると、その変更を受け取る表示だけをサーバーで描画します。
+      <a href="./start/#source">サンプルの構成を読む</a>
+    </p>
+  </figure>
 </section>
 
-<section class="home-section" aria-labelledby="freshness-title">
-  <h2 id="freshness-title">表示はいつでも古くなりうる</h2>
-  <p>
-    画面に届くのは、サーバーが読み取った時点のデータです。表示した直後でも、その間に保存が確定していれば、表示はもう古くなっています。
-  </p>
-  <p><a href="./why/">設計の背景を読む</a></p>
-</section>
-
-<section class="home-section" aria-labelledby="update-flow-title">
-  <h2 id="update-flow-title">変更が画面に届くまで</h2>
-  <ol class="flow-steps" role="list">
-    <li>
-      <h3>サーバーで変更を確定する</h3>
-      <p>
-        サーバーで入力を検証し、データを保存します。保存が確定したら、何が変わったかをアプリのコードで明示的に通知します。
-      </p>
-    </li>
-    <li>
-      <h3>関係する箇所だけを更新する</h3>
-      <p>
-        開発者は、画面の各部分がどの変更を受け取るかを指定します。サーバーは指定に従って
-        HTML を生成し、ブラウザは該当箇所に反映します。
-      </p>
-    </li>
-    <li>
-      <h3>接続が戻ったら同期する</h3>
-      <p>
-        ブラウザは古い更新を適用せず、再接続時にはサーバーの最新状態から生成した
-        HTML を受け取ります。
-      </p>
-    </li>
-  </ol>
-</section>
-
-<section class="home-section" aria-labelledby="home-types-title">
-  <h2 id="home-types-title">操作から表示まで型で確認</h2>
-  <p>
-    フォームの項目名やボタンが送る値を、サーバーの入力定義と照合できます。変更を通知する側と受け取る側は同じ型を使い、取得したデータを表示に渡すところも型で確認できます。
-  </p>
-  <p><a href="./reference/#type-safety">型で確認できる範囲を読む</a></p>
-</section>
-
-<section class="home-section" aria-labelledby="home-integration-title">
-  <h2 id="home-integration-title">既存のサーバーへの組み込み</h2>
-  <p>
-    Hono のアプリに組み込めます。Hono が HTTP リクエストを受け付け、 hypersig.ts
-    がサーバーでの操作と、変更後の画面更新を扱います。Hono
-    単体で動かせます。Void を使う場合も、同じ Hono アプリを組み込めます。
-  </p>
-  <p>
-    <a href="./reference/#adapter">Hono への組み込み</a> ·
-    <a href="./deploy/#void">Void での動作例</a>
-  </p>
-</section>
+<div class="home-details">
+  <section aria-labelledby="freshness-title">
+    <h2 id="freshness-title">画面を同期し続ける</h2>
+    <p>
+      表示はデータを読み取った時点のものです。その後の変更はサーバーから送り、再接続時は最新の状態を読み直します。
+    </p>
+    <p><a href="./why/">設計の背景</a> · <a href="./limits/">性能と制約</a></p>
+  </section>
+  <section aria-labelledby="home-types-title">
+    <h2 id="home-types-title">操作と表示の型を確認する</h2>
+    <p>
+      フォームの項目名と送信する値はサーバーの入力定義と照合できます。変更通知と、取得データから描画に渡す値にも型があります。
+    </p>
+    <p><a href="./reference/#type-safety">型で確認できる範囲</a></p>
+  </section>
+  <section aria-labelledby="home-integration-title">
+    <h2 id="home-integration-title">既存のアプリに組み込む</h2>
+    <p>
+      Hono のアプリに組み込めます。Hono 単体で動かすほか、同じアプリを Void
+      に載せることもできます。
+    </p>
+    <p>
+      <a href="./reference/#adapter">Hono への組み込み</a> ·
+      <a href="./deploy/#void">Void の動作例</a>
+    </p>
+  </section>
+</div>

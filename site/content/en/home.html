@@ -1,68 +1,62 @@
 <section class="hero">
-  <h1>Stay in sync<br />with the server</h1>
-  <p class="hero-summary">
-    When a change is committed on the server, the affected parts of the page
-    update. hypersig.ts handles updates after a save and resyncs after a dropped
-    connection.
-  </p>
-  <a class="button" href="./start/">Run the example</a>
+  <div>
+    <h1>Live HTML from server state</h1>
+    <p class="hero-summary">
+      hypersig.ts is a TypeScript web framework that updates parts of a page
+      from committed server state. When data changes, it sends HTML for the
+      affected views to open pages.
+    </p>
+    <a class="button" href="./start/">Try the counter</a>
+  </div>
+
+  <figure class="hero-example">
+    <figcaption>Define the counter view</figcaption>
+    <pre><code>const counter = live({
+  key: ({ id }: { id: CounterId }) =&gt; id,
+  subscribe: ({ id }) =&gt; [
+    counterChanged(id),
+  ],
+  authorize: () =&gt; true,
+  load: ({ id }) =&gt; counts[id],
+  render: (n) =&gt; &lt;output&gt;{n}&lt;/output&gt;,
+});</code></pre>
+    <p>
+      When the write publishes <code>counterChanged(id)</code>, the server
+      renders the views that subscribed to that change.
+      <a href="./start/#source">Read the example</a>
+    </p>
+  </figure>
 </section>
 
-<section class="home-section" aria-labelledby="freshness-title">
-  <h2 id="freshness-title">A page can go stale at any time</h2>
-  <p>
-    The page displays data as it was when the server read it. If another write
-    commits in the meantime, that data is already stale when it appears.
-  </p>
-  <p><a href="./why/">Read the design rationale</a></p>
-</section>
-
-<section class="home-section" aria-labelledby="update-flow-title">
-  <h2 id="update-flow-title">How a change reaches the page</h2>
-  <ol class="flow-steps" role="list">
-    <li>
-      <h3>Commit changes on the server</h3>
-      <p>
-        The server validates input and saves the data. Once the write commits,
-        application code announces what changed.
-      </p>
-    </li>
-    <li>
-      <h3>Update the affected parts</h3>
-      <p>
-        You declare which changes each part of the page receives. The server
-        renders HTML for those parts and the browser applies it.
-      </p>
-    </li>
-    <li>
-      <h3>Resync after reconnecting</h3>
-      <p>
-        The browser skips older updates. When it reconnects, it receives HTML
-        rendered from the current server state.
-      </p>
-    </li>
-  </ol>
-</section>
-
-<section class="home-section" aria-labelledby="home-types-title">
-  <h2 id="home-types-title">Type checks from actions to views</h2>
-  <p>
-    Check form field names and button inputs against the server input schema.
-    Changes share a type between publishers and subscribers, and the data loaded
-    for a view is typed through to rendering.
-  </p>
-  <p><a href="./reference/#type-safety">See what TypeScript checks</a></p>
-</section>
-
-<section class="home-section" aria-labelledby="home-integration-title">
-  <h2 id="home-integration-title">Use it in an existing app</h2>
-  <p>
-    Add hypersig.ts to a Hono app. Hono handles HTTP requests, and hypersig.ts
-    runs server actions and updates views after a change. You can run the Hono
-    app on its own or integrate the same app into Void.
-  </p>
-  <p>
-    <a href="./reference/#adapter">Integrate with Hono</a> ·
-    <a href="./deploy/#void">See the Void example</a>
-  </p>
-</section>
+<div class="home-details">
+  <section aria-labelledby="freshness-title">
+    <h2 id="freshness-title">Keep pages in sync</h2>
+    <p>
+      A view shows data as it was when the server read it. The server sends
+      changes as they happen and reads the current state on reconnect.
+    </p>
+    <p>
+      <a href="./why/">Design rationale</a> ·
+      <a href="./limits/">Performance and limits</a>
+    </p>
+  </section>
+  <section aria-labelledby="home-types-title">
+    <h2 id="home-types-title">Check actions and views with types</h2>
+    <p>
+      Check form field names and button inputs against the server schema. Types
+      also connect change notifications and the data passed to rendering.
+    </p>
+    <p><a href="./reference/#type-safety">What TypeScript checks</a></p>
+  </section>
+  <section aria-labelledby="home-integration-title">
+    <h2 id="home-integration-title">Use it in an existing app</h2>
+    <p>
+      Add hypersig.ts to a Hono app. Run that app on its own or integrate it
+      into Void.
+    </p>
+    <p>
+      <a href="./reference/#adapter">Integrate with Hono</a> ·
+      <a href="./deploy/#void">Void example</a>
+    </p>
+  </section>
+</div>

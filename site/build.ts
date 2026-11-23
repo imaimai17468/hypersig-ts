@@ -23,7 +23,8 @@ const locales = {
     prefix: "",
     name: "English",
     nav: "Documentation",
-    menu: "Contents",
+    guide: "Docs",
+    menu: "Documentation menu",
     skip: "Skip to content",
     start: "Get started",
     description:
@@ -39,13 +40,13 @@ const locales = {
     ],
     original: "Rust hypersig",
     legal: "Documentation",
-    language: "Language",
   },
   ja: {
     prefix: "ja/",
     name: "日本語",
     nav: "ドキュメント",
-    menu: "目次",
+    guide: "ガイド",
+    menu: "ドキュメントの目次",
     skip: "本文へ移動",
     start: "はじめる",
     description:
@@ -61,7 +62,6 @@ const locales = {
     ],
     original: "Rust 版 hypersig",
     legal: "ドキュメント",
-    language: "言語",
   },
 };
 
@@ -98,14 +98,15 @@ function render(
   const home = "../".repeat(path.split("/").filter(Boolean).length) || "./";
   const links = navigation(labels, home, language, page);
   const title = page ? `${labels.titles[index]} · hypersig.ts` : "hypersig.ts";
-  const languageNav = languages
-    .map(
-      (code) =>
-        `<a href="${relative(home, url(code, page))}" lang="${code}" hreflang="${code}"${language === code ? ' aria-current="page"' : ""}>${locales[code].name}</a>`
-    )
-    .join("");
+  const alternateLanguage = language === "ja" ? "en" : "ja";
   const body = page
-    ? `<div class="docs-shell"><aside class="sidebar"><nav aria-label="${labels.nav}">${links}</nav></aside><main id="main" class="article">${content}</main></div>`
+    ? `<div class="docs-shell"><aside class="sidebar"><nav aria-label="${labels.nav}">${links}</nav></aside><main id="main" class="article">
+        <details class="docs-menu">
+          <summary>${labels.menu}</summary>
+          <nav aria-label="${labels.nav}">${links}</nav>
+        </details>
+        ${content}
+      </main></div>`
     : `<main id="main" class="home">${content}</main>`;
   return `<!doctype html>
 <html lang="${language}">
@@ -126,15 +127,11 @@ function render(
   <header class="topbar">
     <div class="topbar-inner">
       <a class="wordmark" aria-label="hypersig.ts" href="${relative(home, url(language, ""))}">hypersig<span>.ts</span></a>
-      <nav class="topnav" aria-label="${labels.nav}">${links}</nav>
-      <div class="top-actions">
-        <nav class="languages" aria-label="${labels.language}">${languageNav}</nav>
-        <a class="github" href="${repository}">GitHub</a>
-      </div>
-      <details class="mobile-menu">
-        <summary>${labels.menu}</summary>
-        <nav aria-label="${labels.nav}">${links}<a href="${repository}">GitHub</a></nav>
-      </details>
+      <nav class="topnav" aria-label="${labels.nav}">
+        <a href="${relative(home, url(language, "start"))}"${page === "start" ? ' aria-current="page"' : ""}>${labels.guide}</a>
+        <a href="${repository}">GitHub</a>
+        <a href="${relative(home, url(alternateLanguage, page))}" lang="${alternateLanguage}" hreflang="${alternateLanguage}">${locales[alternateLanguage].name}</a>
+      </nav>
     </div>
   </header>
   ${body}
