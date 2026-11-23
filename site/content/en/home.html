@@ -1,49 +1,85 @@
 <section class="hero">
-  <div>
-    <h1>Server state and live HTML</h1>
-    <p>
-      hypersig.ts is a TypeScript framework for interactive HTML. An Action
-      changes server state. Live Views subscribe to changes and receive rendered
-      HTML over Server-Sent Events.
+  <div class="hero-intro">
+    <p class="hero-category">A TypeScript framework</p>
+    <h1>Server updates<br />across open tabs</h1>
+    <p class="hero-summary">
+      Data changes are committed on the server. When another user saves or a
+      background job changes the data, the server sends updated HTML to the
+      parts of the open pages that display it.
     </p>
     <div class="hero-links">
-      <a class="button" href="./start/">Get started</a>
-      <a class="button alt" href="./concepts/">Core concepts</a>
+      <a class="button" href="./start/">Run the example</a>
+      <a class="button alt" href="./concepts/">How it works</a>
     </div>
   </div>
-  <figure class="code-card">
-    <figcaption>counter.tsx</figcaption>
-    <pre><code><span class="accent">const</span> counter = hypersig.live({
-  key: () =&gt; "counter",
-  subscribe: () =&gt; [counterChanged()],
-  authorize: () =&gt; true,
-  load: () =&gt; count,
-  render: (value) =&gt; &lt;output&gt;{value}&lt;/output&gt;,
-});</code></pre>
-    <ol class="flow">
-      <li>Action</li>
-      <li>Topic subscription</li>
-      <li>HTML over SSE</li>
-    </ol>
+
+  <figure class="update-example">
+    <figcaption>Two tabs showing the same counter</figcaption>
+    <div class="example-step">
+      <span class="example-origin">Tab A</span>
+      <span>Increment the shared counter</span>
+    </div>
+    <div class="example-step example-server">
+      <span class="example-origin">Server</span>
+      <span
+        >Change the value from <strong>24</strong> to <strong>25</strong></span
+      >
+    </div>
+    <div class="example-tabs">
+      <div class="example-tab">
+        <p>Tab A</p>
+        <dl>
+          <div class="updated-counter">
+            <dt>Shared</dt>
+            <dd>25</dd>
+          </div>
+          <div>
+            <dt>Separate</dt>
+            <dd>7</dd>
+          </div>
+        </dl>
+      </div>
+      <div class="example-tab">
+        <p>Tab B</p>
+        <dl>
+          <div class="updated-counter">
+            <dt>Shared</dt>
+            <dd>25</dd>
+          </div>
+          <div>
+            <dt>Separate</dt>
+            <dd>7</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+    <p class="example-caption">Only the shared counter changes in both tabs.</p>
   </figure>
 </section>
-<section class="feature-grid" aria-label="Documentation topics">
-  <a class="feature" href="./concepts/"
-    ><h2>Update boundaries</h2>
-    <p>Define which server-rendered regions update when data changes.</p></a
-  >
-  <a class="feature" href="./reference/"
-    ><h2>Typed Actions</h2>
-    <p>
-      Validate input and output with Standard Schema and check access on the
-      server.
-    </p></a
-  >
-  <a class="feature" href="./deploy/"
-    ><h2>Connection lifecycle</h2>
-    <p>
-      Check how live subscriptions reconnect and how page registrations affect
-      deployment.
-    </p></a
-  >
+
+<section class="principles" aria-labelledby="principles-title">
+  <h2 id="principles-title">How pages update</h2>
+  <div class="principle-list">
+    <div>
+      <h3>Commit changes on the server</h3>
+      <p>
+        Validate input and check access. Send a notification after the change is
+        saved.
+      </p>
+    </div>
+    <div>
+      <h3>Send HTML for the affected regions</h3>
+      <p>
+        Define which data each region displays. When that data changes, render
+        the region on the server again.
+      </p>
+    </div>
+    <div>
+      <h3>Keep unfinished input in the browser</h3>
+      <p>
+        The server renders the components. The browser applies the HTML while
+        preserving focus and unfinished input where possible.
+      </p>
+    </div>
+  </div>
 </section>

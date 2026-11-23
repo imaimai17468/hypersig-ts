@@ -10,7 +10,6 @@
   --accent-soft: #e5effe;
   --code-bg: #111a29;
   --code-text: #dbe7f8;
-  --code-accent: #8fb8ff;
   --measure: 76rem;
   font-family:
     Inter, "Hiragino Sans", "Yu Gothic", Meiryo, system-ui, sans-serif;
@@ -174,47 +173,54 @@ pre {
 }
 .hero {
   display: grid;
-  grid-template-columns: 1.12fr 1fr;
+  grid-template-columns: minmax(0, 1.16fr) minmax(0, 1fr);
   align-items: center;
-  gap: 3.2rem;
-  padding: clamp(3.5rem, 8vw, 6.3rem) 0 3.6rem;
+  gap: clamp(2rem, 5vw, 4.7rem);
+  padding: clamp(4rem, 8vw, 7.5rem) 0 clamp(3.25rem, 7vw, 5.5rem);
+}
+.hero-category {
+  margin-bottom: 1.1rem;
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 680;
+  letter-spacing: 0.015em;
 }
 .hero h1 {
-  font-size: clamp(2.6rem, 6vw, 4.85rem);
-  line-height: 1.02;
-  letter-spacing: -0.065em;
-  max-width: 12ch;
+  font-size: clamp(3rem, 5.1vw, 5rem);
+  line-height: 1.06;
+  letter-spacing: -0.055em;
+  text-wrap: balance;
 }
 :lang(ja) .hero h1 {
-  font-size: clamp(2.5rem, 5vw, 4.3rem);
-  max-width: 15em;
-  line-height: 1.16;
+  font-size: clamp(2.3rem, 4.3vw, 4.2rem);
+  line-height: 1.2;
   letter-spacing: -0.045em;
 }
-.hero p {
+.hero-summary {
   color: var(--muted);
   max-width: 34rem;
-  margin-top: 1.25rem;
-  font-size: 1.04rem;
+  margin-top: 1.4rem;
+  font-size: 1.03rem;
+  line-height: 1.85;
 }
 .hero-links {
-  margin-top: 1.6rem;
+  margin-top: 1.75rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.8rem;
   flex-wrap: wrap;
 }
 .button {
   display: inline-flex;
   align-items: center;
-  padding: 0.55rem 0.95rem;
-  min-height: 2.8rem;
+  padding: 0.6rem 1.05rem;
+  min-height: 2.9rem;
   background: var(--accent);
   color: var(--bg);
   text-decoration: none;
   font-weight: 680;
   border: 1px solid transparent;
-  border-radius: 0.42rem;
+  border-radius: 0.5rem;
 }
 .button:hover {
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -224,74 +230,126 @@ pre {
   color: var(--text);
   border-color: var(--line);
 }
-.code-card {
+.update-example {
   min-width: 0;
-  border: 1px solid #2e405b;
-  border-radius: 0.8rem;
-  background: var(--code-bg);
-  color: var(--code-text);
-  overflow: hidden;
-  box-shadow: 0 18px 48px #09152f26;
-}
-.code-card figcaption {
-  color: #b5c5df;
-  font-family: monospace;
-  border-bottom: 1px solid #2e405b;
-  font-size: 0.77rem;
-  padding: 0.6rem 1.15rem;
-}
-.code-card pre {
-  font-size: clamp(0.75rem, 1.48vw, 0.92rem);
-  padding: 1.25rem 1.15rem;
-}
-.code-card .accent {
-  color: var(--code-accent);
-}
-.flow {
-  list-style: none;
-  display: grid;
-  gap: 0.45rem;
-  grid-template-columns: repeat(3, 1fr);
-  padding: 0.75rem;
   margin: 0;
-  background: #172235;
-  border-top: 1px solid #2e405b;
-}
-.flow li {
-  padding: 0.35rem 0.4rem;
-  border: 1px solid #394960;
-  border-radius: 0.3rem;
-  font-size: 0.71rem;
-  text-align: center;
-}
-.hero figure {
-  margin: 0;
-}
-
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.8rem;
-}
-.feature {
-  display: block;
-  background: var(--panel);
-  border-radius: 0.64rem;
+  padding: clamp(1.15rem, 2.7vw, 2rem);
   border: 1px solid var(--line);
-  padding: 1.25rem;
+  border-radius: 1rem;
+  background: var(--panel);
+}
+.update-example figcaption {
+  margin-bottom: 0.85rem;
   color: var(--text);
-  text-decoration: none;
+  font-size: 0.91rem;
+  font-weight: 680;
 }
-.feature:hover {
-  border-color: var(--accent);
+.example-step {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 0.4rem;
+  padding: 0.55rem 0;
+  font-size: 0.85rem;
 }
-.feature h2 {
-  font-size: 1.07rem;
+.example-origin {
+  color: var(--muted);
 }
-.feature p {
+.example-server {
+  border-top: 1px solid var(--line);
+}
+.example-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+.example-tabs::before,
+.example-tabs::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.example-tabs::before {
+  top: -0.55rem;
+  left: 25%;
+  width: 50%;
+  height: 0.55rem;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 0.35rem 0.35rem 0 0;
+}
+.example-tabs::after {
+  top: -1.05rem;
+  left: 50%;
+  height: 0.55rem;
+  border-left: 1px solid var(--line);
+}
+.example-tab {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.58rem;
+}
+.example-tab > p {
+  padding: 0.42rem 0.67rem;
+  background: var(--panel-soft);
+  font-size: 0.73rem;
+  font-weight: 640;
+}
+.example-tab dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+.example-tab dl > div {
+  min-width: 0;
+  padding: 0.6rem 0.55rem 0.7rem;
+}
+.example-tab dt {
+  color: var(--muted);
+  font-size: 0.69rem;
+}
+.example-tab dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(1.24rem, 2.2vw, 1.65rem);
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+.updated-counter {
+  background: var(--accent-soft);
+}
+.updated-counter dt,
+.updated-counter dd {
+  color: var(--accent);
+}
+.example-caption {
+  margin-top: 0.9rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.principles {
+  padding-top: 1.8rem;
+  border-top: 1px solid var(--line);
+}
+.principles h2 {
+  font-size: clamp(1.4rem, 2.2vw, 1.8rem);
+}
+.principle-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.9rem;
+  margin-top: 1.45rem;
+}
+.principle-list h3 {
+  font-size: 1.04rem;
+}
+.principle-list p {
   margin-top: 0.45rem;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.91rem;
 }
 
 .docs-shell {
@@ -400,7 +458,12 @@ pre {
     gap: 1.35rem;
   }
   .hero {
-    gap: 1.6rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.25rem;
+    padding-top: 3.5rem;
+  }
+  .update-example {
+    max-width: 35rem;
   }
 }
 @media (max-width: 680px) {
@@ -470,12 +533,27 @@ pre {
     display: none;
   }
   .hero {
-    grid-template-columns: minmax(0, 1fr);
-    padding-top: 3rem;
-    gap: 2.25rem;
+    padding-top: 2.85rem;
+    gap: 2rem;
   }
-  .feature-grid {
+  .hero h1 {
+    font-size: clamp(2.35rem, 10vw, 3.6rem);
+  }
+  :lang(ja) .hero h1 {
+    font-size: clamp(1.95rem, 8.1vw, 2.65rem);
+  }
+  .principle-list {
     grid-template-columns: minmax(0, 1fr);
+    gap: 1.45rem;
+  }
+  .example-step {
+    grid-template-columns: 4.15rem minmax(0, 1fr);
+  }
+  .example-tab dl > div {
+    padding-inline: 0.43rem;
+  }
+  .example-tab dt {
+    font-size: 0.64rem;
   }
   .article dl {
     grid-template-columns: minmax(0, 1fr);

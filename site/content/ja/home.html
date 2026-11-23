@@ -1,42 +1,82 @@
 <section class="hero">
-  <div>
-    <h1>サーバーのデータで画面を更新</h1>
-    <p>
-      hypersig.ts は TypeScript
-      のフレームワークです。たとえば、片方のタブでカウンターの値を変えると、同じカウンターを開いている別のタブにも反映されます。
+  <div class="hero-intro">
+    <p class="hero-category">TypeScript フレームワーク</p>
+    <h1>サーバーでの変更を<br />別のタブにも反映</h1>
+    <p class="hero-summary">
+      データはサーバーで確定します。別の利用者の操作や定期処理でデータが変わると、同じデータを表示している画面の該当箇所に、更新後の
+      HTML を送ります。
     </p>
     <div class="hero-links">
-      <a class="button" href="./start/">はじめる</a>
-      <a class="button alt" href="./concepts/">基本概念</a>
+      <a class="button" href="./start/">サンプルを動かす</a>
+      <a class="button alt" href="./concepts/">仕組みを読む</a>
     </div>
   </div>
-  <figure class="code-card">
-    <figcaption>カウンターの変更に合わせて表示を更新する例</figcaption>
-    <pre><code><span class="accent">const</span> counter = hypersig.live({
-  key: () =&gt; "counter",
-  subscribe: () =&gt; [counterChanged()],
-  authorize: () =&gt; true,
-  load: () =&gt; count,
-  render: (value) =&gt; &lt;output&gt;{value}&lt;/output&gt;,
-});</code></pre>
-    <ol class="flow">
-      <li>データを変更</li>
-      <li>HTML を生成</li>
-      <li>画面を更新</li>
-    </ol>
+
+  <figure class="update-example">
+    <figcaption>二つのタブで同じカウンターを表示する例</figcaption>
+    <div class="example-step">
+      <span class="example-origin">タブ A</span>
+      <span>共有カウンターを増やす</span>
+    </div>
+    <div class="example-step example-server">
+      <span class="example-origin">サーバー</span>
+      <span>値を <strong>24</strong> から <strong>25</strong> に更新</span>
+    </div>
+    <div class="example-tabs">
+      <div class="example-tab">
+        <p>タブ A</p>
+        <dl>
+          <div class="updated-counter">
+            <dt>共有</dt>
+            <dd>25</dd>
+          </div>
+          <div>
+            <dt>独立</dt>
+            <dd>7</dd>
+          </div>
+        </dl>
+      </div>
+      <div class="example-tab">
+        <p>タブ B</p>
+        <dl>
+          <div class="updated-counter">
+            <dt>共有</dt>
+            <dd>25</dd>
+          </div>
+          <div>
+            <dt>独立</dt>
+            <dd>7</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+    <p class="example-caption">
+      共有カウンターだけが両方のタブで更新されます。
+    </p>
   </figure>
 </section>
-<section class="feature-grid" aria-label="ドキュメントの項目">
-  <a class="feature" href="./concepts/">
-    <h2>画面の部分更新</h2>
-    <p>更新する箇所と、そのきっかけになるデータの変更を指定します。</p>
-  </a>
-  <a class="feature" href="./reference/">
-    <h2>サーバー側の入力検証</h2>
-    <p>フォームなどから送られた値を検証し、操作する権限を確認できます。</p>
-  </a>
-  <a class="feature" href="./deploy/">
-    <h2>接続が切れたとき</h2>
-    <p>再接続で最新の表示に戻る仕組みと、サーバーの設定を説明します。</p>
-  </a>
+
+<section class="principles" aria-labelledby="principles-title">
+  <h2 id="principles-title">画面が更新される仕組み</h2>
+  <div class="principle-list">
+    <div>
+      <h3>データの変更をサーバーで確定</h3>
+      <p>
+        入力の検証や権限の確認を行い、保存が完了したあとに変更を通知します。
+      </p>
+    </div>
+    <div>
+      <h3>関係する箇所の HTML を送信</h3>
+      <p>
+        画面のどの部分がどのデータに関係するかを指定します。データが変わると、サーバーでその部分を描画し直します。
+      </p>
+    </div>
+    <div>
+      <h3>入力途中の値はブラウザで保持</h3>
+      <p>
+        コンポーネントの描画はサーバーで行います。ブラウザは受け取った HTML
+        を反映し、入力途中の値やフォーカスを、可能な範囲で維持します。
+      </p>
+    </div>
+  </div>
 </section>
