@@ -352,7 +352,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       const hold = holds.get(key);
       const latest = hold?.latest;
       if (hold && --hold.count === 0) holds.delete(key);
-      if (!result.ok) write(path, latest ?? original);
+      if (!result.ok) write(path, latest !== undefined ? latest : original);
       else if (latest !== undefined) write(path, latest);
     }
     if (result.ok) {

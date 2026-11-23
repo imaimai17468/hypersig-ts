@@ -799,3 +799,36 @@ it("reverts only the paths written since the previous call, to their value befor
   await settle();
   expect(runtime.read(b.count.path)).toBe(1);
 });
+
+it("reverts to a null value the server sent while the call was pending", async () => {
+  const note = signals(
+    { text: "a" as string | null },
+    { name: "nullable-note" }
+  );
+  const n = note.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      "data-hs-view": "note",
+      children: [
+        element("p", { id: "snapshot", ...n.init() }),
+        element("button", {
+          id: "edit",
+          ...on.click([n.text.set("b"), saveMemo.call({ title: "b" })]),
+        }),
+      ],
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  click("#edit");
+  find("#snapshot").setAttribute(
+    "data-hs-signals",
+    n.with({ text: null }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(find("[data-hs-view]"));
+  expect(runtime.read(n.text.path)).toBe("b");
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(n.text.path)).toBeNull();
+});
