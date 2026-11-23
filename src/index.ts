@@ -4,6 +4,7 @@ export type {
   ActionFormResult,
   ActionIssue,
   JsonValue,
+  ResultHandlers,
 } from "./action.js";
 export { createHypersig } from "./hono.js";
 export type {
@@ -22,7 +23,14 @@ export type {
   SnapshotRevision,
 } from "./live.js";
 export { lit, on, ref, signalFamily, signals, uuid } from "./signal.js";
-export type { Expr, Signal, SignalRef, SignalScope } from "./signal.js";
+export type {
+  Expr,
+  Signal,
+  SignalGroup,
+  SignalRef,
+  SignalScope,
+} from "./signal.js";
+export type { ExprNode, SignalPath, StmtNode } from "./protocol.js";
 export { createMemoryPubSub, shareTopicSubscriptions, topic } from "./topic.js";
 export type { PubSub, Topic } from "./topic.js";
 export { createLiveRuntime } from "./live-runtime.js";

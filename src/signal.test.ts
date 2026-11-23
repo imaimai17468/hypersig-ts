@@ -39,6 +39,11 @@ it("marks fields left out of with as defaults filled from the initial values", (
   expect(e.with({ operation: "next" }).bindText(e.base.add(1)).children).toBe(
     "3"
   );
+  // @ts-expect-error With exactOptionalPropertyTypes, undefined is not a field value.
+  const unset = editor.with({ base: 2, operation: undefined });
+  expect(unset.init()["data-hs-signals"]).toBe(
+    '[[["partial-editor-1","base"],2],[["partial-editor-1","operation"],"start",0]]'
+  );
 });
 
 it("reads other groups at their initial values and builtins as false", () => {
@@ -83,6 +88,10 @@ it("numbers groups per name", () => {
   expect(() => signals({ value: 1 }, { name: "bad name" })).toThrow(
     "Signal name"
   );
+  // @ts-expect-error A ref name must be an identifier.
+  expect(() => ref({ name: "bad name" })).toThrow("Ref name");
+  const runtimeName: string = "also bad";
+  expect(() => ref({ name: runtimeName })).toThrow("Ref name");
 });
 
 it("keys family members by arbitrary data", () => {
@@ -129,6 +138,17 @@ it("binds only allowed attributes", () => {
   });
   expect(off).not.toHaveProperty("disabled");
   expect(off["aria-pressed"]).toBe("false");
+  // @ts-expect-error With exactOptionalPropertyTypes, undefined is not an expression.
+  const skipped = shown.bindAttr({
+    disabled: undefined,
+    "data-note": shown.note,
+  });
+  expect(skipped).toEqual({
+    "data-note": "x",
+    "data-hs-attr": JSON.stringify({
+      "data-note": ["sig", ["attr-group-1", "note"]],
+    }),
+  });
   // @ts-expect-error href could navigate to a value from a signal.
   expect(() => shown.bindAttr({ href: lit("/") })).toThrow("href");
   // @ts-expect-error data-hs-* attributes belong to the runtime.

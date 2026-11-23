@@ -9,7 +9,15 @@ import {
   signals,
   topic,
 } from "./index.js";
-import type { PubSub } from "./index.js";
+import type {
+  ExprNode,
+  PubSub,
+  ResultHandlers,
+  SignalGroup,
+  SignalPath,
+  SignalScope,
+  StmtNode,
+} from "./index.js";
 
 const origin = "http://localhost";
 const changed = topic("counter", (id: string) => id);
@@ -568,6 +576,17 @@ it("builds call statements from values and signals", () => {
   ]);
   // @ts-expect-error The schema does not accept a field named "ammount".
   increment.call({ ammount: "1" });
+
+  const { hypersig } = setup();
+  const rename = hypersig.action("rename", {
+    input: v.object({ title: v.optional(v.string()), note: v.string() }),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(rename.call({ title: undefined, note: s.amount })[2]).toEqual({
+    note: ["sig", s.amount.path],
+  });
 });
 
 it("passes the action output to onSuccess and runs onError on failure", () => {
@@ -619,4 +638,20 @@ it("attaches result statements to forms", () => {
   );
   expect(increment.form()).not.toHaveProperty("data-hs-on-success");
   expect(increment.form()).not.toHaveProperty("data-hs-on-error");
+});
+
+it("exports the types that signal and Action signatures name", () => {
+  const { increment } = setup();
+  const group = signals({ count: 0 }, { name: "exported-types" });
+  expectTypeOf(group).toEqualTypeOf<SignalGroup<{ count: number }>>();
+  expectTypeOf(group.with({})).toEqualTypeOf<SignalScope<{ count: number }>>();
+  expectTypeOf(group.count.path).toEqualTypeOf<SignalPath>();
+  expectTypeOf(group.count.node).toEqualTypeOf<ExprNode>();
+  expectTypeOf(group.count.set(1)).toEqualTypeOf<StmtNode>();
+  const handlers: ResultHandlers<number> = {
+    onSuccess: (output) => group.count.set(output),
+  };
+  expect(increment.call({ amount: "1" }, handlers)[3]).toEqual([
+    ["set", group.count.path, ["output"]],
+  ]);
 });

@@ -107,7 +107,7 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
   /**
    * Writes every field so the browser runtime loads them. Fields passed to
    * `with` replace the browser's value; the others fill it only when the
-   * browser has none.
+   * browser has none. A field passed as `undefined` counts as left out.
    */
   init(): { [signalAttributes.signals]: string };
   /** Renders the evaluated text as `children`. */

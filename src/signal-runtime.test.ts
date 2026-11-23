@@ -1,7 +1,7 @@
 // The automatic JSX runtime that `<span {...props} />` compiles to.
 import { jsx } from "hono/jsx/jsx-runtime";
 import * as v from "valibot";
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import {
   createHypersig,
   createMemoryPubSub,
@@ -473,6 +473,22 @@ it("focuses a ref", () => {
 
   click("#edit");
   expect(page.activeElement).toBe(find("#title"));
+});
+
+it("prefers the uuid option over crypto.randomUUID", () => {
+  const operation = signals({ id: "" }, { name: "preferred-id" });
+  const { page, click } = createPage(
+    render("button", { id: "next", ...on.click(operation.id.set(uuid())) })
+  );
+  const randomUUID = vi.spyOn(crypto, "randomUUID");
+  try {
+    const runtime = startSignals({ root: page, uuid: () => "id-from-option" });
+    click("#next");
+    expect(runtime.read(operation.id.path)).toBe("id-from-option");
+    expect(randomUUID).not.toHaveBeenCalled();
+  } finally {
+    randomUUID.mockRestore();
+  }
 });
 
 it("writes a new uuid from the uuid option or crypto.randomUUID", () => {
