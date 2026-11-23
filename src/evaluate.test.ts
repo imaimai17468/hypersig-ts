@@ -49,6 +49,9 @@ it("reads output fields and generates ids", () => {
   const context = createContext({}, { output: { revision: 4 } });
   expect(evaluate(["get", ["output"], "revision"], context)).toBe(4);
   expect(evaluate(["get", ["output"], "missing"], context)).toBeNull();
+  for (const key of ["constructor", "toString", "__proto__"]) {
+    expect(evaluate(["get", ["lit", {}], key], context)).toBeNull();
+  }
   expect(evaluate(["uuid"], context)).toBe("id-1");
   expect(evaluate(["output"], createContext({}))).toBeNull();
 });
@@ -119,6 +122,9 @@ it("allows only listed attributes", () => {
     "style",
     "data-hs-action",
     "data-",
+    "data-HS-action",
+    "Data-hs-x",
+    "ARIA-PRESSED",
   ]) {
     expect(isBindableAttribute(name)).toBe(false);
   }

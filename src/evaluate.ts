@@ -116,7 +116,11 @@ export function evaluate(
         : evaluate(node[3], context);
     case "get": {
       const target = evaluate(node[1], context);
-      return (isRecord(target) ? target[node[2]] : undefined) ?? null;
+      return (
+        (isRecord(target) && Object.hasOwn(target, node[2])
+          ? target[node[2]]
+          : undefined) ?? null
+      );
     }
     case "uuid":
       return context.uuid();

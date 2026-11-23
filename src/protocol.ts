@@ -94,6 +94,7 @@ export const booleanAttributes = ["disabled", "checked"] as const;
 const bindableAttributeNames: ReadonlySet<string> = new Set(bindableAttributes);
 
 export function isBindableAttribute(name: string): boolean {
+  if (name !== name.toLowerCase()) return false;
   if (bindableAttributeNames.has(name)) return true;
   return (
     name.startsWith("data-") && name.length > 5 && !name.startsWith("data-hs-")
