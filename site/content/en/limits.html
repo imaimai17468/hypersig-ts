@@ -6,18 +6,30 @@
 </p>
 
 <section id="database">
-  <h2>Can an update increase SQL traffic</h2>
+  <h2>The cost of reading the same data for each connection</h2>
   <p>
-    Yes. The application's <code>load</code> function reads the data. During a
-    normal update, only views subscribed to the change load again. Pending
-    notifications for the same view on one connection can be combined. Initial
-    connection and reconnection also read data to synchronize the display.
+    An update reloads the views subscribed to the change. The initial
+    implementation loaded the view separately for each connection. If 200
+    connections displayed the same counter and each load ran one SQL query, a
+    single change could trigger 200 identical reads.
+  </p>
+  <p id="sharing">
+    To reduce that duplication, an implementation in development shares
+    overlapping reads inside the server when they need the same data, access
+    scope, and committed revision. The application specifies which reads and
+    revisions can be shared.
   </p>
   <p>
-    If 200 connections subscribe to the same order count and every load runs a
-    SQL query, one change can cause 200 reads. Rendering a smaller view can
-    reduce work and transfer size. If the loader runs the same query, the number
-    of reads stays the same.
+    In a local test with 200 connections to the same counter, the number of
+    SQLite <code>SELECT</code> queries loading the view dropped from
+    <strong>200 to 1 per update</strong>, or from 2,400 to 12 over 12 updates.
+    The test picked the revision from memory and added a 12-millisecond wait
+    before each read. Time to deliver an update to every connection stayed about
+    the same.
+  </p>
+  <p>
+    Permission checks and delivery still run per connection. If the application
+    uses a SQL query to select the revision, that read still happens.
   </p>
 </section>
 
@@ -39,29 +51,10 @@
       >Benchmark setup and reproduction steps</a
     >
   </p>
-</section>
-
-<section id="sharing">
-  <h2>Work that can be shared across connections</h2>
   <p>
-    <strong>These measurements use an implementation in development.</strong>
-    Render sharing reuses HTML when loads for the same view return equal values.
-    Read sharing lets overlapping loads reuse one read when they need the same
-    data, access scope, and committed revision.
-  </p>
-  <p>
-    In a local benchmark with 200 connections displaying the same counter and 12
-    sequential updates, sharing reduced HTML renders from
-    <strong>2,400 to 12</strong>. In a separate run, read sharing also reduced
-    SQLite SELECTs from <strong>2,400 to 12</strong>. That run selected the data
-    revision from memory and waited 12 milliseconds before each SELECT. The time
-    to deliver each update to all connections stayed similar.
-  </p>
-  <p>
-    Authorization checks and delivery still happen per connection. If selecting
-    the data revision requires a SQL query, that read still happens. In your
-    application, measure query count, rendering time, and transfer size
-    separately.
+    The implementation in development can also share the work of generating the
+    same HTML from identical load results. This reduces rendering work. Each
+    browser still receives its own update.
   </p>
 </section>
 
@@ -73,16 +66,6 @@
     interrupts publication, an open page may miss that change. To retry
     delivery, the application can record a pending notification in the same
     transaction as the save.
-  </p>
-</section>
-
-<section id="fit">
-  <h2>Work that belongs in the browser</h2>
-  <p>
-    The browser can handle focus and unfinished input. Operations that need
-    immediate computation on each gesture, such as drawing, and features that
-    need to save offline require browser-side logic. hypersig.ts handles
-    delivery and display of changes committed on the server.
   </p>
   <p><a href="../deploy/">Check the production setup</a></p>
 </section>
