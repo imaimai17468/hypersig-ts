@@ -3,6 +3,7 @@ import { jsx } from "hono/jsx/jsx-runtime";
 import { expect, it } from "vite-plus/test";
 import type { Expr, Signal } from "./index.js";
 import { lit, on, ref, signalFamily, signals, uuid } from "./index.js";
+import { exprOf } from "./signal.js";
 
 it("renders evaluated values for the request", () => {
   const editor = signals({ base: 0, published: 0 }, { name: "memo-editor" });
@@ -49,8 +50,10 @@ it("reads other groups at their initial values and builtins as false", () => {
   expect(view.bindShow(view.label.eq("n")).hidden).toBeUndefined();
   expect(view.bindShow(view.label.ne("n")).hidden).toBe(true);
   expect(view.bindText(uuid()).children).toBe("");
+  const pending = exprOf<boolean>(["sig", ["$pending", "/x"]]);
+  expect(view.bindText(pending).children).toBe("false");
   expect(
-    view.bindText(view.label.eq("n").then(lit("yes"), "no")).children
+    view.bindText(view.label.eq("n").choose(lit("yes"), "no")).children
   ).toBe("yes");
 });
 
@@ -142,19 +145,19 @@ it("binds input values by signal type", () => {
   const filled = form.with({ title: "Hi", revision: 4, done: true });
 
   expect(filled.bindValue(filled.title)).toEqual({
-    "data-hs-bind": '["form-group-1","title"]',
+    "data-hs-bind": '[["form-group-1","title"],"string"]',
     value: "Hi",
   });
   expect(filled.bindValue(filled.revision)).toEqual({
-    "data-hs-bind": '["form-group-1","revision"]',
+    "data-hs-bind": '[["form-group-1","revision"],"number"]',
     value: "4",
   });
   expect(filled.bindValue(filled.done)).toEqual({
-    "data-hs-bind": '["form-group-1","done"]',
+    "data-hs-bind": '[["form-group-1","done"],"boolean"]',
     checked: true,
   });
   expect(form.with({ done: false }).bindValue(form.done)).toEqual({
-    "data-hs-bind": '["form-group-1","done"]',
+    "data-hs-bind": '[["form-group-1","done"],"boolean"]',
   });
 });
 

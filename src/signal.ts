@@ -37,7 +37,7 @@ interface BooleanMethods {
   not(): Expr<boolean>;
   and(other: boolean | Expr<boolean>): Expr<boolean>;
   or(other: boolean | Expr<boolean>): Expr<boolean>;
-  then<R extends JsonValue>(
+  choose<R extends JsonValue>(
     whenTrue: R | Expr<R>,
     whenFalse: R | Expr<R>
   ): Expr<R>;
@@ -214,10 +214,7 @@ class ExprHandle {
   not(): ExprHandle {
     return new ExprHandle(["not", this.node]);
   }
-  // The API names this `then`, which makes every expression a thenable:
-  // awaiting one, or returning one from an async function, calls it.
-  // oxlint-disable-next-line unicorn/no-thenable
-  then(whenTrue: ExprInput, whenFalse: ExprInput): ExprHandle {
+  choose(whenTrue: ExprInput, whenFalse: ExprInput): ExprHandle {
     return new ExprHandle([
       "if",
       this.node,
@@ -380,13 +377,26 @@ function createGroup(
     bindAttr: (attrs: Readonly<Record<string, ExprHandle | undefined>>) =>
       bindAttributes(attrs, valueOf),
     bindValue: (signal: SignalHandle) => {
+      const kind = inputKindOf(signal.path);
       const value = valueOf(signal);
-      const bound = { [signalAttributes.bind]: JSON.stringify(signal.path) };
-      if (typeof value !== "boolean")
-        return { ...bound, value: formatText(value) };
-      return value ? { ...bound, checked: true } : bound;
+      const bound = {
+        [signalAttributes.bind]: JSON.stringify([signal.path, kind]),
+      };
+      if (kind !== "boolean") return { ...bound, value: formatText(value) };
+      return isTruthy(value) ? { ...bound, checked: true } : bound;
     },
   };
+}
+
+type InputKind = "string" | "number" | "boolean";
+
+/** Tells the browser how to convert an input's value for this signal. */
+function inputKindOf(path: SignalPath): InputKind {
+  const initial = readInitial(path);
+  if (typeof initial === "string") return "string";
+  if (typeof initial === "number") return "number";
+  if (typeof initial === "boolean") return "boolean";
+  throw new TypeError(`Cannot bind an input to signal ${JSON.stringify(path)}`);
 }
 
 const booleanAttributeNames: ReadonlySet<string> = new Set(booleanAttributes);
