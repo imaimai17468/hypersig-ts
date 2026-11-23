@@ -1,11 +1,10 @@
 <section class="hero">
   <div class="hero-intro">
-    <p class="hero-category">A TypeScript web framework</p>
     <h1>Stay in sync<br />with the server</h1>
     <p class="hero-summary">
-      hypersig.ts keeps the page in sync with committed server state. When data
-      changes, the server renders HTML for the affected parts and sends it to
-      browsers that have them open.
+      When a change is committed on the server, the affected parts of the page
+      update. hypersig.ts handles updates after a save and resyncs after a
+      dropped connection.
     </p>
     <div class="hero-links">
       <a class="button" href="./start/">Run the example</a>
@@ -18,10 +17,6 @@
     <p>
       The page displays data as it was when the server read it. If another write
       commits in the meantime, that data is already stale when it appears.
-    </p>
-    <p>
-      The same update mechanism handles changes after a save, out-of-order
-      updates, and changes made while the browser was offline.
     </p>
   </section>
 </section>
