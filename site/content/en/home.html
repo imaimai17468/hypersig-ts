@@ -23,7 +23,7 @@
 
 <section class="update-flow" aria-labelledby="update-flow-title">
   <h2 id="update-flow-title">How a change reaches the page</h2>
-  <ol class="flow-cards" role="list">
+  <ol class="flow-steps" role="list">
     <li>
       <h3>Commit changes on the server</h3>
       <p>
@@ -46,28 +46,29 @@
       </p>
     </li>
   </ol>
-  <section class="flow-types" aria-labelledby="home-types-title">
-    <h3 id="home-types-title">Type checks from actions to views</h3>
-    <div>
-      <p>
-        Check form field names and button inputs against the server input
-        schema. Changes share a type between publishers and subscribers, and the
-        data loaded for a view is typed through to rendering.
-      </p>
-      <p><a href="./reference/#type-safety">See what TypeScript checks</a></p>
-    </div>
-  </section>
 </section>
 
-<section class="home-detail" aria-labelledby="home-integration-title">
-  <h2 id="home-integration-title">Use it in an existing app</h2>
-  <p>
-    Add hypersig.ts to a Hono app. Hono handles HTTP requests, and hypersig.ts
-    runs server actions and updates views after a change. You can run the Hono
-    app on its own or integrate the same app into Void.
-  </p>
-  <p>
-    <a href="./reference/#adapter">Integrate with Hono</a> ·
-    <a href="./deploy/#void">See the Void example</a>
-  </p>
-</section>
+<div class="home-details">
+  <section class="home-detail" aria-labelledby="home-types-title">
+    <h2 id="home-types-title">Type checks from actions to views</h2>
+    <p>
+      Check form field names and button inputs against the server input schema.
+      Changes share a type between publishers and subscribers, and the data
+      loaded for a view is typed through to rendering.
+    </p>
+    <p><a href="./reference/#type-safety">See what TypeScript checks</a></p>
+  </section>
+
+  <section class="home-detail" aria-labelledby="home-integration-title">
+    <h2 id="home-integration-title">Use it in an existing app</h2>
+    <p>
+      Add hypersig.ts to a Hono app. Hono handles HTTP requests, and hypersig.ts
+      runs server actions and updates views after a change. You can run the Hono
+      app on its own or integrate the same app into Void.
+    </p>
+    <p>
+      <a href="./reference/#adapter">Integrate with Hono</a> ·
+      <a href="./deploy/#void">See the Void example</a>
+    </p>
+  </section>
+</div>
