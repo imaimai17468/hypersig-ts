@@ -10,6 +10,7 @@ These strings come from a typed value, never from a string literal in applicatio
 - Form field names, including the fields that `data-hs-field-error` and `data-hs-draft` refer to
 - Topic names and keys
 - Live View keys
+- Signal names and expressions, built with `signals()`, `signalFamily()`, and the `Expr` methods
 - Links to the application's pages, built with Hono's `hc<typeof app>(...).$path()`
 
 A change that lets an application write one of these by hand again, or that turns a type error into a runtime failure, needs the user's own words. Where TypeScript cannot hold a restriction, the API documentation names what goes unchecked and what happens when it is broken.

@@ -78,7 +78,7 @@ const row = rows.at(todo.key); // row.completed は Signal<boolean>
 - `Signal<T>` は `Expr<T>` でもある。`Expr<T>` のメソッドは `T` で変わる。
   - 共通: `eq`、`ne`
   - `number`: `add`、`sub`、`mul`、`gt`、`ge`、`lt`、`le`
-  - `boolean`: `not`、`and`、`or`、`then(whenTrue, whenFalse)`
+  - `boolean`: `not`、`and`、`or`、`choose(whenTrue, whenFalse)`（`then` にすると `Expr` が thenable になるため、この名前にした）
   - `string`: `concat`
   - 組み込み: `uuid()`（`crypto.randomUUID()`）、`lit(value)`
 - 文: `signal.set(expr)`、`signal.toggle()`（`boolean` のみ）、`ref.focus()`、`action.call(input, options)`。文の配列は順に実行する。
@@ -97,7 +97,7 @@ const e = editor.with({ base: draft.revision, operation: operationId });
 ```
 
 - `with(values)` に渡さなかった項目は `signals()` の初期値を使う。
-- `e.init()` は `data-hs-signals` を返す。`with` で渡した値が入る。
+- `e.init()` は `data-hs-signals` を返す。`with` で渡した項目は確定した値の組 `[path, value]` で、渡さなかった項目は既定値の組 `[path, value, 0]` で書く。ランタイムは既定値の組を、ストアにそのパスの値がないときだけ適用する。
 - `bindText` は属性と一緒に `children` を返し、評価した文字列を中身にする。`bindShow` は評価が `false` なら `hidden` を返す。`bindAttr` と `bindValue` も評価した値を属性として返す。JS なしでも、Live View の更新 HTML でも、正しい値が出る。
 - キー付きのグループも同じく `rows.at(todo.key).with({ completed: todo.completed })` とする。
 - 実装前に、Hono JSX で `children` を含むオブジェクトを展開したときの挙動を確かめる。展開で中身を入れられない場合は、`bindText` だけ `<e.Text value={expr} />` のようなコンポーネントにする。
@@ -106,21 +106,22 @@ const e = editor.with({ base: draft.revision, operation: operationId });
 
 ハンドルのメソッドが属性のオブジェクトを返し、JSX に展開する。
 
-| API                                                       | 属性               | ブラウザでの動き                                                                                                                                |
-| --------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bindText(expr)`                                          | `data-hs-text`     | `textContent` を書き換える                                                                                                                      |
-| `bindShow(expr)`                                          | `data-hs-show`     | `false` のとき `hidden` を付ける                                                                                                                |
-| `bindAttr({ disabled: expr, "aria-pressed": expr, ... })` | `data-hs-attr`     | 許可した属性だけを書き換える。許可するのは `disabled`、`checked`、`aria-*` の一部、`data-*`。`href`、`src`、`on*`、`style` はキーの型に含めない |
-| `bindValue(signal)`                                       | `data-hs-bind`     | 入力欄の値と Signal を双方向に結ぶ。`hidden` の入力にも使えるので、送信する値を Signal で決められる                                             |
-| `on.click(stmts)` など                                    | `data-hs-on-click` | イベントで文を実行する。最初は `click`、`input`、`change`                                                                                       |
-| `ref()` → `{...draftRef.attr()}`                          | `data-hs-ref`      | `focus()` の対象にする                                                                                                                          |
+| API                                                       | 属性               | ブラウザでの動き                                                                                                                                                                          |
+| --------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bindText(expr)`                                          | `data-hs-text`     | `textContent` を書き換える                                                                                                                                                                |
+| `bindShow(expr)`                                          | `data-hs-show`     | `false` のとき `hidden` を付ける                                                                                                                                                          |
+| `bindAttr({ disabled: expr, "aria-pressed": expr, ... })` | `data-hs-attr`     | 許可した属性だけを書き換える。許可するのは `disabled`、`checked`、`aria-*` の一部、`data-*`。`href`、`src`、`on*`、`style` はキーの型に含めない                                           |
+| `bindValue(signal)`                                       | `data-hs-bind`     | `[path, kind]` を持ち、`kind` は初期値から決めた `"string"`、`"number"`、`"boolean"`。入力欄の値と Signal を双方向に結ぶ。`hidden` の入力にも使えるので、送信する値を Signal で決められる |
+| `on.click(stmts)` など                                    | `data-hs-on-click` | イベントで文を実行する。最初は `click`、`input`、`change`                                                                                                                                 |
+| `ref()` → `{...draftRef.attr()}`                          | `data-hs-ref`      | `focus()` の対象にする                                                                                                                                                                    |
 
 サーバーは初期値で式を評価し、初期 HTML に結果を書く。ランタイムを読み込む前から正しく表示される。
 
 ### 初期値と Live View との役割分担
 
-- `{...editor.init({ base: draft.revision })}` は、`data-hs-signals` に値を入れる。ランタイムは読み込み時に、ページにあるすべての `data-hs-signals` をストアに入れる。
-- **Live View の中にある `data-hs-signals` は、サーバーが確定した値として扱う。** その Live View の更新が届いて morph したあと、ランタイムは断片の中の `data-hs-signals` を読み直し、その値でストアを上書きする。
+- `{...editor.with({ base: draft.revision }).init()}` は、`data-hs-signals` に値を入れる。ランタイムは読み込み時に、ページにあるすべての `data-hs-signals` をストアに入れる。
+- **`with` で渡した項目は、サーバーが確定した値として扱う。** Live View の中にある `data-hs-signals` の確定した値は、その Live View の更新が届いて morph したあと、断片から読み直してストアを上書きする。
+- **`with` で渡さなかった項目は既定値として扱う。** 既定値の組 `[path, value, 0]` は、ストアにそのパスの値がないときだけ書く。読み込み時も Live View の更新時も同じで、ブラウザだけで決まる値を上書きしない。
 - Live View の外にしかない Signal は、ブラウザだけの状態として扱う。最初に読み込んだあとは、サーバーから上書きされない。
 - 共有メモの「公開中の版」は、`publishedMemo` の描画で `{...editor.with({ published: memo.revision }).init()}` を出す。保存のたびに Live View が更新され、`editor.published` が新しい版になる。`MutationObserver` は要らない。
 

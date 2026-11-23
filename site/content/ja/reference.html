@@ -104,6 +104,138 @@ const href = links.counters[":counterKey"].$path({
   </p>
 </section>
 
+<section id="signals">
+  <h2>ブラウザ側の Signal</h2>
+  <p>
+    Signal は、トグルや入力値のように、ブラウザだけで決まる状態を持ちます。<code
+      >signals(initial, { name })</code
+    >
+    でグループを定義します。行ごとに持つ場合は
+    <code>signalFamily(initial, { name }).at(key)</code>
+    を使います。値は JSON
+    に限ります。式はブラウザのランタイムが評価するデータなので、<code
+      >eval</code
+    >
+    は要らず、<code>script-src 'self'</code> のままで動きます。
+  </p>
+  <pre><code>const editor = signals(
+  { base: 0, published: 0, operation: "" },
+  { name: "memo-editor" }
+);
+const e = editor.with({ base: draft.revision });</code></pre>
+  <dl>
+    <dt><code>with(values)</code></dt>
+    <dd>
+      そのリクエストの値で属性を描画するハンドルを返します。<code>init()</code>
+      は、<code>with</code>
+      に渡した項目をサーバーが確定した値として、渡さなかった項目を既定値として書きます。既定値は、ブラウザにその
+      Signal の値がないときだけ適用されるので、Live View
+      の更新がブラウザだけで決まる値を上書きすることはありません。<code
+        >with</code
+      >
+      に渡した項目は、Live View の更新が届くとブラウザの値を置き換えます。
+    </dd>
+    <dt>束縛</dt>
+    <dd>
+      <code>bindText(expr)</code>、<code>bindShow(expr)</code>、<code
+        >bindAttr({ ... })</code
+      >、<code>bindValue(signal)</code> は、JSX
+      に展開する属性を返します。サーバーが式を評価して結果を描画するので、最初の表示から正しい値になります。<code
+        >bindAttr</code
+      >
+      に書けるのは、<code>disabled</code>、<code>checked</code>、<code>aria-pressed</code>、<code>aria-expanded</code>、<code>aria-current</code>、<code>aria-hidden</code>、<code>aria-invalid</code>、<code>aria-busy</code>、および
+      <code>data-hs-*</code> 以外の
+      <code>data-*</code>
+      です。<code>href</code>、<code>src</code>、<code>on*</code>、<code
+        >style</code
+      >
+      は、型でも実行時にも受け付けません。<code>bindValue</code>
+      は、テキスト、数値、チェックボックスの入力欄を、<code>string</code>、<code>number</code>、<code
+        >boolean</code
+      >
+      の Signal に結びます。
+    </dd>
+    <dt>式</dt>
+    <dd>
+      Signal はそのまま式です。すべてに <code>eq</code> と
+      <code>ne</code> があります。数値には
+      <code>add</code
+      >、<code>sub</code>、<code>mul</code>、<code>gt</code>、<code>ge</code>、<code>lt</code>、<code>le</code>、真偽値には
+      <code>not</code>、<code>and</code>、<code>or</code>、<code
+        >choose(whenTrue, whenFalse)</code
+      >、文字列には <code>concat</code> があります。値は
+      <code>lit(value)</code> と <code>uuid()</code> で作ります。
+    </dd>
+    <dt><code>on.click(stmts)</code></dt>
+    <dd>
+      <code>on.input</code> と <code>on.change</code>
+      もあります。文を順に実行します。使える文は、<code>signal.set(expr)</code>、真偽値の
+      <code>signal.toggle()</code>、<code>ref.focus()</code>、<code
+        >action.call(input)</code
+      >
+      です。<code>ref({ name })</code> が返す
+      <code>{...ref.attr()}</code> を要素に付けると、<code>focus()</code>
+      がその要素を見つけます。
+    </dd>
+    <dt><code>action.call(input, options)</code></dt>
+    <dd>
+      文の中から Action
+      を送ります。入力の各項目には値か式を書けます。同じハンドラーで
+      <code>call</code>
+      より前に書いた変更は、すぐに画面に出ます。Action が失敗し、その後に Live
+      View
+      がそのパスの値を書いていなければ、ランタイムは元の値に戻します。送信中に
+      Live View
+      からそのパスの値が届いた場合は、送信が終わるまで適用を待ちます。<code
+        >options.onSuccess(output)</code
+      >
+      と <code>options.onError</code> には文を書きます。<code
+        >action.form()</code
+      >
+      も同じ二つのオプションを受け取ります。
+    </dd>
+    <dt>
+      <code>action.pending()</code> と <code>action.draftRestored()</code>
+    </dt>
+    <dd>
+      組み込みの Signal です。<code>pending()</code> は、その Action
+      へのリクエストが送信中のあいだ true になります。<code
+        >draftRestored()</code
+      >
+      は、保存した下書きがその Action の
+      <code>form({ draft: true })</code> に復元されると true になり、その Action
+      が成功すると false に戻ります。
+    </dd>
+  </dl>
+  <pre><code>&lt;button
+  type="button"
+  {...r.bindAttr({ "aria-pressed": r.completed })}
+  {...on.click([
+    r.completed.toggle(),
+    toggle.call({ todoKey: todo.key, completed: r.completed }),
+  ])}
+&gt;
+  &lt;span {...r.bindText(r.completed.choose("✓", "○"))} /&gt;
+&lt;/button&gt;</code></pre>
+  <p><strong>既知の制約</strong></p>
+  <ul>
+    <li>
+      楽観的な表示が一瞬戻ることがあります。送信中に、commit 前の値を持つ Live
+      View の更新が届き、次に応答が届き、そのあとに commit
+      後の更新が届く順序のときです。
+    </li>
+    <li>
+      同じパスに対する別々のコントロールからの呼び出しが重なると、片方が失敗したときに、もう一方の呼び出しの楽観的な値に戻ることがあります。次の
+      Live View の更新で直ります。
+    </li>
+    <li>
+      <code>hypersig:action-success</code> イベントの
+      <code>detail.data</code> は、応答に data がないとき、以前の
+      <code>undefined</code> ではなく <code>null</code> になります。
+    </li>
+  </ul>
+</section>
+
 <section id="topics">
   <h2>データ変更の通知</h2>
   <p>
