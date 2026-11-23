@@ -75,10 +75,12 @@ export function preserveDrafts(scope: string | undefined): boolean {
   }
 }
 
-export function restoreDrafts(scope: string | undefined) {
+/** Restores saved drafts and returns the `action` of each restored form. */
+export function restoreDrafts(scope: string | undefined): string[] {
+  const restoredActions: string[] = [];
   try {
     const raw = sessionStorage.getItem(storageKey);
-    if (!raw) return;
+    if (!raw) return restoredActions;
     sessionStorage.removeItem(storageKey);
     const saved: unknown = JSON.parse(raw);
     if (
@@ -95,7 +97,7 @@ export function restoreDrafts(scope: string | undefined) {
       !("drafts" in saved) ||
       !isArray(saved.drafts)
     )
-      return;
+      return restoredActions;
     const groups = draftGroups();
     for (const draft of saved.drafts) {
       if (!isArray(draft)) continue;
@@ -114,9 +116,12 @@ export function restoreDrafts(scope: string | undefined) {
       if (restored.size === group.fields.size) {
         for (const [field, text] of restored) field.value = text;
         group.form.setAttribute("data-hs-draft-restored", "");
+        const action = group.form.getAttribute("action");
+        if (action !== null) restoredActions.push(action);
       }
     }
   } catch {
     // Browser storage can be disabled, or the stored draft can be malformed.
   }
+  return restoredActions;
 }

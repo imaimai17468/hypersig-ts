@@ -3,6 +3,8 @@ import { Idiomorph } from "idiomorph";
 import { preserveDrafts, restoreDrafts } from "./drafts.js";
 import { events } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
+import type { SignalRuntime } from "./signal-runtime.js";
+import { startSignals } from "./signal-runtime.js";
 
 function isUpdate(value: unknown): value is HtmlUpdate {
   return (
@@ -43,7 +45,11 @@ function isTextControl(element: Element | null) {
   );
 }
 
-function updateViews(endpoint: URL, draftScope: string | undefined) {
+function updateViews(
+  endpoint: URL,
+  draftScope: string | undefined,
+  signalRuntime: SignalRuntime
+) {
   let active = true;
   let connection: EventSource | undefined;
   let views = new Map<string, HTMLElement>();
@@ -148,6 +154,7 @@ function updateViews(endpoint: URL, draftScope: string | undefined) {
           },
         },
       });
+      signalRuntime.applySnapshots(node);
       node.removeAttribute("data-hs-view-error");
       versions.set(node, update.version);
     });
@@ -404,7 +411,7 @@ if (endpoint) {
   if (url.origin === location.origin) {
     const scope = runtime?.dataset.hsDraftScope;
     restoreDrafts(scope);
-    updateViews(url, scope);
+    updateViews(url, scope, startSignals({ root: document }));
     handleActions(url);
   }
 }

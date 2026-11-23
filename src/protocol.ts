@@ -116,7 +116,7 @@ const binaryOperators: ReadonlySet<string> = new Set([
   "concat",
 ]);
 
-function isJsonValue(value: unknown): value is JsonValue {
+export function isJsonValue(value: unknown): value is JsonValue {
   if (value === null) return true;
   if (typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
@@ -127,7 +127,7 @@ function isJsonValue(value: unknown): value is JsonValue {
   );
 }
 
-function isSignalPath(value: unknown): value is SignalPath {
+export function isSignalPath(value: unknown): value is SignalPath {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
@@ -200,6 +200,6 @@ function isExprRecord(value: unknown): value is Record<string, ExprNode> {
   );
 }
 
-function isStmtList(value: unknown): value is StmtNode[] {
+export function isStmtList(value: unknown): value is StmtNode[] {
   return Array.isArray(value) && value.every(isStmtNode);
 }
