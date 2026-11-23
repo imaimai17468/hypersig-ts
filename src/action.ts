@@ -2,7 +2,10 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Principal } from "./live.js";
-import type { JsonValue } from "./protocol.js";
+import type { ExprNode, JsonValue, StmtNode } from "./protocol.js";
+import { signalAttributes } from "./protocol.js";
+import type { Expr } from "./signal.js";
+import { exprOf, listStmts, nodeOf, serializeStmts } from "./signal.js";
 
 export type { JsonValue } from "./protocol.js";
 
@@ -50,6 +53,41 @@ export interface ActionDefinition<
 type BindInput<Wire> = [Wire] extends [JsonValue]
   ? Wire
   : "This Action's input is not JSON. Submit it with form() instead";
+
+type CallInput<Wire> = [Wire] extends [JsonValue]
+  ? { [K in keyof Wire]: Wire[K] | Expr<Extract<Wire[K], JsonValue>> }
+  : "This Action's input is not JSON. Submit it with form() instead";
+
+type Statements = StmtNode | readonly StmtNode[];
+
+/** An Action's output as an expression, or `never` when it is not JSON. */
+type OutputExpr<Output> = [Output] extends [JsonValue] ? Expr<Output> : never;
+
+export interface ResultHandlers<Output> {
+  /** Runs when the Action succeeds. `output` is the Action's output. */
+  onSuccess?(this: void, output: OutputExpr<Output>): Statements;
+  /** Runs when the Action fails. */
+  onError?: Statements;
+}
+
+function outputExprOf<Output>(): OutputExpr<Output>;
+function outputExprOf() {
+  return exprOf<JsonValue>(["output"]);
+}
+
+/** Turns call input into expression nodes, leaving out omitted fields. */
+function nodesOfCallInput<Wire>(
+  input: CallInput<Wire>
+): Record<string, ExprNode>;
+function nodesOfCallInput(
+  input: Readonly<Record<string, Parameters<typeof nodeOf>[0] | undefined>>
+) {
+  const nodes: Record<string, ExprNode> = {};
+  for (const [field, value] of Object.entries(input)) {
+    if (value !== undefined) nodes[field] = nodeOf(value);
+  }
+  return nodes;
+}
 
 type FormValue = FormDataEntryValue | FormDataEntryValue[];
 type FormFieldName<Input> = Input extends readonly unknown[]
@@ -174,6 +212,10 @@ export function registerAction<
     }
   );
 
+  const callSuccess = (
+    onSuccess: NonNullable<ResultHandlers<Output>["onSuccess"]>
+  ): Statements => onSuccess(outputExprOf<Output>());
+
   return {
     url,
     /** Sends the input as JSON, so the schema's input type must be JSON. */
@@ -182,6 +224,30 @@ export function registerAction<
         "data-hs-action": url,
         "data-hs-input": JSON.stringify(input),
       };
+    },
+    /**
+     * A statement that sends the input, evaluating signal values in the
+     * browser when it runs. The input type must be JSON.
+     */
+    call(
+      input: CallInput<Wire>,
+      options: ResultHandlers<Output> = {}
+    ): StmtNode {
+      return [
+        "call",
+        url,
+        nodesOfCallInput<Wire>(input),
+        options.onSuccess ? listStmts(callSuccess(options.onSuccess)) : [],
+        options.onError ? listStmts(options.onError) : [],
+      ];
+    },
+    /** True in the browser while a request to this Action is in flight. */
+    pending(): Expr<boolean> {
+      return exprOf<boolean>(["sig", ["$pending", url]]);
+    },
+    /** True in the browser when a saved draft was restored for this Action. */
+    draftRestored(): Expr<boolean> {
+      return exprOf<boolean>(["sig", ["$restored", url]]);
     },
     /** Check a top-level HTML field name against the schema's input type. */
     field<Name extends FormFieldName<Wire>>(name: Name): Name {
@@ -201,7 +267,7 @@ export function registerAction<
      * page set it for the same Action, only the first one keeps its draft.
      */
     form(
-      options: {
+      options: ResultHandlers<Output> & {
         resetOnSuccess?: boolean;
         reportSuccess?: boolean;
         draft?: boolean;
@@ -213,6 +279,8 @@ export function registerAction<
       "data-hs-reset-on-success"?: string;
       "data-hs-action-result"?: string;
       "data-hs-draft-form"?: string;
+      "data-hs-on-success"?: string;
+      "data-hs-on-error"?: string;
     } {
       return {
         action: url,
@@ -221,6 +289,16 @@ export function registerAction<
         ...(options.resetOnSuccess ? { "data-hs-reset-on-success": "" } : {}),
         ...(options.reportSuccess ? { "data-hs-action-result": "" } : {}),
         ...(options.draft ? { "data-hs-draft-form": name } : {}),
+        ...(options.onSuccess
+          ? {
+              [signalAttributes.onSuccess]: serializeStmts(
+                callSuccess(options.onSuccess)
+              ),
+            }
+          : {}),
+        ...(options.onError
+          ? { [signalAttributes.onError]: serializeStmts(options.onError) }
+          : {}),
       };
     },
   };

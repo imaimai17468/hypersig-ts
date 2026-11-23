@@ -245,7 +245,7 @@ function isExpr(value: ExprInput): value is AnyExpr {
   return value instanceof ExprHandle;
 }
 
-function nodeOf(value: ExprInput): ExprNode {
+export function nodeOf(value: ExprInput): ExprNode {
   return isExpr(value) ? value.node : ["lit", value];
 }
 
@@ -482,9 +482,14 @@ function isStmtNodeValue(
   return typeof stmts[0] === "string";
 }
 
+/** Lists statements in the order the browser runtime runs them. */
+export function listStmts(stmts: StmtNode | readonly StmtNode[]): StmtNode[] {
+  return isStmtNodeValue(stmts) ? [stmts] : [...stmts];
+}
+
 /** Writes statements as the JSON array the browser runtime runs in order. */
 export function serializeStmts(stmts: StmtNode | readonly StmtNode[]): string {
-  return JSON.stringify(isStmtNodeValue(stmts) ? [stmts] : stmts);
+  return JSON.stringify(listStmts(stmts));
 }
 
 type Statements = StmtNode | readonly StmtNode[];

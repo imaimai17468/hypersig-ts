@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import { html } from "hono/html";
 import * as v from "valibot";
 import { expect, expectTypeOf, it, vi } from "vite-plus/test";
-import { createHypersig, createMemoryPubSub, live, topic } from "./index.js";
+import {
+  createHypersig,
+  createMemoryPubSub,
+  live,
+  signals,
+  topic,
+} from "./index.js";
 import type { PubSub } from "./index.js";
 
 const origin = "http://localhost";
@@ -541,4 +547,76 @@ it("rechecks ancestor access before releasing a child fragment", async () => {
     resume.complete();
     await stream.close();
   }
+});
+
+it("builds call statements from values and signals", () => {
+  const { increment } = setup();
+  const s = signals({ amount: "1", flag: false }, { name: "call-input" });
+  expect(increment.call({ amount: "2" })).toEqual([
+    "call",
+    increment.url,
+    { amount: ["lit", "2"] },
+    [],
+    [],
+  ]);
+  expect(increment.call({ amount: s.amount })).toEqual([
+    "call",
+    increment.url,
+    { amount: ["sig", s.amount.path] },
+    [],
+    [],
+  ]);
+  // @ts-expect-error The schema does not accept a field named "ammount".
+  increment.call({ ammount: "1" });
+});
+
+it("passes the action output to onSuccess and runs onError on failure", () => {
+  const { hypersig } = setup();
+  const s = signals({ base: 0 }, { name: "call-output" });
+  const save = hypersig.action("save-memo", {
+    input: v.object({ title: v.string() }),
+    output: v.object({ revision: v.number() }),
+    authorize: () => true,
+    execute: () => ({ revision: 1 }),
+  });
+  const statement = save.call(
+    { title: "a" },
+    {
+      onSuccess: (out) => s.base.set(out.get("revision")),
+      onError: s.base.set(0),
+    }
+  );
+  expect(statement[3]).toEqual([
+    ["set", s.base.path, ["get", ["output"], "revision"]],
+  ]);
+  expect(statement[4]).toEqual([["set", s.base.path, ["lit", 0]]]);
+});
+
+it("exposes pending and restored state as expressions", () => {
+  const { increment } = setup();
+  expect(increment.pending().node).toEqual([
+    "sig",
+    ["$pending", increment.url],
+  ]);
+  expect(increment.draftRestored().node).toEqual([
+    "sig",
+    ["$restored", increment.url],
+  ]);
+});
+
+it("attaches result statements to forms", () => {
+  const { increment } = setup();
+  const s = signals({ flag: false }, { name: "call-form" });
+  const form = increment.form({
+    onSuccess: () => s.flag.toggle(),
+    onError: [s.flag.set(false)],
+  });
+  expect(form["data-hs-on-success"]).toBe(
+    JSON.stringify([["toggle", s.flag.path]])
+  );
+  expect(form["data-hs-on-error"]).toBe(
+    JSON.stringify([["set", s.flag.path, ["lit", false]]])
+  );
+  expect(increment.form()).not.toHaveProperty("data-hs-on-success");
+  expect(increment.form()).not.toHaveProperty("data-hs-on-error");
 });
