@@ -1,0 +1,20 @@
+name = "hypersig-counter"
+main = "../dist/worker/index.js"
+compatibility_date = "2026-11-16"
+no_bundle = true
+find_additional_modules = false
+
+[vars]
+PUBLIC_ORIGIN = "http://127.0.0.1:8787"
+
+[assets]
+directory = "../dist/worker/public"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "COUNTERS"
+class_name = "CounterRoom"
+
+[exports.CounterRoom]
+type = "durable-object"
+storage = "sqlite"

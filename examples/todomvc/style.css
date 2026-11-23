@@ -1,0 +1,133 @@
+:root {
+  color-scheme: light;
+  font:
+    1rem/1.5 system-ui,
+    sans-serif;
+  background: #f4f6f4;
+  color: #182920;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 42rem;
+  margin: 2rem auto;
+  padding: clamp(1rem, 5vw, 2rem);
+  background: white;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 2.25rem;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+input {
+  padding: 0.4rem;
+  min-width: 0;
+  border: 1px solid #69776d;
+  border-radius: 0.25rem;
+}
+
+button,
+nav a {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #69776d;
+  border-radius: 0.25rem;
+  background: white;
+  color: #183b26;
+  cursor: pointer;
+}
+
+nav a[aria-current="page"],
+.composer button {
+  background: #245238;
+  color: white;
+}
+
+.composer div,
+nav,
+.row,
+.counts {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.composer input,
+.title {
+  flex: 1;
+}
+
+nav {
+  margin: 1rem 0 0.5rem;
+}
+
+nav a {
+  text-decoration: none;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+li,
+.counts {
+  padding: 0.75rem 0;
+  border-top: 1px solid #d6dfd8;
+}
+
+.title {
+  overflow-wrap: anywhere;
+}
+
+.completed .title {
+  text-decoration: line-through;
+  color: #52645a;
+}
+
+.editor {
+  box-sizing: border-box;
+  max-width: calc(100% - 2rem);
+  padding: 1rem;
+  border: 1px solid #69776d;
+  border-radius: 0.25rem;
+}
+
+.editor form,
+.editor label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.counts {
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.counts span {
+  margin-right: auto;
+}
+
+[role="alert"]:empty,
+[role="status"]:empty {
+  margin: 0;
+}
+
+@media (max-width: 36rem) {
+  main {
+    margin: 0;
+    min-height: 100vh;
+  }
+}

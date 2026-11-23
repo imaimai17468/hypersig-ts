@@ -1,0 +1,7 @@
+.void/
+.void-*/
+.void-wrangler.jsonc
+.cloudflare/
+.dev.vars
+.dev.vars.*
+.wrangler/
