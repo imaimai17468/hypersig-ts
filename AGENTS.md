@@ -1,6 +1,18 @@
 # Project Instructions
 
-hypersig.ts is a TypeScript frontend framework.
+hypersig.ts is a TypeScript web framework that keeps the page in step with data the server has committed. The server renders every view, and when the application publishes a change, it renders only the views subscribed to it and streams their HTML over Server-Sent Events. It carries over the thesis of the Rust [hypersig](https://github.com/imaimai17468/hypersig): every string the browser acts on is produced from a TypeScript type, so a mistake in one is a type error.
+
+## Thesis
+
+These strings come from a typed value, never from a string literal in application code:
+
+- Action names, URLs, and inputs
+- Form field names, including the fields that `data-hs-field-error` and `data-hs-draft` refer to
+- Topic names and keys
+- Live View keys
+- Links to the application's pages
+
+A change that lets an application write one of these by hand again, or that turns a type error into a runtime failure, needs the user's own words. Where TypeScript cannot hold a restriction, the API documentation names what goes unchecked and what happens when it is broken.
 
 ## Workflow
 
