@@ -2,6 +2,8 @@
 
 TypeScript 製のフロントエンドフレームワークを開発するリポジトリです。
 
+[日本語ドキュメント](https://imaimai17468.github.io/hypersig-ts/ja/) · [English documentation](https://imaimai17468.github.io/hypersig-ts/)
+
 ## セットアップ
 
 ```sh

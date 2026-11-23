@@ -1,0 +1,73 @@
+<h1>API リファレンス</h1>
+<p class="lead">
+  Hono アダプターを組み込み、Action と Live View
+  が使うサーバーデータを定義します。
+</p>
+
+<section id="adapter">
+  <h2>Hono アダプター</h2>
+  <dl>
+    <dt><code>createHypersig(options)</code></dt>
+    <dd>公開オリジン、セッション認証、Pub/Sub の実装を指定します。</dd>
+    <dt><code>hypersig.routes</code></dt>
+    <dd>
+      Action を登録したあとで、Action と SSE のエンドポイントを Hono
+      にマウントします。
+    </dd>
+    <dt><code>hypersig.page(request, render)</code></dt>
+    <dd>リクエストを認証し、ページの HTML を生成します。</dd>
+  </dl>
+</section>
+
+<section id="actions">
+  <h2>Action</h2>
+  <p>
+    <code>hypersig.action(name, definition)</code> に Standard Schema
+    の入出力、<code>authorize</code> の認可処理、<code>execute</code>
+    の実行処理を渡します。
+  </p>
+  <pre><code>&lt;button type="button" {...increment.bind({ counterId: "main" })}&gt;
+  Increment main
+&lt;/button&gt;</code></pre>
+  <p>
+    <code>action.bind(input)</code> は型付き入力をボタンに紐づけます。<code
+      >action.form()</code
+    >
+    は HTML フォームの属性を返します。Action の応答は処理結果を通知し、購読中の
+    View は SSE で更新します。
+  </p>
+</section>
+
+<section id="live-views">
+  <h2>Live View</h2>
+  <dl>
+    <dt><code>key</code></dt>
+    <dd>境界内で安定した識別子を返します。</dd>
+    <dt><code>subscribe</code></dt>
+    <dd>表示に影響する Topic を返します。</dd>
+    <dt><code>authorize</code></dt>
+    <dd>現在のセッションで表示できるかを確認します。</dd>
+    <dt><code>load</code></dt>
+    <dd>表示するデータを取得します。</dd>
+    <dt><code>render</code></dt>
+    <dd>データから HTML を生成します。</dd>
+  </dl>
+  <p>
+    <code>page.view(view, props)</code> でドキュメントに更新境界を配置します。
+  </p>
+</section>
+
+<section id="topics">
+  <h2>Topic</h2>
+  <pre><code>const changed = topic("counter", (id: string) =&gt; id);
+await hypersig.publish(changed(id));</code></pre>
+  <p>
+    状態変更を確定したあとで発行します。Topic は変更されたデータを識別します。各
+    View が購読先を定義します。
+  </p>
+  <p>
+    <a href="https://github.com/imaimai17468/hypersig-ts/blob/main/src/index.ts"
+      >公開 API の一覧を見る</a
+    >
+  </p>
+</section>

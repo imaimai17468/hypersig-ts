@@ -1,0 +1,48 @@
+<h1>Get started</h1>
+<p class="lead">
+  Run the Counter example locally and check that two tabs show the same
+  committed value.
+</p>
+
+<section id="setup">
+  <h2>Set up the repository</h2>
+  <p>
+    Install <a href="https://mise.jdx.dev/">mise</a> to use the Bun and Node
+    versions pinned in the repository.
+  </p>
+  <pre><code>git clone https://github.com/imaimai17468/hypersig-ts.git
+cd hypersig-ts
+mise install
+mise exec -- bun install --frozen-lockfile
+mise exec -- bun run example:counter</code></pre>
+</section>
+
+<section id="counter">
+  <h2>Try two tabs</h2>
+  <ol>
+    <li>Open <code>http://127.0.0.1:3000</code> in two tabs.</li>
+    <li>Select <strong>Increment main</strong> in one tab.</li>
+    <li>
+      Check that the shared counter updates in both tabs and the independent
+      counter keeps its value.
+    </li>
+  </ol>
+  <p>
+    The examples keep their state in memory. Restarting the server resets it.
+    Open the other tab in a private window to test separate sessions.
+  </p>
+</section>
+
+<section id="source">
+  <h2>Read the example</h2>
+  <p>
+    The
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/counter/server.tsx"
+      >Counter source</a
+    >
+    contains the Hono routes, the Action, and the Live View. For a larger
+    example, run <code>mise exec -- bun run example:todomvc</code>.
+  </p>
+  <p><a href="../concepts/">Read the core concepts</a></p>
+</section>

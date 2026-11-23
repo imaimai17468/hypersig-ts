@@ -1,0 +1,74 @@
+<h1>API reference</h1>
+<p class="lead">
+  Set up the Hono adapter and declare how Actions and Live Views use server
+  data.
+</p>
+
+<section id="adapter">
+  <h2>Hono adapter</h2>
+  <dl>
+    <dt><code>createHypersig(options)</code></dt>
+    <dd>
+      Set the public origin, session authentication, and Pub/Sub implementation.
+    </dd>
+    <dt><code>hypersig.routes</code></dt>
+    <dd>
+      Mount the Action and SSE endpoints on the Hono application after
+      registering Actions.
+    </dd>
+    <dt><code>hypersig.page(request, render)</code></dt>
+    <dd>Authenticate the request and render the page as HTML.</dd>
+  </dl>
+</section>
+
+<section id="actions">
+  <h2>Actions</h2>
+  <p>
+    Use <code>hypersig.action(name, definition)</code> with Standard Schema
+    input and output definitions, an <code>authorize</code> check, and an
+    <code>execute</code> function.
+  </p>
+  <pre><code>&lt;button type="button" {...increment.bind({ counterId: "main" })}&gt;
+  Increment main
+&lt;/button&gt;</code></pre>
+  <p>
+    <code>action.bind(input)</code> binds typed data to a button.
+    <code>action.form()</code> supplies attributes for an HTML form. The Action
+    response reports the result. Subscribed Views update over SSE.
+  </p>
+</section>
+
+<section id="live-views">
+  <h2>Live Views</h2>
+  <dl>
+    <dt><code>key</code></dt>
+    <dd>Returns a stable identifier within the current boundary.</dd>
+    <dt><code>subscribe</code></dt>
+    <dd>Returns the Topics that affect this view.</dd>
+    <dt><code>authorize</code></dt>
+    <dd>Checks that the session can see this view.</dd>
+    <dt><code>load</code></dt>
+    <dd>Reads the data to display.</dd>
+    <dt><code>render</code></dt>
+    <dd>Converts the data to HTML.</dd>
+  </dl>
+  <p>
+    Use <code>page.view(view, props)</code> to place the boundary in the
+    document.
+  </p>
+</section>
+
+<section id="topics">
+  <h2>Topics</h2>
+  <pre><code>const changed = topic("counter", (id: string) =&gt; id);
+await hypersig.publish(changed(id));</code></pre>
+  <p>
+    Publish after the state change commits. The Topic identifies the changed
+    data. Each View defines its own subscriptions.
+  </p>
+  <p>
+    <a href="https://github.com/imaimai17468/hypersig-ts/blob/main/src/index.ts"
+      >See public exports in the repository</a
+    >
+  </p>
+</section>

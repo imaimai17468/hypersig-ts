@@ -1,0 +1,43 @@
+<h1>Core concepts</h1>
+<p class="lead">
+  The server owns the application state. The browser displays the rendered
+  output and keeps local interaction state such as focus and unfinished input.
+</p>
+
+<section id="changes">
+  <h2>Changes on the server</h2>
+  <ol>
+    <li>An Action validates the input and checks access.</li>
+    <li>The application commits the change and publishes a typed Topic.</li>
+    <li>Subscribed Live Views render their HTML on the server.</li>
+    <li>
+      SSE carries the resulting fragments to the browser, which updates their
+      DOM boundaries.
+    </li>
+  </ol>
+  <p>A background job can publish the same Topic after committing a change.</p>
+</section>
+
+<section id="boundaries">
+  <h2>Choosing View boundaries</h2>
+  <p>
+    Give each Live View a stable key and subscribe to the Topics that affect its
+    output. Use separate boundaries for independently changing regions. Put an
+    order summary and its total in the same View if both should display the same
+    revision.
+  </p>
+  <p>
+    The first page response already contains HTML. Live View components run on
+    the server.
+  </p>
+</section>
+
+<section id="connections">
+  <h2>Connection recovery</h2>
+  <p>
+    The server associates displayed View keys with the authenticated page. A
+    reconnect reads the current state again. Access is checked when the View is
+    rendered and again before updates are sent.
+  </p>
+  <p><a href="../reference/">Read the API reference</a></p>
+</section>

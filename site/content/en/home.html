@@ -1,0 +1,49 @@
+<section class="hero">
+  <div>
+    <h1>Server state and live HTML</h1>
+    <p>
+      hypersig.ts is a TypeScript framework for interactive HTML. An Action
+      changes server state. Live Views subscribe to changes and receive rendered
+      HTML over Server-Sent Events.
+    </p>
+    <div class="hero-links">
+      <a class="button" href="./start/">Get started</a>
+      <a class="button alt" href="./concepts/">Core concepts</a>
+    </div>
+  </div>
+  <figure class="code-card">
+    <figcaption>counter.tsx</figcaption>
+    <pre><code><span class="accent">const</span> counter = hypersig.live({
+  key: () =&gt; "counter",
+  subscribe: () =&gt; [counterChanged()],
+  authorize: () =&gt; true,
+  load: () =&gt; count,
+  render: (value) =&gt; &lt;output&gt;{value}&lt;/output&gt;,
+});</code></pre>
+    <ol class="flow">
+      <li>Action</li>
+      <li>Topic subscription</li>
+      <li>HTML over SSE</li>
+    </ol>
+  </figure>
+</section>
+<section class="feature-grid" aria-label="Documentation topics">
+  <a class="feature" href="./concepts/"
+    ><h2>Update boundaries</h2>
+    <p>Define which server-rendered regions update when data changes.</p></a
+  >
+  <a class="feature" href="./reference/"
+    ><h2>Typed Actions</h2>
+    <p>
+      Validate input and output with Standard Schema and check access on the
+      server.
+    </p></a
+  >
+  <a class="feature" href="./deploy/"
+    ><h2>Connection lifecycle</h2>
+    <p>
+      Check how live subscriptions reconnect and how page registrations affect
+      deployment.
+    </p></a
+  >
+</section>

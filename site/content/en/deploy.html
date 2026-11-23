@@ -1,0 +1,47 @@
+<h1>Deployment</h1>
+<p class="lead">
+  Run the application on a server that can render HTML, handle POST requests,
+  and keep SSE connections open.
+</p>
+
+<section id="runtime">
+  <h2>Serve the browser runtime</h2>
+  <p>
+    Run <code>mise exec -- bun run build</code> to produce
+    <code>dist/runtime.js</code>. Serve the file from the application origin and
+    include it using <code>page.runtime("/runtime.js")</code>.
+  </p>
+  <p class="note">
+    This site is static. Run the examples on your application server to try live
+    updates.
+  </p>
+</section>
+
+<section id="sessions">
+  <h2>Configure access</h2>
+  <p>
+    Set the public origin and provide a stable session identifier from
+    authentication. Check access in each Action and Live View. Use the
+    application database for persistent state.
+  </p>
+</section>
+
+<section id="instances">
+  <h2>Route live connections</h2>
+  <p>
+    Page registrations live in the server instance that created them. Route the
+    corresponding SSE requests there when deploying multiple instances. For
+    cross-instance changes, use a Pub/Sub adapter that delivers notifications to
+    the instances serving those views.
+  </p>
+  <p>
+    Check that your proxy forwards SSE without buffering and allows long-lived
+    connections.
+  </p>
+  <p>
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/worker/README.md"
+      >See the Workers deployment example</a
+    >
+  </p>
+</section>

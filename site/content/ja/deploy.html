@@ -1,0 +1,49 @@
+<h1>デプロイ</h1>
+<p class="lead">
+  HTML を生成し、POST を処理し、SSE
+  接続を維持できるサーバーでアプリを実行します。
+</p>
+
+<section id="runtime">
+  <h2>ブラウザランタイムの配信</h2>
+  <p>
+    <code>mise exec -- bun run build</code> で
+    <code>dist/runtime.js</code>
+    を生成します。アプリと同じオリジンで配信し、<code
+      >page.runtime("/runtime.js")</code
+    >
+    で読み込みます。
+  </p>
+  <p class="note">
+    このサイトは静的なドキュメントです。ライブ更新を試す際は、アプリケーションサーバーでサンプルを起動してください。
+  </p>
+</section>
+
+<section id="sessions">
+  <h2>アクセス権の設定</h2>
+  <p>
+    公開オリジンを設定し、認証処理から安定したセッション識別子を返します。Action
+    と Live View
+    のそれぞれでアクセス権を確認します。永続化する状態はアプリケーションのデータベースに保存します。
+  </p>
+</section>
+
+<section id="instances">
+  <h2>ライブ接続のルーティング</h2>
+  <p>
+    ページ登録は、ページを生成したサーバーインスタンスに保存されます。複数インスタンスでは、対応する
+    SSE
+    リクエストをそのインスタンスに送ります。インスタンスをまたぐ変更には、対象
+    View の配信を担当するサーバーへ通知できる Pub/Sub アダプターを使います。
+  </p>
+  <p>
+    プロキシが SSE
+    をバッファリングせず、長時間の接続を維持できることを確認します。
+  </p>
+  <p>
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/void/worker/README.md"
+      >Workers でのデプロイ例を見る</a
+    >
+  </p>
+</section>

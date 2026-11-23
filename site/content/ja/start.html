@@ -1,0 +1,45 @@
+<h1>はじめる</h1>
+<p class="lead">
+  Counter
+  をローカルで起動し、2つのタブに同じ確定値が表示されることを確認します。
+</p>
+
+<section id="setup">
+  <h2>リポジトリのセットアップ</h2>
+  <p>
+    <a href="https://mise.jdx.dev/">mise</a>
+    をインストールし、リポジトリが指定する Bun と Node を使います。
+  </p>
+  <pre><code>git clone https://github.com/imaimai17468/hypersig-ts.git
+cd hypersig-ts
+mise install
+mise exec -- bun install --frozen-lockfile
+mise exec -- bun run example:counter</code></pre>
+</section>
+
+<section id="counter">
+  <h2>二つのタブで確認する</h2>
+  <ol>
+    <li><code>http://127.0.0.1:3000</code> を2つのタブで開きます。</li>
+    <li>片方で <strong>Increment main</strong> を押します。</li>
+    <li>
+      両方の共有カウンターが更新され、独立カウンターの値がそのまま残ることを確認します。
+    </li>
+  </ol>
+  <p>
+    サンプルの状態はメモリにあり、サーバーの再起動でリセットされます。別セッションで試す場合は片方をプライベートウィンドウで開きます。
+  </p>
+</section>
+
+<section id="source">
+  <h2>実装を読む</h2>
+  <p>
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/counter/server.tsx"
+      >Counter のソース</a
+    >で、Hono のルート、Action、Live View
+    を確認できます。項目の追加や絞り込みを試す場合は
+    <code>mise exec -- bun run example:todomvc</code> を実行します。
+  </p>
+  <p><a href="../concepts/">基本概念を読む</a></p>
+</section>
