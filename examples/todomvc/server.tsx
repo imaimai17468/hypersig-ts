@@ -8,6 +8,8 @@ import {
   createHypersig,
   createMemoryPubSub,
   live,
+  on,
+  signalFamily,
   topic,
 } from "../../src/index.js";
 import {
@@ -89,19 +91,34 @@ const clear = hypersig.action("clear-completed-todos", {
   execute: () => commit({ kind: "clear-completed" }),
 });
 
+const rows = signalFamily({ completed: false }, { name: "todo-row" });
+
 function TodoRow({ todo }: { todo: Todo }) {
   const editor = `edit-${todo.key}`;
+  const r = rows.at(todo.key).with({ completed: todo.completed });
   return (
-    <li id={`todo-${todo.key}`} class={todo.completed ? "completed" : ""}>
+    <li
+      id={`todo-${todo.key}`}
+      {...r.init()}
+      {...r.bindAttr({ "data-completed": r.completed })}
+    >
       <div class="row">
         <button
           type="button"
           class="toggle"
           aria-label={`Completed: ${todo.title}`}
-          aria-pressed={todo.completed}
-          {...toggle.bind({ todoKey: todo.key, completed: !todo.completed })}
+          {...r.bindAttr({ "aria-pressed": r.completed })}
+          {...on.click([
+            r.completed.toggle(),
+            toggle.call({ todoKey: todo.key, completed: r.completed }),
+          ])}
         >
-          <span aria-hidden="true">{todo.completed ? "✓" : "○"}</span>
+          <span
+            aria-hidden="true"
+            {...r.bindText(r.completed.choose("✓", "○"))}
+          >
+            {todo.completed ? "✓" : "○"}
+          </span>
         </button>
         <span class="title">{todo.title}</span>
         <button

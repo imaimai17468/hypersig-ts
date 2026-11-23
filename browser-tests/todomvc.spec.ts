@@ -185,3 +185,59 @@ test("another tab's update preserves an open editor and its draft", async ({
   await page.getByRole("button", { name: "Delete: Another task" }).click();
   await expect(row(page, "Another task")).toHaveCount(0);
 });
+
+const toggleUrl = "**/_hypersig/actions/set-todo-completed";
+
+async function addTask(page: Page, title: string) {
+  const composer = page.getByRole("textbox", { name: "New task" });
+  await composer.fill(title);
+  await composer.press("Enter");
+  await expect(row(page, title)).toBeVisible();
+  return page.getByRole("button", { name: `Completed: ${title}` });
+}
+
+test("toggles a task before the server answers", async ({ page }) => {
+  await page.goto("/");
+  await waitForLive(page);
+  const toggle = await addTask(page, "Optimistic task");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  await page.route(toggleUrl, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await route.continue();
+  });
+  const answered = page.waitForResponse(toggleUrl);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true", {
+    timeout: 100,
+  });
+  await expect(toggle).toHaveText("✓");
+  await expect(row(page, "Optimistic task")).toHaveAttribute(
+    "data-completed",
+    "true"
+  );
+  await answered;
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Delete: Optimistic task" }).click();
+  await expect(row(page, "Optimistic task")).toHaveCount(0);
+});
+
+test("reverts a toggle the server rejects", async ({ page }) => {
+  await page.goto("/");
+  await waitForLive(page);
+  const toggle = await addTask(page, "Rejected task");
+
+  await page.route(toggleUrl, (route) =>
+    route.fulfill({ status: 500, body: "" })
+  );
+  const answered = page.waitForResponse(toggleUrl);
+  await toggle.click();
+  await answered;
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(toggle).toHaveText("○");
+
+  await page.unroute(toggleUrl);
+  await page.getByRole("button", { name: "Delete: Rejected task" }).click();
+  await expect(row(page, "Rejected task")).toHaveCount(0);
+});

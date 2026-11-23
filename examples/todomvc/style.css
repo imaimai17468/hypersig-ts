@@ -90,7 +90,7 @@ li,
   overflow-wrap: anywhere;
 }
 
-.completed .title {
+li[data-completed="true"] .title {
   text-decoration: line-through;
   color: #52645a;
 }
