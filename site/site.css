@@ -164,38 +164,28 @@ pre {
 }
 
 .home {
-  max-width: var(--measure);
+  max-width: 52rem;
   margin: auto;
   padding: 0 1.75rem 4rem;
 }
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 3fr);
-  align-items: center;
-  gap: 2rem clamp(2rem, 7vw, 6rem);
-  padding-block: clamp(3rem, 7vw, 5.5rem);
+  padding-block: clamp(2.7rem, 6vw, 4.5rem);
 }
 .hero h1 {
-  font-size: clamp(2rem, 4.6vw, 3.65rem);
+  font-size: clamp(2rem, 6vw, 3.65rem);
   line-height: 1.08;
   letter-spacing: -0.038em;
 }
 .hero-summary {
-  max-width: 34rem;
+  max-width: 35rem;
   margin-top: 1rem;
   color: var(--muted);
-}
-.hero-links {
-  margin-top: 1.4rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem 1.15rem;
-  flex-wrap: wrap;
 }
 .button {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  margin-top: 1.35rem;
   padding: 0.45rem 0.85rem;
   border-radius: 0.25rem;
   background: var(--accent);
@@ -207,52 +197,44 @@ pre {
 .button:hover {
   text-decoration: underline;
 }
-.button.alt {
-  padding-inline: 0;
-  background: transparent;
-  color: var(--accent);
-  font-weight: 500;
-  text-decoration: underline;
+.home-section {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
 }
-.freshness {
-  max-width: 26rem;
+.home-section + .home-section {
+  margin-top: 2.25rem;
 }
-.freshness h2,
-.update-flow h2,
-.home-detail h2 {
+.home-section h2 {
   font-size: clamp(1.2rem, 1.8vw, 1.5rem);
 }
-.freshness p,
-.home-detail p {
+.home-section > p {
+  max-width: 40rem;
   margin-top: 0.65rem;
   color: var(--muted);
 }
-.update-flow,
-.home-details {
-  padding-top: 1.7rem;
-  border-top: 1px solid var(--line);
-}
 .flow-steps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(1.2rem, 3vw, 2.5rem);
-  margin: 1.15rem 0 0;
+  margin: 0.65rem 0 0;
   padding: 0;
   list-style: none;
+}
+.flow-steps li {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  gap: 0.35rem 1.5rem;
+  align-items: baseline;
+  padding-block: 0.8rem;
+}
+.flow-steps li + li {
+  border-top: 1px solid var(--line);
+}
+.flow-steps li:last-child {
+  padding-bottom: 0;
 }
 .flow-steps h3 {
   font-size: 1.04rem;
 }
 .flow-steps p {
-  margin-top: 0.45rem;
   color: var(--muted);
-  font-size: 0.95rem;
-}
-.home-details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.75rem clamp(2rem, 6vw, 5rem);
-  margin-top: clamp(2.3rem, 5vw, 3.5rem);
 }
 
 .docs-shell {
@@ -377,20 +359,8 @@ pre {
   }
 }
 @media (max-width: 760px) {
-  .hero,
-  .flow-steps,
-  .home-details {
+  .flow-steps li {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .hero {
-    gap: 1.9rem;
-  }
-  .hero h1 {
-    font-size: clamp(2rem, 8vw, 3.15rem);
-  }
-  .flow-steps li + li {
-    padding-top: 0.95rem;
-    border-top: 1px solid var(--line);
   }
 }
 @media (max-width: 680px) {

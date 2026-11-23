@@ -1,27 +1,23 @@
 <section class="hero">
-  <div class="hero-intro">
-    <h1>Stay in sync<br />with the server</h1>
-    <p class="hero-summary">
-      When a change is committed on the server, the affected parts of the page
-      update. hypersig.ts handles updates after a save and resyncs after a
-      dropped connection.
-    </p>
-    <div class="hero-links">
-      <a class="button" href="./start/">Run the example</a>
-      <a class="button alt" href="./why/">Why hypersig</a>
-    </div>
-  </div>
-
-  <section class="freshness" aria-labelledby="freshness-title">
-    <h2 id="freshness-title">A page can go stale at any time</h2>
-    <p>
-      The page displays data as it was when the server read it. If another write
-      commits in the meantime, that data is already stale when it appears.
-    </p>
-  </section>
+  <h1>Stay in sync<br />with the server</h1>
+  <p class="hero-summary">
+    When a change is committed on the server, the affected parts of the page
+    update. hypersig.ts handles updates after a save and resyncs after a dropped
+    connection.
+  </p>
+  <a class="button" href="./start/">Run the example</a>
 </section>
 
-<section class="update-flow" aria-labelledby="update-flow-title">
+<section class="home-section" aria-labelledby="freshness-title">
+  <h2 id="freshness-title">A page can go stale at any time</h2>
+  <p>
+    The page displays data as it was when the server read it. If another write
+    commits in the meantime, that data is already stale when it appears.
+  </p>
+  <p><a href="./why/">Read the design rationale</a></p>
+</section>
+
+<section class="home-section" aria-labelledby="update-flow-title">
   <h2 id="update-flow-title">How a change reaches the page</h2>
   <ol class="flow-steps" role="list">
     <li>
@@ -48,27 +44,25 @@
   </ol>
 </section>
 
-<div class="home-details">
-  <section class="home-detail" aria-labelledby="home-types-title">
-    <h2 id="home-types-title">Type checks from actions to views</h2>
-    <p>
-      Check form field names and button inputs against the server input schema.
-      Changes share a type between publishers and subscribers, and the data
-      loaded for a view is typed through to rendering.
-    </p>
-    <p><a href="./reference/#type-safety">See what TypeScript checks</a></p>
-  </section>
+<section class="home-section" aria-labelledby="home-types-title">
+  <h2 id="home-types-title">Type checks from actions to views</h2>
+  <p>
+    Check form field names and button inputs against the server input schema.
+    Changes share a type between publishers and subscribers, and the data loaded
+    for a view is typed through to rendering.
+  </p>
+  <p><a href="./reference/#type-safety">See what TypeScript checks</a></p>
+</section>
 
-  <section class="home-detail" aria-labelledby="home-integration-title">
-    <h2 id="home-integration-title">Use it in an existing app</h2>
-    <p>
-      Add hypersig.ts to a Hono app. Hono handles HTTP requests, and hypersig.ts
-      runs server actions and updates views after a change. You can run the Hono
-      app on its own or integrate the same app into Void.
-    </p>
-    <p>
-      <a href="./reference/#adapter">Integrate with Hono</a> ·
-      <a href="./deploy/#void">See the Void example</a>
-    </p>
-  </section>
-</div>
+<section class="home-section" aria-labelledby="home-integration-title">
+  <h2 id="home-integration-title">Use it in an existing app</h2>
+  <p>
+    Add hypersig.ts to a Hono app. Hono handles HTTP requests, and hypersig.ts
+    runs server actions and updates views after a change. You can run the Hono
+    app on its own or integrate the same app into Void.
+  </p>
+  <p>
+    <a href="./reference/#adapter">Integrate with Hono</a> ·
+    <a href="./deploy/#void">See the Void example</a>
+  </p>
+</section>
