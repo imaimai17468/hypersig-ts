@@ -214,9 +214,8 @@ async function renderEditor(
             <div id="published">{page.view(publishedMemo, {})}</div>
             <section aria-labelledby="edit-title" class="panel">
               <form
-                {...save.form({ reportSuccess: true })}
+                {...save.form({ reportSuccess: true, draft: true })}
                 id="memo-editor"
-                data-hs-draft-form="shared-memo"
               >
                 <div class="panel-header">
                   <h2 id="edit-title">下書き</h2>
@@ -226,21 +225,18 @@ async function renderEditor(
                 </div>
                 <input
                   type="hidden"
-                  name={save.field("baseRevision")}
-                  data-hs-draft="base-revision"
+                  {...save.draft("baseRevision")}
                   value={draft.revision}
                 />
                 <input
                   type="hidden"
-                  name={save.field("operationId")}
-                  data-hs-draft="operation-id"
+                  {...save.draft("operationId")}
                   value={operationId}
                 />
                 <label for="memo-text">本文</label>
                 <textarea
                   id="memo-text"
-                  name={save.field("memoText")}
-                  data-hs-draft="memo-text"
+                  {...save.draft("memoText")}
                   aria-describedby="memo-text-error"
                   rows={7}
                   required

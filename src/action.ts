@@ -179,12 +179,32 @@ export function registerAction<
     field<Name extends FormFieldName<Wire>>(name: Name): Name {
       return name;
     },
-    form(options: { resetOnSuccess?: boolean; reportSuccess?: boolean } = {}): {
+    /**
+     * Names a field and keeps its value across a live registration reset. The
+     * draft is restored only into a form created with `form({ draft: true })`.
+     */
+    draft<Name extends FormFieldName<Wire>>(
+      name: Name
+    ): { name: Name; "data-hs-draft": "" } {
+      return { name, "data-hs-draft": "" };
+    },
+    /**
+     * `draft` keys the saved draft by this Action's name. When two forms on a
+     * page set it for the same Action, only the first one keeps its draft.
+     */
+    form(
+      options: {
+        resetOnSuccess?: boolean;
+        reportSuccess?: boolean;
+        draft?: boolean;
+      } = {}
+    ): {
       action: string;
       method: "post";
       "data-hs-form": string;
       "data-hs-reset-on-success"?: string;
       "data-hs-action-result"?: string;
+      "data-hs-draft-form"?: string;
     } {
       return {
         action: url,
@@ -192,6 +212,7 @@ export function registerAction<
         "data-hs-form": "",
         ...(options.resetOnSuccess ? { "data-hs-reset-on-success": "" } : {}),
         ...(options.reportSuccess ? { "data-hs-action-result": "" } : {}),
+        ...(options.draft ? { "data-hs-draft-form": name } : {}),
       };
     },
   };

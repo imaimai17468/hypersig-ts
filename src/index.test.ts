@@ -378,6 +378,16 @@ it("binds schema wire input and accepts only the application's topic types", () 
   expectTypeOf(increment.field("amount")).toEqualTypeOf<"amount">();
   // @ts-expect-error The schema does not accept a field named "ammount".
   increment.field("ammount");
+  expect(increment.draft("amount")).toEqual({
+    name: "amount",
+    "data-hs-draft": "",
+  });
+  // @ts-expect-error A draft key is a field name the schema accepts.
+  increment.draft("ammount");
+  expect(increment.form({ draft: true })["data-hs-draft-form"]).toBe(
+    "increment"
+  );
+  expect(increment.form()).not.toHaveProperty("data-hs-draft-form");
   expectTypeOf(publish).parameter(0).toEqualTypeOf<CounterEvent>();
   expectTypeOf(otherTopic("invoice-1")).not.toMatchTypeOf<CounterEvent>();
 });

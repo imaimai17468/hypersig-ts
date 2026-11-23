@@ -23,7 +23,8 @@ function draftGroups() {
     for (const control of form.querySelectorAll<HTMLElement>(
       "[data-hs-draft]"
     )) {
-      const key = control.dataset.hsDraft;
+      // The field name is the draft key, so it matches the Action's input field.
+      const key = control.getAttribute("name");
       if (!key || fields.has(key) || control.closest("[data-hs-view]"))
         continue;
       if (
