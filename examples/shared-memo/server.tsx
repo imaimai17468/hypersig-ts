@@ -8,7 +8,11 @@ import {
   ActionError,
   createHypersig,
   createMemoryPubSub,
+  on,
+  ref,
+  signals,
   topic,
+  uuid,
 } from "../../src/index.js";
 import { createMemoStore } from "./store.js";
 
@@ -16,9 +20,6 @@ const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 const stylesheet = Bun.file(new URL("./style.css", import.meta.url));
-const editor = new Bun.Transpiler({ loader: "ts" }).transformSync(
-  await Bun.file(new URL("./editor.ts", import.meta.url)).text()
-);
 const cookie = `memo-session-${port}`;
 const sessionSecret = Bun.env.MEMO_SESSION_SECRET ?? crypto.randomUUID();
 if (sessionSecret.length < 32)
@@ -40,6 +41,12 @@ async function authenticate(request: Request) {
 
 const maxLength = 1000;
 const operationSchema = v.pipe(v.string(), v.uuid());
+const revisionSchema = v.pipe(
+  v.string(),
+  v.regex(/^[1-9]\d*$/),
+  v.transform((text) => Number(text)),
+  v.check((revision) => Number.isSafeInteger(revision))
+);
 const conflictMessage =
   "別の編集が先に保存されたため、下書きは保存されていません。共有中の本文を確認してから変更を反映してください。";
 const store = createMemoStore(
@@ -79,12 +86,7 @@ const save = hypersig.action("save-memo", {
       v.minLength(1, "本文を入力してください。"),
       v.maxLength(maxLength, "本文は1000文字以内で入力してください。")
     ),
-    baseRevision: v.pipe(
-      v.string(),
-      v.regex(/^[1-9]\d*$/),
-      v.transform((text) => Number(text)),
-      v.check((revision) => Number.isSafeInteger(revision))
-    ),
+    baseRevision: revisionSchema,
   }),
   output: v.object({ revision: v.number() }),
   authorize: () => true,
@@ -110,7 +112,10 @@ const save = hypersig.action("save-memo", {
     if (result.type === "success")
       return new Response(null, { status: 303, headers: { Location: "/" } });
     const submittedText = result.values.get("memoText");
-    const baseRevision = result.values.get("baseRevision");
+    const baseRevision = v.safeParse(
+      revisionSchema,
+      result.values.get("baseRevision")
+    );
     const operationId = v.safeParse(
       operationSchema,
       result.values.get("operationId")
@@ -121,7 +126,8 @@ const save = hypersig.action("save-memo", {
     return renderEditor(request, {
       draft: {
         text: typeof submittedText === "string" ? submittedText : "",
-        revision: typeof baseRevision === "string" ? baseRevision : "",
+        // A malformed revision renders as 0, which the next save rejects.
+        revision: baseRevision.success ? baseRevision.output : 0,
       },
       fieldError: inline.map(({ message }) => message).join(" "),
       error:
@@ -134,6 +140,12 @@ const save = hypersig.action("save-memo", {
   },
 });
 
+const editor = signals(
+  { base: 0, published: 0, operation: "" },
+  { name: "memo-editor" }
+);
+const draftRef = ref({ name: "memo-draft" });
+
 const publishedMemo = hypersig.live({
   name: "shared-memo",
   subscribe: () => [memoChanged()],
@@ -145,7 +157,11 @@ const publishedMemo = hypersig.live({
   },
   render(current) {
     return (
-      <section aria-labelledby="published-title" class="panel">
+      <section
+        aria-labelledby="published-title"
+        class="panel"
+        {...editor.with({ published: current.revision }).init()}
+      >
         <div class="panel-header">
           <h2 id="published-title">共有中のメモ</h2>
           <output aria-label="共有中の版" data-revision={current.revision}>
@@ -186,13 +202,18 @@ async function renderEditor(
     status = 200,
     operationId = crypto.randomUUID(),
   }: {
-    draft: { text: string; revision: number | string };
+    draft: { text: string; revision: number };
     fieldError?: string;
     error?: string;
     status?: number;
     operationId?: string;
   }
 ) {
+  const e = editor.with({
+    base: draft.revision,
+    published: store.readRevision(),
+    operation: operationId,
+  });
   const response = await hypersig.page(request, (page) => (
     <html lang="ja">
       <head>
@@ -202,7 +223,6 @@ async function renderEditor(
         <link rel="stylesheet" href="/style.css" />
         <link rel="prefetch" href={links.guide.$path()} />
         {page.runtime("/runtime.js")}
-        <script type="module" src="/editor.js"></script>
       </head>
       <body>
         <main>
@@ -214,29 +234,39 @@ async function renderEditor(
             <div id="published">{page.view(publishedMemo, {})}</div>
             <section aria-labelledby="edit-title" class="panel">
               <form
-                {...save.form({ reportSuccess: true, draft: true })}
+                {...save.form({
+                  reportSuccess: true,
+                  draft: true,
+                  onSuccess: (out) => [
+                    e.base.set(out.get("revision")),
+                    e.operation.set(uuid()),
+                  ],
+                })}
+                {...e.init()}
                 id="memo-editor"
               >
                 <div class="panel-header">
                   <h2 id="edit-title">下書き</h2>
                   <p>
-                    編集元は版 <span id="draft-version">{draft.revision}</span>
+                    編集元は版{" "}
+                    <span id="draft-version" {...e.bindText(e.base)} />
                   </p>
                 </div>
                 <input
                   type="hidden"
                   {...save.draft("baseRevision")}
-                  value={draft.revision}
+                  {...e.bindValue(e.base)}
                 />
                 <input
                   type="hidden"
                   {...save.draft("operationId")}
-                  value={operationId}
+                  {...e.bindValue(e.operation)}
                 />
                 <label for="memo-text">本文</label>
                 <textarea
                   id="memo-text"
                   {...save.draft("memoText")}
+                  {...draftRef.attr()}
                   aria-describedby="memo-text-error"
                   rows={7}
                   required
@@ -251,10 +281,18 @@ async function renderEditor(
                 >
                   {fieldError}
                 </p>
-                <p id="restored-draft" role="status" hidden>
+                <p
+                  id="restored-draft"
+                  role="status"
+                  {...e.bindShow(save.draftRestored())}
+                >
                   接続の復旧前に書いていた下書きを復元しました。
                 </p>
-                <div id="newer-version" class="notice" hidden>
+                <div
+                  id="newer-version"
+                  class="notice"
+                  {...e.bindShow(e.published.gt(e.base))}
+                >
                   <p role="status">
                     共有中のメモに新しい版があります。本文を見比べてください。
                   </p>
@@ -265,6 +303,12 @@ async function renderEditor(
                     type="button"
                     id="use-latest-revision"
                     aria-describedby="rebase-note"
+                    {...on.click([
+                      e.base.set(e.published),
+                      e.operation.set(uuid()),
+                      draftRef.focus(),
+                    ])}
+                    {...e.bindAttr({ disabled: save.pending() })}
                   >
                     表示中の版から編集を続ける
                   </button>
@@ -341,11 +385,6 @@ const app = new Hono()
   .get("/style.css", (c) =>
     c.body(stylesheet.stream(), {
       headers: { "Content-Type": "text/css; charset=utf-8" },
-    })
-  )
-  .get("/editor.js", (c) =>
-    c.body(editor, {
-      headers: { "Content-Type": "text/javascript; charset=utf-8" },
     })
   );
 const links = hc<typeof app>("/");
