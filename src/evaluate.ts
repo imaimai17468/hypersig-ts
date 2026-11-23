@@ -17,7 +17,8 @@ function isEqual(left: JsonValue, right: JsonValue): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function isTruthy(value: JsonValue): boolean {
+/** Decides truthiness the same way on the server and in the browser. */
+export function isTruthy(value: JsonValue): boolean {
   return value !== null && value !== false && value !== 0 && value !== "";
 }
 
