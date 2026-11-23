@@ -31,9 +31,11 @@ export interface SignalRuntimeOptions {
  */
 export interface SignalRuntime {
   /**
-   * Stores the `data-hs-signals` values inside a morphed Live View as values
+   * Stores the `data-hs-signals` values of elements inside a morphed Live View
+   * (not the view element itself, which a morph leaves unchanged) as values
    * the server confirmed. Nested `[data-hs-view]` elements are skipped, and so
-   * is the path of a focused bound input, so typing is not overwritten.
+   * is the path of a focused bound input, so typing is not overwritten. Every
+   * binding in the document is evaluated again after a microtask.
    */
   applySnapshots(view: HTMLElement): void;
   write(path: SignalPath, value: JsonValue): void;
@@ -152,6 +154,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
 
   function write(path: SignalPath, value: JsonValue) {
     store.set(JSON.stringify(path), value);
+    scheduleRender();
+  }
+
+  function scheduleRender() {
     if (isRenderQueued) return;
     isRenderQueued = true;
     queueMicrotask(() => {
@@ -296,14 +302,16 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   return {
     applySnapshots(view) {
       const editingKey = findEditingKey();
-      for (const element of [
-        view,
-        ...view.querySelectorAll(`[${signalAttributes.signals}]`),
-      ]) {
+      for (const element of view.querySelectorAll(
+        `[${signalAttributes.signals}]`
+      )) {
         if (element.closest(viewSelector) === view) {
           loadSnapshot(element, editingKey);
         }
       }
+      // A morph resets bindings to the server HTML, so render them again even
+      // when no snapshot changed the store.
+      scheduleRender();
     },
     write,
     read,

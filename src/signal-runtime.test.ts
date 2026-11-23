@@ -223,8 +223,7 @@ it("applies Live View snapshots but not those of nested views", async () => {
           element("p", { id: "outer-snapshot", ...o.init() }),
           element("div", {
             "data-hs-view": "memo/child",
-            id: "inner-snapshot",
-            ...i.init(),
+            children: element("p", { id: "inner-snapshot", ...i.init() }),
           }),
         ],
       }) +
@@ -256,8 +255,8 @@ it("keeps a focused input's value when its Live View snapshot arrives", async ()
   const { page, find, input, dispatch } = createPage(
     render("div", {
       "data-hs-view": "memo",
-      ...m.init(),
       children: [
+        element("p", { id: "snapshot", ...m.init() }),
         element("input", { id: "title", ...m.bindValue(m.title) }),
         element("span", { id: "revision", ...m.bindText(m.revision) }),
         element("span", { id: "echo", ...m.bindText(m.title) }),
@@ -271,7 +270,8 @@ it("keeps a focused input's value when its Live View snapshot arrives", async ()
   title.value = "typing";
   dispatch("#title", "input");
   const view = find("[data-hs-view]");
-  view.setAttribute(
+  const snapshot = find("#snapshot");
+  snapshot.setAttribute(
     "data-hs-signals",
     m.with({ title: "saved", revision: 2 }).init()["data-hs-signals"]
   );
@@ -284,7 +284,7 @@ it("keeps a focused input's value when its Live View snapshot arrives", async ()
   expect(find("#revision").textContent).toBe("2");
 
   title.blur();
-  view.setAttribute(
+  snapshot.setAttribute(
     "data-hs-signals",
     m.with({ title: "published", revision: 3 }).init()["data-hs-signals"]
   );
@@ -294,6 +294,46 @@ it("keeps a focused input's value when its Live View snapshot arrives", async ()
   expect(title.value).toBe("published");
   expect(find("#echo").textContent).toBe("published");
   expect(find("#revision").textContent).toBe("3");
+});
+
+it("restores browser-only bindings that a morph reset to server HTML", async () => {
+  const local = signals({ count: 0, open: false }, { name: "local-only" });
+  const l = local.with({ count: 1 });
+  const { page, find, input, click } = createPage(
+    render("div", {
+      ...l.init(),
+      children: [
+        element("button", {
+          id: "set",
+          ...on.click([l.count.set(5), l.open.set(true)]),
+        }),
+        element("div", {
+          "data-hs-view": "memo",
+          children: [
+            element("span", { id: "count", ...l.bindText(l.count) }),
+            element("p", { id: "panel", ...l.bindShow(l.open) }),
+            element("input", { id: "field", ...l.bindValue(l.count) }),
+          ],
+        }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+  click("#set");
+  await settle();
+
+  const view = find("[data-hs-view]");
+  find("#count").textContent = "1";
+  find("#panel").setAttribute("hidden", "");
+  input("#field").value = "1";
+  view.setAttribute("data-hs-signals", l.init()["data-hs-signals"]);
+  runtime.applySnapshots(view);
+  await settle();
+
+  expect(runtime.read(l.count.path)).toBe(5);
+  expect(find("#count").textContent).toBe("5");
+  expect(find("#panel").hasAttribute("hidden")).toBe(false);
+  expect(input("#field").value).toBe("5");
 });
 
 it("ignores malformed signal attributes and keeps other bindings working", async () => {
