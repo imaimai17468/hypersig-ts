@@ -19,6 +19,21 @@ test("shared tasks react across sessions and tabs, with updates scoped to each f
   try {
     await page.goto("/");
     await waitForLive(page);
+    const filterNav = page.getByRole("navigation", { name: "Filter tasks" });
+    await expect(filterNav.getByRole("link", { name: "All" })).toHaveAttribute(
+      "href",
+      "/"
+    );
+    await expect(
+      filterNav.getByRole("link", { name: "Active" })
+    ).toHaveAttribute("href", "/?filter=active");
+    await expect(
+      filterNav.getByRole("link", { name: "Completed" })
+    ).toHaveAttribute("href", "/?filter=completed");
+    await expect(filterNav.getByRole("link", { name: "All" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
     const activeTab = await page.context().newPage();
     const completed = await peerSession.newPage();
     const devtools = await peerSession.newCDPSession(completed);

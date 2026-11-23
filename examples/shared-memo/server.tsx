@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { Database } from "bun:sqlite";
 import { Context, Hono } from "hono";
+import { hc } from "hono/client";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import * as v from "valibot";
 import {
@@ -13,7 +14,6 @@ import { createMemoStore } from "./store.js";
 
 const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
-const app = new Hono();
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 const stylesheet = Bun.file(new URL("./style.css", import.meta.url));
 const editor = new Bun.Transpiler({ loader: "ts" }).transformSync(
@@ -160,8 +160,7 @@ const publishedMemo = hypersig.live({
   },
 });
 
-app.route("/", hypersig.routes);
-app.get("/", async (c) => {
+async function showEditor(c: Context): Promise<Response> {
   if (!(await authenticate(c.req.raw))) {
     const ticket = `${crypto.randomUUID()}/${crypto.randomUUID()}/${Date.now() + sessionLifetime * 1000}`;
     await setSignedCookie(c, cookie, ticket, sessionSecret, {
@@ -170,13 +169,13 @@ app.get("/", async (c) => {
       sameSite: "Strict",
       maxAge: sessionLifetime,
     });
-    const response = c.redirect("/");
+    const response = c.redirect(links.index.$path());
     response.headers.set("Cache-Control", "no-store");
     return response;
   }
 
   return renderEditor(c.req.raw, { draft: store.read() });
-});
+}
 
 async function renderEditor(
   request: Request,
@@ -201,7 +200,7 @@ async function renderEditor(
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>共有メモ</title>
         <link rel="stylesheet" href="/style.css" />
-        <link rel="prefetch" href="/guide" />
+        <link rel="prefetch" href={links.guide.$path()} />
         {page.runtime("/runtime.js")}
         <script type="module" src="/editor.js"></script>
       </head>
@@ -209,7 +208,7 @@ async function renderEditor(
         <main>
           <h1>共有メモ</h1>
           <p>
-            <a href="/guide">使い方</a>
+            <a href={links.guide.$path()}>使い方</a>
           </p>
           <div class="panels">
             <div id="published">{page.view(publishedMemo, {})}</div>
@@ -282,7 +281,7 @@ async function renderEditor(
                   <span class="pending" role="status">
                     送信中…
                   </span>
-                  <a href="/" aria-describedby="reload-note">
+                  <a href={links.index.$path()} aria-describedby="reload-note">
                     最新版を読み込む
                   </a>
                 </div>
@@ -307,8 +306,7 @@ async function renderEditor(
   });
 }
 
-app.get("/health", (c) => c.text("OK"));
-app.get("/guide", (c) => {
+function renderGuide(c: Context): Response | Promise<Response> {
   c.header("Cache-Control", "public, max-age=300");
   return c.html(
     <html lang="ja">
@@ -327,27 +325,34 @@ app.get("/guide", (c) => {
           <p>
             別の編集が先に保存された場合は、公開中のメモと下書きを見比べてから、表示中の版を編集元にできます。
           </p>
-          <a href="/">共有メモに戻る</a>
+          <a href={links.index.$path()}>共有メモに戻る</a>
         </main>
       </body>
     </html>
   );
-});
-app.get("/runtime.js", (c) =>
-  c.body(runtime.stream(), {
-    headers: { "Content-Type": "text/javascript; charset=utf-8" },
-  })
-);
-app.get("/style.css", (c) =>
-  c.body(stylesheet.stream(), {
-    headers: { "Content-Type": "text/css; charset=utf-8" },
-  })
-);
-app.get("/editor.js", (c) =>
-  c.body(editor, {
-    headers: { "Content-Type": "text/javascript; charset=utf-8" },
-  })
-);
+}
+
+const app = new Hono()
+  .route("/", hypersig.routes)
+  .get("/", showEditor)
+  .get("/health", (c) => c.text("OK"))
+  .get("/guide", renderGuide)
+  .get("/runtime.js", (c) =>
+    c.body(runtime.stream(), {
+      headers: { "Content-Type": "text/javascript; charset=utf-8" },
+    })
+  )
+  .get("/style.css", (c) =>
+    c.body(stylesheet.stream(), {
+      headers: { "Content-Type": "text/css; charset=utf-8" },
+    })
+  )
+  .get("/editor.js", (c) =>
+    c.body(editor, {
+      headers: { "Content-Type": "text/javascript; charset=utf-8" },
+    })
+  );
+const links = hc<typeof app>("/");
 
 Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: app.fetch });
 console.log(`Shared memo listening on ${origin}`);

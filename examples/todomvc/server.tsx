@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 import { Context, Hono } from "hono";
+import { hc } from "hono/client";
 import { getCookie, setCookie } from "hono/cookie";
+import { validator } from "hono/validator";
 import * as v from "valibot";
 import {
   createHypersig,
@@ -18,7 +20,6 @@ import type { Filter, Partition, Todo, TodoAction } from "./todos.js";
 
 const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
-const app = new Hono();
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 const stylesheet = Bun.file(new URL("./style.css", import.meta.url));
 const sessions = new Set<string>();
@@ -120,11 +121,11 @@ function TodoRow({ todo }: { todo: Todo }) {
       </div>
       <div id={editor} popover="auto" class="editor">
         <form {...edit.form()}>
-          <input type="hidden" name="todoKey" value={todo.key} />
+          <input type="hidden" name={edit.field("todoKey")} value={todo.key} />
           <label>
             Task title
             <input
-              name="todoTitle"
+              name={edit.field("todoTitle")}
               value={todo.title}
               required
               maxLength={200}
@@ -202,8 +203,35 @@ const labels: Record<Filter, string> = {
   completed: "Completed",
 };
 
-app.route("/", hypersig.routes);
-app.get("/", async (c) => {
+const querySchema = v.object({ filter: v.optional(v.picklist(filters)) });
+
+const app = new Hono()
+  .route("/", hypersig.routes)
+  .get(
+    "/",
+    validator("query", (query) => {
+      const parsed = v.safeParse(querySchema, query);
+      // An unknown filter shows every task, as the All link does.
+      return parsed.success ? parsed.output : {};
+    }),
+    (c) => renderTodos(c, c.req.valid("query").filter ?? "all")
+  )
+  .get("/health", (c) => c.text("OK"))
+  .get("/runtime.js", (c) =>
+    c.body(runtime.stream(), {
+      headers: { "Content-Type": "text/javascript; charset=utf-8" },
+    })
+  )
+  .get("/style.css", (c) =>
+    c.body(stylesheet.stream(), {
+      headers: { "Content-Type": "text/css; charset=utf-8" },
+    })
+  );
+const links = hc<typeof app>("/");
+const filterLink = (filter: Filter) =>
+  links.index.$path({ query: filter === "all" ? {} : { filter } });
+
+async function renderTodos(c: Context, filter: Filter): Promise<Response> {
   const current = getCookie(c, cookie);
   if (!current || !sessions.has(current)) {
     const sessionId = crypto.randomUUID();
@@ -213,10 +241,9 @@ app.get("/", async (c) => {
       sameSite: "Strict",
       path: "/",
     });
-    return c.redirect("/" + new URL(c.req.url).search);
+    const { pathname, search } = new URL(c.req.url);
+    return c.redirect(pathname + search);
   }
-  const requested = c.req.query("filter");
-  const filter = filters.find((candidate) => candidate === requested) ?? "all";
   c.header(
     "Content-Security-Policy",
     "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
@@ -236,14 +263,19 @@ app.get("/", async (c) => {
           <form class="composer" {...add.form({ resetOnSuccess: true })}>
             <label for="new-todo">New task</label>
             <div>
-              <input id="new-todo" name="todoTitle" required maxLength={200} />
+              <input
+                id="new-todo"
+                name={add.field("todoTitle")}
+                required
+                maxLength={200}
+              />
               <button type="submit">Add</button>
             </div>
           </form>
           <nav aria-label="Filter tasks">
             {filters.map((value) => (
               <a
-                href={value === "all" ? "/" : `/?filter=${value}`}
+                href={filterLink(value)}
                 aria-current={value === filter ? "page" : undefined}
               >
                 {labels[value]}
@@ -258,18 +290,7 @@ app.get("/", async (c) => {
       </body>
     </html>
   ));
-});
-app.get("/health", (c) => c.text("OK"));
-app.get("/runtime.js", (c) =>
-  c.body(runtime.stream(), {
-    headers: { "Content-Type": "text/javascript; charset=utf-8" },
-  })
-);
-app.get("/style.css", (c) =>
-  c.body(stylesheet.stream(), {
-    headers: { "Content-Type": "text/css; charset=utf-8" },
-  })
-);
+}
 
 Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: app.fetch });
 console.log(`TodoMVC listening on ${origin}`);
