@@ -6,7 +6,7 @@ const output = resolve(process.argv[2] ?? "dist/docs");
 const origin = "https://imaimai17468.github.io/hypersig-ts/";
 const repository = "https://github.com/imaimai17468/hypersig-ts";
 const original = "https://imaimai17468.github.io/hypersig/";
-const pages = ["", "start", "concepts", "reference", "deploy"] as const;
+const pages = ["", "start", "why", "concepts", "reference", "deploy"] as const;
 const languages = ["en", "ja"] as const;
 type Language = (typeof languages)[number];
 type Page = (typeof pages)[number];
@@ -18,10 +18,12 @@ const locales = {
     menu: "Contents",
     skip: "Skip to content",
     start: "Get started",
-    description: "TypeScript tools for server-owned state and live HTML.",
+    description:
+      "A TypeScript framework for updating views from committed server state.",
     titles: [
       "Overview",
       "Get started",
+      "Why hypersig",
       "Core concepts",
       "API reference",
       "Deployment",
@@ -38,8 +40,15 @@ const locales = {
     skip: "本文へ移動",
     start: "はじめる",
     description:
-      "サーバーでデータが変わると画面の該当箇所を更新する TypeScript フレームワーク。",
-    titles: ["概要", "はじめる", "基本概念", "API リファレンス", "デプロイ"],
+      "サーバーで確定したデータをもとに、関連する画面を更新する TypeScript フレームワーク。",
+    titles: [
+      "概要",
+      "はじめる",
+      "設計の背景",
+      "基本概念",
+      "API リファレンス",
+      "デプロイ",
+    ],
     original: "Rust 版 hypersig",
     legal: "ドキュメント",
     language: "言語",

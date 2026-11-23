@@ -191,11 +191,6 @@ pre {
   letter-spacing: -0.055em;
   text-wrap: balance;
 }
-:lang(ja) .hero h1 {
-  font-size: clamp(2.3rem, 4.3vw, 4.2rem);
-  line-height: 1.2;
-  letter-spacing: -0.045em;
-}
 .hero-summary {
   color: var(--muted);
   max-width: 34rem;
@@ -330,26 +325,27 @@ pre {
   color: var(--muted);
   font-size: 0.8rem;
 }
-.principles {
+.rationale {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.3rem 2rem;
   padding-top: 1.8rem;
   border-top: 1px solid var(--line);
 }
-.principles h2 {
-  font-size: clamp(1.4rem, 2.2vw, 1.8rem);
+.rationale h2 {
+  font-size: clamp(1.45rem, 2.2vw, 1.85rem);
 }
-.principle-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.9rem;
-  margin-top: 1.45rem;
-}
-.principle-list h3 {
-  font-size: 1.04rem;
-}
-.principle-list p {
-  margin-top: 0.45rem;
+.rationale p {
+  max-width: 46rem;
+  margin-top: 0.65rem;
   color: var(--muted);
+  font-size: 0.94rem;
+}
+.rationale > a {
+  flex: none;
   font-size: 0.91rem;
+  font-weight: 640;
 }
 
 .docs-shell {
@@ -441,7 +437,7 @@ pre {
   flex-wrap: wrap;
 }
 
-@media (max-width: 940px) {
+@media (max-width: 1040px) {
   .topbar-inner {
     gap: 1rem;
     flex-wrap: wrap;
@@ -537,14 +533,10 @@ pre {
     gap: 2rem;
   }
   .hero h1 {
-    font-size: clamp(2.35rem, 10vw, 3.6rem);
+    font-size: clamp(2.08rem, 9vw, 3.6rem);
   }
-  :lang(ja) .hero h1 {
-    font-size: clamp(1.95rem, 8.1vw, 2.65rem);
-  }
-  .principle-list {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.45rem;
+  .rationale {
+    flex-direction: column;
   }
   .example-step {
     grid-template-columns: 4.15rem minmax(0, 1fr);

@@ -1,15 +1,15 @@
 <section class="hero">
   <div class="hero-intro">
     <p class="hero-category">A TypeScript framework</p>
-    <h1>Server updates<br />across open tabs</h1>
+    <h1>Render from<br />committed state</h1>
     <p class="hero-summary">
-      Data changes are committed on the server. When another user saves or a
-      background job changes the data, the server sends updated HTML to the
-      parts of the open pages that display it.
+      Data changes are committed on the server. You specify which changes to
+      announce and which parts of the page subscribe. The browser applies the
+      HTML rendered from the committed data.
     </p>
     <div class="hero-links">
       <a class="button" href="./start/">Run the example</a>
-      <a class="button alt" href="./concepts/">How it works</a>
+      <a class="button alt" href="./why/">Why hypersig</a>
     </div>
   </div>
 
@@ -53,33 +53,22 @@
         </dl>
       </div>
     </div>
-    <p class="example-caption">Only the shared counter changes in both tabs.</p>
+    <p class="example-caption">
+      Announcing the change updates the subscribed counter in both tabs.
+    </p>
   </figure>
 </section>
 
-<section class="principles" aria-labelledby="principles-title">
-  <h2 id="principles-title">How pages update</h2>
-  <div class="principle-list">
-    <div>
-      <h3>Commit changes on the server</h3>
-      <p>
-        Validate input and check access. Send a notification after the change is
-        saved.
-      </p>
-    </div>
-    <div>
-      <h3>Send HTML for the affected regions</h3>
-      <p>
-        Define which data each region displays. When that data changes, render
-        the region on the server again.
-      </p>
-    </div>
-    <div>
-      <h3>Keep unfinished input in the browser</h3>
-      <p>
-        The server renders the components. The browser applies the HTML while
-        preserving focus and unfinished input where possible.
-      </p>
-    </div>
+<section class="rationale" aria-labelledby="rationale-title">
+  <div>
+    <h2 id="rationale-title">Where displayed values are decided</h2>
+    <p>
+      If an application keeps separate copies of its order list and totals in
+      the browser, saving an order also means deciding how to refresh each copy.
+      hypersig.ts renders those views from the saved data and sends them to
+      their subscribers. The same process applies to a change made by the
+      current user, another user, or a scheduled job.
+    </p>
   </div>
+  <a href="./why/">Read the design rationale</a>
 </section>

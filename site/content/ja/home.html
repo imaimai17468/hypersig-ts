@@ -1,14 +1,14 @@
 <section class="hero">
   <div class="hero-intro">
     <p class="hero-category">TypeScript フレームワーク</p>
-    <h1>サーバーでの変更を<br />別のタブにも反映</h1>
+    <h1 lang="en">Render from<br />committed state</h1>
     <p class="hero-summary">
-      データはサーバーで確定します。別の利用者の操作や定期処理でデータが変わると、同じデータを表示している画面の該当箇所に、更新後の
-      HTML を送ります。
+      データはサーバーで確定します。開発者が、どの変更を通知し、画面のどこがその通知を受け取るかをコードに書きます。ブラウザはサーバーで生成した
+      HTML を受け取り、該当箇所を更新します。
     </p>
     <div class="hero-links">
       <a class="button" href="./start/">サンプルを動かす</a>
-      <a class="button alt" href="./concepts/">仕組みを読む</a>
+      <a class="button alt" href="./why/">設計の背景を読む</a>
     </div>
   </div>
 
@@ -51,32 +51,18 @@
       </div>
     </div>
     <p class="example-caption">
-      共有カウンターだけが両方のタブで更新されます。
+      共有カウンターの変更を通知すると、両方のタブで、その通知を受け取る箇所が更新されます。
     </p>
   </figure>
 </section>
 
-<section class="principles" aria-labelledby="principles-title">
-  <h2 id="principles-title">画面が更新される仕組み</h2>
-  <div class="principle-list">
-    <div>
-      <h3>データの変更をサーバーで確定</h3>
-      <p>
-        入力の検証や権限の確認を行い、保存が完了したあとに変更を通知します。
-      </p>
-    </div>
-    <div>
-      <h3>関係する箇所の HTML を送信</h3>
-      <p>
-        画面のどの部分がどのデータに関係するかを指定します。データが変わると、サーバーでその部分を描画し直します。
-      </p>
-    </div>
-    <div>
-      <h3>入力途中の値はブラウザで保持</h3>
-      <p>
-        コンポーネントの描画はサーバーで行います。ブラウザは受け取った HTML
-        を反映し、入力途中の値やフォーカスを、可能な範囲で維持します。
-      </p>
-    </div>
+<section class="rationale" aria-labelledby="rationale-title">
+  <div>
+    <h2 id="rationale-title">画面の値がどこで決まるか</h2>
+    <p>
+      注文を更新したとき、ブラウザにある注文一覧や集計も別々に直す構成では、どの値が最新かを画面側で管理する必要があります。hypersig.ts
+      では、サーバーが保存したデータから一覧や集計を描画し、登録された表示先に送ります。操作した人、別の利用者、定期処理のどれが変更した場合も、この流れは同じです。
+    </p>
   </div>
+  <a href="./why/">この設計で減らすものを読む</a>
 </section>

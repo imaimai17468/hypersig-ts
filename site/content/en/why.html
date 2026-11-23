@@ -1,0 +1,104 @@
+<h1>Why hypersig</h1>
+<p class="lead">
+  The path from saving data to updating a page should be traceable in the server
+  code. hypersig.ts defines that path from a committed change to the HTML
+  applied to the affected parts of the page.
+</p>
+
+<section id="copies">
+  <h2>Keeping copies of server data in the browser</h2>
+  <p>
+    Consider a browser that fetches an order list and stores the count and total
+    separately. After saving an order, the application has to refresh those
+    values and handle the case where an earlier request comes back late. It also
+    needs a way to learn about a change made by another user or a scheduled job.
+  </p>
+  <p>
+    Focus and unfinished input are local to the browser. A separate copy of
+    shared application data must be kept current. The React docs describe the
+    extra synchronization introduced by redundant state and the need to account
+    for out-of-order responses when fetching data.
+    <a href="https://react.dev/learn/you-might-not-need-an-effect"
+      >React on redundant state and Effects</a
+    >
+  </p>
+</section>
+
+<section id="remix-revalidation">
+  <h2>What Remix changed about form submissions</h2>
+  <p>
+    Early Remix centered writes on HTML forms and HTTP. Remix v2 runs the server
+    action and automatically reloads the data used by the page. Application code
+    can leave revalidation to the framework. When requests overlap, Remix also
+    decides which responses are current enough to apply.
+    <a href="https://remix.run/blog/remix-v1">Remix v1 announcement</a> ·
+    <a href="https://v2.remix.run/docs/discussion/data-flow/"
+      >Data revalidation</a
+    >
+    ·
+    <a href="https://v2.remix.run/docs/discussion/concurrency/"
+      >Network concurrency</a
+    >
+  </p>
+</section>
+
+<section id="remix-frames">
+  <h2>Updating one part of the page</h2>
+  <p>
+    Remix 3 can place HTML from another URL in a region called a
+    <code>Frame</code>. A link, a form, or an explicit reload can select which
+    region to update. Browser components also let the application explicitly
+    decide when to render.
+    <a href="https://docs.remix.run/streaming-ui-with-frames/"
+      >Remix 3 Frames</a
+    >
+    · <a href="https://docs.remix.run/">Remix 3 design</a>
+  </p>
+  <p>
+    rshono puts React components that read data on the server close to the
+    server functions that update it. In its notes example, the response to a
+    save includes fresh data for the page. The guide also shows how to display a
+    tentative result while an action is pending.
+    <a href="https://www.rshono.com/docs/usage">rshono forms and updates</a>
+  </p>
+  <p>
+    These designs reduce the work involved in getting data from a server
+    operation back to a page. Updating other pages that are already open also
+    requires a way to identify who should receive the change.
+  </p>
+</section>
+
+<section id="commit-to-display">
+  <h2>Updating the page from a committed change</h2>
+  <p>
+    When a page opens in hypersig.ts, its server code declares which changes
+    each view needs to receive. Suppose the application saves an order and then
+    announces that change. The server renders the subscribed order list from the
+    current data and sends its HTML. The browser applies that HTML to the
+    corresponding region.
+  </p>
+  <p>
+    Another user looking at the same order receives the update according to
+    their own page subscriptions. A scheduled job can announce the same change
+    after saving it. The application code shows both where a notification is
+    published and which views receive it.
+  </p>
+</section>
+
+<section id="sync">
+  <h2>While saving or reconnecting</h2>
+  <p>
+    Application views display committed server data. A form can keep unfinished
+    input and show that saving is in progress. The order list updates when HTML
+    rendered from the saved data arrives.
+  </p>
+  <p>
+    Delivery takes time. After a connection drops, reconnecting reads the
+    current state again. The application is responsible for declaring the
+    changes it publishes and the views that subscribe.
+  </p>
+  <p>
+    <a href="../concepts/">Read the update sequence</a> ·
+    <a href="../start/">Try it in two tabs</a>
+  </p>
+</section>
