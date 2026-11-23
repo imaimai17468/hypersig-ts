@@ -61,6 +61,17 @@ export type StmtNode =
   | ["focus", string]
   | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]];
 
+/** Marks a `data-hs-signals` entry as a default rather than an owned value. */
+export const defaultMark = 0;
+
+/**
+ * A `data-hs-signals` entry. An owned value replaces the store's value. A
+ * default fills the path only when the store has no value for it.
+ */
+export type SnapshotEntry =
+  | [path: SignalPath, value: JsonValue]
+  | [path: SignalPath, value: JsonValue, mark: typeof defaultMark];
+
 export const signalAttributes = {
   signals: "data-hs-signals",
   text: "data-hs-text",

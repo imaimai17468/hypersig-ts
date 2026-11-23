@@ -345,6 +345,76 @@ it("restores browser-only bindings that a morph reset to server HTML", async () 
   expect(input("#field").value).toBe("5");
 });
 
+it("fills an absent path from a default pair but keeps an existing browser value", async () => {
+  const editor = signals(
+    { base: 0, published: 0, draft: "" },
+    { name: "default-pairs" }
+  );
+  const form = editor.with({ base: 3, published: 3 });
+  const view = editor.with({ published: 3 });
+  const { find, runtime } = (() => {
+    const created = createPage(
+      render("div", {
+        "data-hs-view": "memo",
+        children: element("p", { id: "view-snapshot", ...view.init() }),
+      }) +
+        render("form", {
+          ...form.init(),
+          children: element("span", {
+            id: "base",
+            ...form.bindText(form.base),
+          }),
+        })
+    );
+    return { ...created, runtime: startSignals({ root: created.page }) };
+  })();
+
+  // The view snapshot comes first, so its default base fills the absent path
+  // and the form's owned base replaces it.
+  expect(runtime.read(form.base.path)).toBe(3);
+  expect(runtime.read(form.draft.path)).toBe("");
+
+  find("#view-snapshot").setAttribute(
+    "data-hs-signals",
+    editor.with({ published: 4 }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(find("[data-hs-view='memo']"));
+  await settle();
+
+  expect(runtime.read(form.published.path)).toBe(4);
+  expect(runtime.read(form.base.path)).toBe(3);
+  expect(find("#base").textContent).toBe("3");
+});
+
+it("reads a bound hidden input whose value changed before the runtime started", () => {
+  const editor = signals({ base: 0, operation: "" }, { name: "hidden-form" });
+  const e = editor.with({ base: 4, operation: "new" });
+  const { page, input } = createPage(
+    render("form", {
+      ...e.init(),
+      children: [
+        element("input", {
+          id: "base",
+          type: "hidden",
+          ...e.bindValue(e.base),
+        }),
+        element("input", {
+          id: "operation",
+          type: "hidden",
+          ...e.bindValue(e.operation),
+        }),
+      ],
+    })
+  );
+  // Setting `value` on a hidden input also changes its `defaultValue`.
+  input("#base").value = "3";
+  input("#operation").value = "restored";
+  const runtime = startSignals({ root: page });
+
+  expect(runtime.read(e.base.path)).toBe(3);
+  expect(runtime.read(e.operation.path)).toBe("restored");
+});
+
 it("ignores malformed signal attributes and keeps other bindings working", async () => {
   const good = signals({ count: 0 }, { name: "good-group" });
   const g = good.with({ count: 1 });
@@ -354,7 +424,7 @@ it("ignores malformed signal attributes and keeps other bindings working", async
       `<div data-hs-view="memo">`,
       `<p data-hs-signals="{not json"></p>`,
       `<p data-hs-signals='{"a":1}'></p>`,
-      `<p data-hs-signals='[[[],1],[["x"]],[[1],2],"bad",[["$pending","/x"],true],[${count},5]]'></p>`,
+      `<p data-hs-signals='[[[],1],[["x"]],[[1],2],"bad",[["$pending","/x"],true],[${count},5],[${count},7,1],[${count},8,0,0]]'></p>`,
       `</div>`,
       `<span id="bad-text" data-hs-text='["pow",["lit",1],["lit",2]]'>keep</span>`,
       `<span id="bad-show" data-hs-show="nope"></span>`,

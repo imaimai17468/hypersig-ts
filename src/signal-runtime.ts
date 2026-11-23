@@ -1,8 +1,15 @@
 import type { EvaluationContext } from "./evaluate.js";
 import { evaluate, formatText, isTruthy } from "./evaluate.js";
-import type { ExprNode, JsonValue, SignalPath, StmtNode } from "./protocol.js";
+import type {
+  ExprNode,
+  JsonValue,
+  SignalPath,
+  SnapshotEntry,
+  StmtNode,
+} from "./protocol.js";
 import {
   booleanAttributes,
+  defaultMark,
   eventAttributes,
   isBindableAttribute,
   isExprNode,
@@ -138,16 +145,16 @@ function readStmts(element: Element, name: string): StmtNode[] {
   return isStmtList(value) ? value : [];
 }
 
-function isSnapshotEntry(entry: unknown): entry is [SignalPath, JsonValue] {
+function isSnapshotEntry(entry: unknown): entry is SnapshotEntry {
   return (
     Array.isArray(entry) &&
-    entry.length === 2 &&
+    (entry.length === 2 || (entry.length === 3 && entry[2] === defaultMark)) &&
     isSignalPath(entry[0]) &&
     isJsonValue(entry[1])
   );
 }
 
-function readSnapshot(element: Element): [SignalPath, JsonValue][] {
+function readSnapshot(element: Element): SnapshotEntry[] {
   const value = parseAttribute(element, signalAttributes.signals);
   return Array.isArray(value) ? value.filter(isSnapshotEntry) : [];
 }
@@ -177,6 +184,9 @@ function readField(field: Field, kind: InputKind): JsonValue | undefined {
 
 /** Reports a value restored from a draft or kept by the browser. */
 function isEdited(field: Field, kind: InputKind): boolean {
+  // Setting `value` on a hidden input also sets its `defaultValue`, so a
+  // restored value cannot be told apart and is always read.
+  if (field.type === "hidden") return true;
   if (kind === "boolean" && "checked" in field) {
     return field.checked !== field.defaultChecked;
   }
@@ -224,9 +234,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
    * keeps the value of a held path until its call ends.
    */
   function loadSnapshot(element: Element, editingKey?: string) {
-    for (const [path, value] of readSnapshot(element)) {
+    for (const [path, value, mark] of readSnapshot(element)) {
       const key = JSON.stringify(path);
       if (key === editingKey) continue;
+      if (mark === defaultMark && store.has(key)) continue;
       const hold = holds.get(key);
       if (hold) hold.latest = value;
       else writeFromApp(path, value);

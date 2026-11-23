@@ -2,10 +2,17 @@ import type { EvaluationContext } from "./evaluate.js";
 import { evaluate, formatText, isTruthy } from "./evaluate.js";
 import type { Identifier } from "./identifier.js";
 import { identifierPattern } from "./identifier.js";
-import type { ExprNode, JsonValue, SignalPath, StmtNode } from "./protocol.js";
+import type {
+  ExprNode,
+  JsonValue,
+  SignalPath,
+  SnapshotEntry,
+  StmtNode,
+} from "./protocol.js";
 import type { bindableAttributes } from "./protocol.js";
 import {
   booleanAttributes,
+  defaultMark,
   eventAttributes,
   isBindableAttribute,
   signalAttributes,
@@ -97,7 +104,11 @@ type AttributeBindings<Attrs> = {
 };
 
 export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
-  /** Writes the scope's values so the browser runtime loads them. */
+  /**
+   * Writes every field so the browser runtime loads them. Fields passed to
+   * `with` replace the browser's value; the others fill it only when the
+   * browser has none.
+   */
   init(): { [signalAttributes.signals]: string };
   /** Renders the evaluated text as `children`. */
   bindText(expr: Expr<JsonValue>): {
@@ -355,15 +366,21 @@ function createGroup(
     uuid: () => "",
   };
   const valueOf = (expr: ExprHandle) => evaluate(expr.node, context);
-  const valueOfField = (field: string) =>
-    Object.hasOwn(values, field) ? values[field] : initial[field];
 
   return {
     ...signalsByField,
     with: withValues,
     init: () => ({
       [signalAttributes.signals]: JSON.stringify(
-        fields.map((field) => [[...prefix, field], valueOfField(field)])
+        Object.entries(initial).map(([field, initialValue]): SnapshotEntry => {
+          const path = [...prefix, field];
+          const value = Object.hasOwn(values, field)
+            ? values[field]
+            : undefined;
+          return value === undefined
+            ? [path, initialValue, defaultMark]
+            : [path, value];
+        })
       ),
     }),
     bindText: (expr: ExprHandle) => ({

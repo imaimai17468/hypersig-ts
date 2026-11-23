@@ -25,7 +25,7 @@ it("renders evaluated values for the request", () => {
   );
 });
 
-it("fills fields left out of with from the initial values", () => {
+it("marks fields left out of with as defaults filled from the initial values", () => {
   const editor = signals(
     { base: 0, operation: "start" },
     { name: "partial-editor" }
@@ -34,7 +34,7 @@ it("fills fields left out of with from the initial values", () => {
 
   expect(e.bindText(e.operation).children).toBe("start");
   expect(e.init()["data-hs-signals"]).toBe(
-    '[[["partial-editor-1","base"],2],[["partial-editor-1","operation"],"start"]]'
+    '[[["partial-editor-1","base"],2],[["partial-editor-1","operation"],"start",0]]'
   );
   expect(e.with({ operation: "next" }).bindText(e.base.add(1)).children).toBe(
     "3"
@@ -97,7 +97,7 @@ it("keys family members by arbitrary data", () => {
     [["todo-row-1", 'a"/.b', "completed"], true],
   ]);
   expect(JSON.parse(plain.with({}).init()["data-hs-signals"])).toEqual([
-    [["todo-row-1", "a", "completed"], false],
+    [["todo-row-1", "a", "completed"], false, 0],
   ]);
   expect(oddScope.bindShow(odd.completed).hidden).toBeUndefined();
   expect(oddScope.bindShow(plain.completed).hidden).toBe(true);
