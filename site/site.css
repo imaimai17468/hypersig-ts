@@ -244,7 +244,7 @@ pre {
   font-size: clamp(1.45rem, 2.2vw, 1.85rem);
 }
 .home-detail {
-  margin-top: 2.75rem;
+  margin-top: clamp(3rem, 6vw, 4.75rem);
 }
 .home-detail p {
   max-width: 44rem;
@@ -272,6 +272,27 @@ pre {
   margin-top: 0.6rem;
   color: var(--muted);
   font-size: 0.91rem;
+}
+.flow-types {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 0.75rem 2rem;
+  margin-top: clamp(1.5rem, 3vw, 2rem);
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border-inline-start: 2px solid var(--accent);
+  border-radius: 0 0.8rem 0.8rem 0;
+  background: var(--panel-soft);
+}
+.flow-types h3 {
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+}
+.flow-types p {
+  max-width: 43rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.flow-types p + p {
+  margin-top: 0.75rem;
 }
 
 .docs-shell {
@@ -476,7 +497,8 @@ pre {
   .hero h1 {
     font-size: clamp(2.08rem, 9vw, 3.6rem);
   }
-  .flow-cards {
+  .flow-cards,
+  .flow-types {
     grid-template-columns: minmax(0, 1fr);
   }
   .article dl {
