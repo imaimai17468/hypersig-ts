@@ -15,6 +15,7 @@ const locales = {
     prefix: "",
     name: "English",
     nav: "Documentation",
+    menu: "Contents",
     skip: "Skip to content",
     start: "Get started",
     description: "TypeScript tools for server-owned state and live HTML.",
@@ -33,10 +34,11 @@ const locales = {
     prefix: "ja/",
     name: "日本語",
     nav: "ドキュメント",
+    menu: "目次",
     skip: "本文へ移動",
     start: "はじめる",
     description:
-      "サーバーが管理する状態をライブ HTML で届ける TypeScript フレームワーク。",
+      "サーバーでデータが変わると画面の該当箇所を更新する TypeScript フレームワーク。",
     titles: ["概要", "はじめる", "基本概念", "API リファレンス", "デプロイ"],
     original: "Rust 版 hypersig",
     legal: "ドキュメント",
@@ -104,12 +106,16 @@ function render(
   <a class="skip" href="#main">${labels.skip}</a>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="wordmark" href="${relative(home, url(language, ""))}">hypersig<span>.ts</span></a>
+      <a class="wordmark" aria-label="hypersig.ts" href="${relative(home, url(language, ""))}">hypersig<span>.ts</span></a>
       <nav class="topnav" aria-label="${labels.nav}">${links}</nav>
       <div class="top-actions">
         <nav class="languages" aria-label="${labels.language}">${languageNav}</nav>
         <a class="github" href="${repository}">GitHub</a>
       </div>
+      <details class="mobile-menu">
+        <summary>${labels.menu}</summary>
+        <nav aria-label="${labels.nav}">${links}<a href="${repository}">GitHub</a></nav>
+      </details>
     </div>
   </header>
   ${body}

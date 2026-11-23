@@ -1,18 +1,20 @@
 <h1>API リファレンス</h1>
 <p class="lead">
-  Hono アダプターを組み込み、Action と Live View
-  が使うサーバーデータを定義します。
+  Hono に組み込み、サーバーで入力を処理して画面の一部を更新します。
 </p>
 
 <section id="adapter">
-  <h2>Hono アダプター</h2>
+  <h2>Hono への組み込み</h2>
   <dl>
     <dt><code>createHypersig(options)</code></dt>
-    <dd>公開オリジン、セッション認証、Pub/Sub の実装を指定します。</dd>
+    <dd>
+      アプリの公開 URL
+      のオリジン、ログイン状態を確認する関数、変更通知を購読先に配る仕組みを指定します。
+    </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
-      Action を登録したあとで、Action と SSE のエンドポイントを Hono
-      にマウントします。
+      操作を受け付ける URL と更新を配信する URL を、Hono
+      のルートに追加します。サーバーで実行する処理を登録してから追加します。
     </dd>
     <dt><code>hypersig.page(request, render)</code></dt>
     <dd>リクエストを認証し、ページの HTML を生成します。</dd>
@@ -20,50 +22,65 @@
 </section>
 
 <section id="actions">
-  <h2>Action</h2>
+  <h2>フォームやボタンからの操作</h2>
   <p>
-    <code>hypersig.action(name, definition)</code> に Standard Schema
-    の入出力、<code>authorize</code> の認可処理、<code>execute</code>
-    の実行処理を渡します。
+    フォーム送信などで実行するサーバー上の処理を
+    <code>Action</code> と呼びます。
+  </p>
+  <p>
+    <code>hypersig.action(name, definition)</code> で登録します。Standard Schema
+    に対応するスキーマで入力と出力を検証し、<code>authorize</code>
+    で操作する権限を確認してから <code>execute</code> を実行します。
   </p>
   <pre><code>&lt;button type="button" {...increment.bind({ counterId: "main" })}&gt;
   Increment main
 &lt;/button&gt;</code></pre>
   <p>
-    <code>action.bind(input)</code> は型付き入力をボタンに紐づけます。<code
+    <code>action.bind(input)</code> は送信する値をボタンに設定します。<code
       >action.form()</code
     >
-    は HTML フォームの属性を返します。Action の応答は処理結果を通知し、購読中の
-    View は SSE で更新します。
+    はフォームに渡す属性を返します。サーバーは処理結果を応答として返します。
+  </p>
+</section>
+
+<section id="topics">
+  <h2>データ変更の通知</h2>
+  <p>
+    通知の対象を表す名前とキーの組み合わせを
+    <code>Topic</code>
+    と呼びます。たとえば、カウンターという名前と、どのカウンターかを表す ID
+    を組み合わせます。
+  </p>
+  <pre><code>const changed = topic("counter", (id: string) =&gt; id);
+await hypersig.publish(changed(id));</code></pre>
+  <p>
+    データを保存したあとで、<code>hypersig.publish</code>
+    を使って変更を通知します。
   </p>
 </section>
 
 <section id="live-views">
-  <h2>Live View</h2>
+  <h2>変更に合わせて更新する画面の一部</h2>
+  <p>
+    関連するデータが変わったときに更新する画面の一部を
+    <code>Live View</code> と呼びます。<code>page.view(view, props)</code>
+    でページ内に配置します。
+  </p>
   <dl>
     <dt><code>key</code></dt>
-    <dd>境界内で安定した識別子を返します。</dd>
+    <dd>ページ内の同じ表示を識別できる、変わらない値を返します。</dd>
     <dt><code>subscribe</code></dt>
-    <dd>表示に影響する Topic を返します。</dd>
+    <dd>受け取る変更通知の対象を Topic で指定します。</dd>
     <dt><code>authorize</code></dt>
     <dd>現在のセッションで表示できるかを確認します。</dd>
     <dt><code>load</code></dt>
     <dd>表示するデータを取得します。</dd>
     <dt><code>render</code></dt>
-    <dd>データから HTML を生成します。</dd>
+    <dd>データから該当部分の HTML を生成します。</dd>
   </dl>
   <p>
-    <code>page.view(view, props)</code> でドキュメントに更新境界を配置します。
-  </p>
-</section>
-
-<section id="topics">
-  <h2>Topic</h2>
-  <pre><code>const changed = topic("counter", (id: string) =&gt; id);
-await hypersig.publish(changed(id));</code></pre>
-  <p>
-    状態変更を確定したあとで発行します。Topic は変更されたデータを識別します。各
-    View が購読先を定義します。
+    サーバーは、購読しているデータに変更があると、更新後の HTML
+    をブラウザに送信します。
   </p>
   <p>
     <a href="https://github.com/imaimai17468/hypersig-ts/blob/main/src/index.ts"

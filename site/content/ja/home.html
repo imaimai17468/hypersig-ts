@@ -1,10 +1,9 @@
 <section class="hero">
   <div>
-    <h1>サーバーの状態を HTML で届ける</h1>
+    <h1>サーバーのデータで画面を更新</h1>
     <p>
-      hypersig.ts は対話的な HTML のための TypeScript フレームワークです。Action
-      がサーバーの状態を変更し、変更を購読する Live View の HTML を SSE
-      で配信します。
+      hypersig.ts は TypeScript
+      のフレームワークです。たとえば、片方のタブでカウンターの値を変えると、同じカウンターを開いている別のタブにも反映されます。
     </p>
     <div class="hero-links">
       <a class="button" href="./start/">はじめる</a>
@@ -12,7 +11,7 @@
     </div>
   </div>
   <figure class="code-card">
-    <figcaption>counter.tsx</figcaption>
+    <figcaption>カウンターの変更に合わせて表示を更新する例</figcaption>
     <pre><code><span class="accent">const</span> counter = hypersig.live({
   key: () =&gt; "counter",
   subscribe: () =&gt; [counterChanged()],
@@ -21,25 +20,23 @@
   render: (value) =&gt; &lt;output&gt;{value}&lt;/output&gt;,
 });</code></pre>
     <ol class="flow">
-      <li>Action</li>
-      <li>Topic の購読</li>
-      <li>SSE で HTML 配信</li>
+      <li>データを変更</li>
+      <li>HTML を生成</li>
+      <li>画面を更新</li>
     </ol>
   </figure>
 </section>
 <section class="feature-grid" aria-label="ドキュメントの項目">
-  <a class="feature" href="./concepts/"
-    ><h2>更新境界</h2>
-    <p>データが変わったときに更新する画面領域を定義します。</p></a
-  >
-  <a class="feature" href="./reference/"
-    ><h2>型付き Action</h2>
-    <p>
-      Standard Schema で入出力を検証し、サーバーでアクセス権を確認します。
-    </p></a
-  >
-  <a class="feature" href="./deploy/"
-    ><h2>接続と再同期</h2>
-    <p>接続の復旧と、ページ登録がデプロイに与える影響を確認します。</p></a
-  >
+  <a class="feature" href="./concepts/">
+    <h2>画面の部分更新</h2>
+    <p>更新する箇所と、そのきっかけになるデータの変更を指定します。</p>
+  </a>
+  <a class="feature" href="./reference/">
+    <h2>サーバー側の入力検証</h2>
+    <p>フォームなどから送られた値を検証し、操作する権限を確認できます。</p>
+  </a>
+  <a class="feature" href="./deploy/">
+    <h2>接続が切れたとき</h2>
+    <p>再接続で最新の表示に戻る仕組みと、サーバーの設定を説明します。</p>
+  </a>
 </section>
