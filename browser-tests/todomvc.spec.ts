@@ -202,7 +202,9 @@ test("toggles a task before the server answers", async ({ page }) => {
   const toggle = await addTask(page, "Optimistic task");
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
 
+  let body: unknown;
   await page.route(toggleUrl, async (route) => {
+    body = route.request().postDataJSON();
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await route.continue();
   });
@@ -217,6 +219,7 @@ test("toggles a task before the server answers", async ({ page }) => {
     "true"
   );
   await answered;
+  expect(body).toMatchObject({ completed: true });
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
 
   await page.getByRole("button", { name: "Delete: Optimistic task" }).click();
@@ -228,11 +231,15 @@ test("reverts a toggle the server rejects", async ({ page }) => {
   await waitForLive(page);
   const toggle = await addTask(page, "Rejected task");
 
-  await page.route(toggleUrl, (route) =>
-    route.fulfill({ status: 500, body: "" })
-  );
+  await page.route(toggleUrl, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({ status: 500, body: "" });
+  });
   const answered = page.waitForResponse(toggleUrl);
   await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true", {
+    timeout: 100,
+  });
   await answered;
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(toggle).toHaveText("○");
