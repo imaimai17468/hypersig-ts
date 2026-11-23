@@ -1,7 +1,16 @@
 // The automatic JSX runtime that `<span {...props} />` compiles to.
 import { jsx } from "hono/jsx/jsx-runtime";
+import * as v from "valibot";
 import { expect, it } from "vite-plus/test";
-import { on, ref, signals, uuid } from "./index.js";
+import {
+  createHypersig,
+  createMemoryPubSub,
+  on,
+  ref,
+  signals,
+  uuid,
+} from "./index.js";
+import type { SendResult } from "./signal-runtime.js";
 import { startSignals } from "./signal-runtime.js";
 
 /**
@@ -413,4 +422,380 @@ it("writes a new uuid from the uuid option or crypto.randomUUID", () => {
   expect(fallback.read(operation.id.path)).toMatch(
     /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[\da-f]{4}-[\da-f]{12}$/
   );
+});
+
+const hypersig = createHypersig({
+  origin: "http://localhost",
+  pubsub: createMemoryPubSub(),
+  authenticate: () => ({ sessionId: "s" }),
+});
+const toggleTodo = hypersig.action("toggle-todo", {
+  input: v.object({ key: v.string(), completed: v.boolean() }),
+  output: v.object({ revision: v.number() }),
+  authorize: () => true,
+  execute: () => ({ revision: 1 }),
+});
+const bump = hypersig.action("bump", {
+  input: v.object({ count: v.number() }),
+  output: v.number(),
+  authorize: () => true,
+  execute: (input) => input.count,
+});
+const saveMemo = hypersig.action("save-memo", {
+  input: v.object({ title: v.string() }),
+  output: v.object({ revision: v.number() }),
+  authorize: () => true,
+  execute: () => ({ revision: 1 }),
+});
+
+interface SentRequest {
+  control: HTMLElement;
+  url: string;
+  body: string | FormData;
+  respond(result: SendResult): void;
+  fail(): void;
+}
+
+/** A `send` whose requests stay in flight until a test settles them. */
+function createSend() {
+  const requests: SentRequest[] = [];
+  const send = (control: HTMLElement, url: string, body: string | FormData) =>
+    new Promise<SendResult>((respond, reject) => {
+      requests.push({
+        control,
+        url,
+        body,
+        respond,
+        fail: () => reject(new Error("offline")),
+      });
+    });
+  const request = (index: number) => {
+    const sent = requests[index];
+    if (!sent) throw new Error(`No request ${index}`);
+    return sent;
+  };
+  return { requests, request, send };
+}
+
+/** A counter in a Live View whose button bumps it optimistically. */
+function createBumpPage() {
+  const counter = signals(
+    { count: 0, revision: 0, failed: false },
+    { name: "bump-counter" }
+  );
+  const c = counter.with({ count: 1, revision: 1 });
+  const created = createPage(
+    render("div", {
+      "data-hs-view": "counter",
+      children: [
+        element("p", { id: "snapshot", ...c.init() }),
+        element("span", { id: "count", ...c.bindText(c.count) }),
+        element("button", {
+          id: "bump",
+          ...on.click([
+            c.failed.set(false),
+            c.count.set(c.count.add(1)),
+            bump.call({ count: c.count }, { onError: c.failed.set(true) }),
+          ]),
+        }),
+      ],
+    })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: created.page, send: sender.send });
+  const sendSnapshot = (count: number, revision: number) => {
+    created
+      .find("#snapshot")
+      .setAttribute(
+        "data-hs-signals",
+        c.with({ count, revision }).init()["data-hs-signals"]
+      );
+    runtime.applySnapshots(created.find("[data-hs-view]"));
+  };
+  return { ...created, ...sender, runtime, c, sendSnapshot };
+}
+
+it("shows an optimistic change before the response and keeps it on success", async () => {
+  const todo = signals(
+    { completed: false, revision: 0 },
+    { name: "optimistic-todo" }
+  );
+  const t = todo.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...t.init(),
+      children: [
+        element("span", { id: "completed", ...t.bindText(t.completed) }),
+        element("span", { id: "revision", ...t.bindText(t.revision) }),
+        element("button", {
+          id: "toggle",
+          ...on.click([
+            t.completed.toggle(),
+            toggleTodo.call(
+              { key: "a", completed: t.completed },
+              { onSuccess: (output) => t.revision.set(output.get("revision")) }
+            ),
+          ]),
+        }),
+      ],
+    })
+  );
+  const { requests, request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  click("#toggle");
+  await settle();
+  expect(find("#completed").textContent).toBe("true");
+  expect(requests).toHaveLength(1);
+  expect(request(0).url).toBe(toggleTodo.url);
+  expect(request(0).control).toBe(find("#toggle"));
+  expect(request(0).body).toBe(JSON.stringify({ key: "a", completed: true }));
+
+  request(0).respond({ ok: true, data: { revision: 7 } });
+  await settle();
+  expect(runtime.read(t.completed.path)).toBe(true);
+  expect(find("#revision").textContent).toBe("7");
+});
+
+it("reverts on failure unless the server sent a newer value", async () => {
+  const { find, click, request, runtime, c, sendSnapshot } = createBumpPage();
+
+  click("#bump");
+  expect(runtime.read(c.count.path)).toBe(2);
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(c.count.path)).toBe(1);
+  expect(runtime.read(c.failed.path)).toBe(true);
+  expect(find("#count").textContent).toBe("1");
+
+  click("#bump");
+  expect(runtime.read(c.failed.path)).toBe(false);
+  sendSnapshot(5, 2);
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(c.count.path)).toBe(5);
+  expect(find("#count").textContent).toBe("5");
+});
+
+it("holds snapshots while a call is pending and applies the latest on success", async () => {
+  const { find, click, request, runtime, c, sendSnapshot } = createBumpPage();
+
+  click("#bump");
+  sendSnapshot(3, 2);
+  await settle();
+  expect(find("#count").textContent).toBe("2");
+  expect(runtime.read(c.revision.path)).toBe(2);
+  sendSnapshot(4, 3);
+  await settle();
+  expect(find("#count").textContent).toBe("2");
+
+  request(0).respond({ ok: true, data: 4 });
+  await settle();
+  expect(find("#count").textContent).toBe("4");
+  expect(runtime.read(c.failed.path)).toBe(false);
+
+  sendSnapshot(6, 4);
+  await settle();
+  expect(find("#count").textContent).toBe("6");
+});
+
+it("reverts on a network error", async () => {
+  const { click, request, runtime, c } = createBumpPage();
+
+  click("#bump");
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(c.count.path)).toBe(1);
+  expect(runtime.read(c.failed.path)).toBe(true);
+
+  click("#bump");
+  expect(runtime.read(c.count.path)).toBe(2);
+  request(1).fail();
+  await settle();
+  expect(runtime.read(c.count.path)).toBe(1);
+  expect(runtime.read(c.failed.path)).toBe(true);
+  expect(runtime.read(["$pending", bump.url])).toBe(false);
+});
+
+it("skips the whole handler while its control is pending", async () => {
+  const { click, requests, request, runtime, c } = createBumpPage();
+
+  click("#bump");
+  click("#bump");
+  expect(runtime.read(c.count.path)).toBe(2);
+  expect(requests).toHaveLength(1);
+
+  request(0).respond({ ok: true, data: 2 });
+  await settle();
+  click("#bump");
+  expect(runtime.read(c.count.path)).toBe(3);
+  expect(requests).toHaveLength(2);
+  expect(request(1).body).toBe(JSON.stringify({ count: 3 }));
+});
+
+it("tracks pending state per action URL", async () => {
+  const memo = signals({ title: "" }, { name: "pending-memo" });
+  const m = memo.with({});
+  const { page, find, click } = createPage(
+    render("form", {
+      id: "save",
+      ...saveMemo.form(),
+      children: [
+        element("input", {
+          id: "title",
+          ...m.bindAttr({ disabled: saveMemo.pending() }),
+        }),
+        element("button", {
+          id: "save-again",
+          type: "button",
+          ...on.click(saveMemo.call({ title: m.title })),
+        }),
+      ],
+    }) +
+      render("button", {
+        id: "bump",
+        ...bump.bind({ count: 1 }),
+        ...m.bindAttr({ "aria-busy": bump.pending() }),
+      })
+  );
+  const { requests, request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+  const saving = ["$pending", saveMemo.url];
+  const bumping = ["$pending", bump.url];
+
+  const form = find<HTMLFormElement>("#save");
+  void runtime.send(form, saveMemo.url, new FormData(form));
+  await settle();
+  expect(runtime.read(saving)).toBe(true);
+  expect(runtime.read(bumping)).toBeUndefined();
+  expect(find("#title").hasAttribute("disabled")).toBe(true);
+
+  expect(await runtime.send(form, saveMemo.url, new FormData(form))).toEqual({
+    ok: false,
+  });
+  expect(requests).toHaveLength(1);
+
+  const button = find("#bump");
+  void runtime.send(button, bump.url, "{}");
+  await settle();
+  expect(runtime.read(bumping)).toBe(true);
+  expect(button.getAttribute("aria-busy")).toBe("true");
+
+  click("#save-again");
+  expect(requests).toHaveLength(3);
+  request(0).respond({ ok: true, data: { revision: 2 } });
+  await settle();
+  expect(runtime.read(saving)).toBe(true);
+  request(2).respond({ ok: false });
+  await settle();
+  expect(runtime.read(saving)).toBe(false);
+  expect(find("#title").hasAttribute("disabled")).toBe(false);
+  expect(runtime.read(bumping)).toBe(true);
+
+  request(1).respond({ ok: true, data: 1 });
+  await settle();
+  expect(runtime.read(bumping)).toBe(false);
+  expect(button.getAttribute("aria-busy")).toBe("false");
+});
+
+it("clears the restored flag when the form's action succeeds", async () => {
+  const memo = signals({ title: "" }, { name: "restored-memo" });
+  const m = memo.with({});
+  const { page, find } = createPage(
+    render("form", {
+      id: "save",
+      ...saveMemo.form({ draft: true }),
+      children: element("p", {
+        id: "notice",
+        ...m.bindShow(saveMemo.draftRestored()),
+      }),
+    }) + render("p", { id: "other", ...m.bindShow(bump.draftRestored()) })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({
+    root: page,
+    send,
+    restoredActions: [saveMemo.url],
+  });
+  expect(find("#notice").hasAttribute("hidden")).toBe(false);
+  expect(find("#other").hasAttribute("hidden")).toBe(true);
+
+  const form = find<HTMLFormElement>("#save");
+  void runtime.send(form, saveMemo.url, new FormData(form));
+  request(0).respond({ ok: false });
+  await settle();
+  expect(find("#notice").hasAttribute("hidden")).toBe(false);
+
+  void runtime.send(form, saveMemo.url, new FormData(form));
+  request(1).respond({ ok: true, data: { revision: 2 } });
+  await settle();
+  expect(runtime.read(["$restored", saveMemo.url])).toBe(false);
+  expect(find("#notice").hasAttribute("hidden")).toBe(true);
+});
+
+it("runs form success statements with the action output", async () => {
+  const editor = signals(
+    { base: 0, failed: false },
+    { name: "form-result-editor" }
+  );
+  const e = editor.with({});
+  const { page, find } = createPage(
+    render("form", {
+      id: "save",
+      ...e.init(),
+      ...saveMemo.form({
+        onSuccess: (output) => [
+          e.base.set(output.get("revision")),
+          e.failed.set(false),
+        ],
+        onError: e.failed.set(true),
+      }),
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+  const form = find<HTMLFormElement>("#save");
+
+  const failed = runtime.send(form, saveMemo.url, new FormData(form));
+  request(0).respond({ ok: false });
+  expect(await failed).toEqual({ ok: false });
+  expect(runtime.read(e.failed.path)).toBe(true);
+
+  const saved = runtime.send(form, saveMemo.url, new FormData(form));
+  request(1).respond({ ok: true, data: { revision: 3 } });
+  expect(await saved).toEqual({ ok: true, data: { revision: 3 } });
+  expect(runtime.read(e.base.path)).toBe(3);
+  expect(runtime.read(e.failed.path)).toBe(false);
+});
+
+it("reverts only the paths written since the previous call, to their value before the handler", async () => {
+  const both = signals({ count: 1, open: false }, { name: "two-calls" });
+  const b = both.with({});
+  const { page, click } = createPage(
+    render("button", {
+      id: "both",
+      ...b.init(),
+      ...on.click([
+        b.count.set(b.count.add(1)),
+        b.count.set(b.count.add(1)),
+        bump.call({ count: b.count }),
+        b.open.toggle(),
+        saveMemo.call({ title: "t" }),
+      ]),
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  click("#both");
+  expect(runtime.read(b.count.path)).toBe(3);
+  expect(runtime.read(b.open.path)).toBe(true);
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(b.open.path)).toBe(false);
+  expect(runtime.read(b.count.path)).toBe(3);
+
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(b.count.path)).toBe(1);
 });

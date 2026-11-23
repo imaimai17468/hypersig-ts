@@ -1,9 +1,9 @@
 import DOMPurify from "dompurify";
 import { Idiomorph } from "idiomorph";
 import { preserveDrafts, restoreDrafts } from "./drafts.js";
-import { events } from "./protocol.js";
+import { events, isJsonValue } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
-import type { SignalRuntime } from "./signal-runtime.js";
+import type { SendResult, SignalRuntime } from "./signal-runtime.js";
 import { startSignals } from "./signal-runtime.js";
 
 function isUpdate(value: unknown): value is HtmlUpdate {
@@ -234,15 +234,17 @@ function updateViews(
   synchronize();
 }
 
-function handleActions(stream: URL) {
-  const pending = new WeakSet<HTMLElement>();
+/**
+ * Creates the `send` the signal runtime uses for every Action. It shows the
+ * control as pending and reports failures in the error outlets.
+ */
+function createActionSender(stream: URL) {
   const actionPath = new URL("../actions/", stream).pathname;
-  async function send(
+  return async function send(
     control: HTMLElement,
     target: string,
     body: string | FormData
-  ) {
-    if (pending.has(control)) return false;
+  ): Promise<SendResult> {
     const outlet =
       control.closest("form")?.querySelector("[data-hs-error]") ??
       document.querySelector("[data-hs-error]");
@@ -251,7 +253,6 @@ function handleActions(stream: URL) {
       ?.querySelectorAll<HTMLElement>("[data-hs-field-error]");
     if (outlet) outlet.textContent = "";
     for (const field of fields ?? []) field.textContent = "";
-    pending.add(control);
     control.setAttribute("data-hs-pending", "");
     let status = 0;
     let failure: unknown;
@@ -275,12 +276,15 @@ function handleActions(stream: URL) {
         redirect: "error",
       });
       if (response.ok) {
+        const result: unknown = await response.json().catch(() => null);
+        const data =
+          result &&
+          typeof result === "object" &&
+          "data" in result &&
+          isJsonValue(result.data)
+            ? result.data
+            : null;
         if (control.hasAttribute("data-hs-action-result")) {
-          const result: unknown = await response.json().catch(() => null);
-          const data =
-            result && typeof result === "object" && "data" in result
-              ? result.data
-              : undefined;
           control.dispatchEvent(
             new CustomEvent("hypersig:action-success", {
               bubbles: true,
@@ -288,14 +292,13 @@ function handleActions(stream: URL) {
             })
           );
         }
-        return true;
+        return { ok: true, data };
       }
       status = response.status;
       failure = await response.json().catch(() => null);
     } catch {
       // A status of zero represents a network error.
     } finally {
-      pending.delete(control);
       control.removeAttribute("data-hs-pending");
     }
     let message = status
@@ -346,9 +349,12 @@ function handleActions(stream: URL) {
         detail: { status },
       })
     );
-    return false;
-  }
+    return { ok: false };
+  };
+}
 
+/** Sends native-looking forms and `bind` buttons through the signal runtime. */
+function handleActions(runtime: SignalRuntime) {
   async function sendForm(
     form: HTMLFormElement,
     target: string,
@@ -356,7 +362,7 @@ function handleActions(stream: URL) {
   ) {
     const body = new FormData(form, submitter);
     if (!form.hasAttribute("data-hs-reset-on-success")) {
-      await send(form, target, body);
+      await runtime.send(form, target, body);
       return;
     }
 
@@ -368,7 +374,7 @@ function handleActions(stream: URL) {
     form.addEventListener("input", markEdited, { signal: listeners.signal });
     form.addEventListener("change", markEdited, { signal: listeners.signal });
     try {
-      if ((await send(form, target, body)) && !edited) {
+      if ((await runtime.send(form, target, body)).ok && !edited) {
         HTMLFormElement.prototype.reset.call(form);
       }
     } finally {
@@ -385,7 +391,7 @@ function handleActions(stream: URL) {
     const input = button?.dataset.hsInput;
     if (!button || !target || input === undefined) return;
     event.preventDefault();
-    void send(button, target, input);
+    void runtime.send(button, target, input);
   });
 
   document.addEventListener("submit", (event) => {
@@ -410,8 +416,13 @@ if (endpoint) {
   const url = new URL(endpoint, location.href);
   if (url.origin === location.origin) {
     const scope = runtime?.dataset.hsDraftScope;
-    restoreDrafts(scope);
-    updateViews(url, scope, startSignals({ root: document }));
-    handleActions(url);
+    const restoredActions = restoreDrafts(scope);
+    const signalRuntime = startSignals({
+      root: document,
+      send: createActionSender(url),
+      restoredActions,
+    });
+    updateViews(url, scope, signalRuntime);
+    handleActions(signalRuntime);
   }
 }

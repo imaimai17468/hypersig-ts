@@ -12,14 +12,23 @@ import {
   signalAttributes,
 } from "./protocol.js";
 
+/** `data` is the `data` of the Action's JSON response, or `null`. */
+export type SendResult = { ok: true; data: JsonValue } | { ok: false };
+
 export interface SignalRuntimeOptions {
   root: Document;
-  /** Sends an Action from a `call` statement. Not used yet. */
+  /**
+   * Posts an Action for `control`. Every Action the runtime tracks goes
+   * through it: `call` statements and `SignalRuntime.send`. Without it, each
+   * Action fails.
+   */
   send?(
     control: HTMLElement,
     url: string,
-    body: string
-  ): Promise<{ ok: true; data: JsonValue } | { ok: false }>;
+    body: string | FormData
+  ): Promise<SendResult>;
+  /** Action URLs of forms whose draft was restored before the runtime started. */
+  restoredActions?: readonly string[];
   /** Creates the value of `uuid()`. Defaults to `crypto.randomUUID`. */
   uuid?(): string;
 }
@@ -38,6 +47,18 @@ export interface SignalRuntime {
    * binding in the document is evaluated again after a microtask.
    */
   applySnapshots(view: HTMLElement): void;
+  /**
+   * Sends a form or a button's Action. While it is in flight,
+   * `["$pending", url]` is `true`. A success sets `["$restored", url]` to
+   * `false`. The control's `data-hs-on-success` statements run with the
+   * output, or its `data-hs-on-error` statements run on failure. A control
+   * with a request in flight is not sent again and gets `{ ok: false }`.
+   */
+  send(
+    control: HTMLElement,
+    url: string,
+    body: string | FormData
+  ): Promise<SendResult>;
   write(path: SignalPath, value: JsonValue): void;
   read(path: SignalPath): JsonValue | undefined;
 }
@@ -50,6 +71,21 @@ interface ValueBinding {
 }
 
 type Field = HTMLInputElement | HTMLTextAreaElement;
+
+/** A path a handler wrote before a `call`, with the value it replaced. */
+interface OptimisticWrite {
+  path: SignalPath;
+  original: JsonValue | undefined;
+}
+
+/**
+ * Counts the calls holding a path. `latest` is the newest snapshot value that
+ * arrived while held, or `undefined` when none did.
+ */
+interface Hold {
+  count: number;
+  latest: JsonValue | undefined;
+}
 
 const viewSelector = "[data-hs-view]";
 const booleanAttributeNames: ReadonlySet<string> = new Set(booleanAttributes);
@@ -65,6 +101,14 @@ function isField(element: Element): element is Field {
 
 function isInputKind(value: unknown): value is InputKind {
   return value === "string" || value === "number" || value === "boolean";
+}
+
+/** Adds `delta` to the count for `key` and returns the new count. */
+function addCount<K>(counts: Map<K, number>, key: K, delta: 1 | -1): number {
+  const count = (counts.get(key) ?? 0) + delta;
+  if (count) counts.set(key, count);
+  else counts.delete(key);
+  return count;
 }
 
 /** Builtin paths start with `$` and only the runtime writes them. */
@@ -146,14 +190,19 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     read,
     uuid: () => options.uuid?.() ?? crypto.randomUUID(),
   };
+  const holds = new Map<string, Hold>();
+  const sendingControls = new Map<HTMLElement, number>();
+  const sendingUrls = new Map<string, number>();
   let isRenderQueued = false;
 
   function read(path: SignalPath): JsonValue | undefined {
     return store.get(JSON.stringify(path));
   }
 
-  function write(path: SignalPath, value: JsonValue) {
-    store.set(JSON.stringify(path), value);
+  function write(path: SignalPath, value: JsonValue | undefined) {
+    const key = JSON.stringify(path);
+    if (value === undefined) store.delete(key);
+    else store.set(key, value);
     scheduleRender();
   }
 
@@ -170,10 +219,17 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (isAppPath(path)) write(path, value);
   }
 
-  /** Skips the path in `editingKey`, which a focused input is editing. */
+  /**
+   * Skips the path in `editingKey`, which a focused input is editing, and
+   * keeps the value of a held path until its call ends.
+   */
   function loadSnapshot(element: Element, editingKey?: string) {
     for (const [path, value] of readSnapshot(element)) {
-      if (JSON.stringify(path) !== editingKey) writeFromApp(path, value);
+      const key = JSON.stringify(path);
+      if (key === editingKey) continue;
+      const hold = holds.get(key);
+      if (hold) hold.latest = value;
+      else writeFromApp(path, value);
     }
   }
 
@@ -256,21 +312,103 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
   }
 
-  function run(stmts: readonly StmtNode[]) {
+  function isSending(control: HTMLElement): boolean {
+    return sendingControls.has(control);
+  }
+
+  /**
+   * Holds the optimistic writes while the Action is in flight. On failure,
+   * each path goes back to the newest held snapshot or else to its original
+   * value. On success, only a held snapshot is applied.
+   */
+  async function sendAction(
+    control: HTMLElement,
+    url: string,
+    body: string | FormData,
+    onSuccess: readonly StmtNode[],
+    onError: readonly StmtNode[],
+    writes: readonly OptimisticWrite[] = []
+  ): Promise<SendResult> {
+    const pendingPath = ["$pending", url];
+    addCount(sendingControls, control, 1);
+    addCount(sendingUrls, url, 1);
+    write(pendingPath, true);
+    for (const { path } of writes) {
+      const key = JSON.stringify(path);
+      const hold = holds.get(key);
+      if (hold) hold.count += 1;
+      else holds.set(key, { count: 1, latest: undefined });
+    }
+    let result: SendResult = { ok: false };
+    try {
+      if (options.send) result = await options.send(control, url, body);
+    } catch {
+      // A rejected send is a failed request.
+    }
+    addCount(sendingControls, control, -1);
+    write(pendingPath, addCount(sendingUrls, url, -1) > 0);
+    for (const { path, original } of writes) {
+      const key = JSON.stringify(path);
+      const hold = holds.get(key);
+      const latest = hold?.latest;
+      if (hold && --hold.count === 0) holds.delete(key);
+      if (!result.ok) write(path, latest ?? original);
+      else if (latest !== undefined) write(path, latest);
+    }
+    if (result.ok) {
+      write(["$restored", url], false);
+      run(onSuccess, control, result.data);
+    } else {
+      run(onError, control);
+    }
+    return result;
+  }
+
+  /**
+   * `control` is the element whose handler runs, and sends its `call`
+   * statements. A `call` takes the paths written since the previous one.
+   */
+  function run(
+    stmts: readonly StmtNode[],
+    control: HTMLElement,
+    output: JsonValue = null
+  ) {
+    const runContext = { ...context, output };
+    let writes = new Map<string, OptimisticWrite>();
+    const writeOptimistic = (path: SignalPath, value: JsonValue) => {
+      if (!isAppPath(path)) return;
+      const key = JSON.stringify(path);
+      if (!writes.has(key)) writes.set(key, { path, original: read(path) });
+      write(path, value);
+    };
     for (const stmt of stmts) {
       switch (stmt[0]) {
         case "set":
-          writeFromApp(stmt[1], evaluate(stmt[2], context));
+          writeOptimistic(stmt[1], evaluate(stmt[2], runContext));
           break;
         case "toggle":
-          writeFromApp(stmt[1], !isTruthy(read(stmt[1]) ?? null));
+          writeOptimistic(stmt[1], !isTruthy(read(stmt[1]) ?? null));
           break;
         case "focus":
           focusRef(stmt[1]);
           break;
-        case "call":
-          // Action calls do nothing until the runtime can send them.
+        case "call": {
+          const [, url, input, onSuccess, onError] = stmt;
+          const body: Record<string, JsonValue> = {};
+          for (const [field, node] of Object.entries(input)) {
+            body[field] = evaluate(node, runContext);
+          }
+          void sendAction(
+            control,
+            url,
+            JSON.stringify(body),
+            onSuccess,
+            onError,
+            [...writes.values()]
+          );
+          writes = new Map();
           break;
+        }
       }
     }
   }
@@ -279,6 +417,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     `[${signalAttributes.signals}]`
   )) {
     loadSnapshot(element);
+  }
+  for (const url of options.restoredActions ?? []) {
+    write(["$restored", url], true);
   }
   for (const element of root.querySelectorAll(`[${signalAttributes.bind}]`)) {
     const binding = readValueBinding(element);
@@ -294,8 +435,12 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       const target = event.target;
       if (!isElement(target)) return;
       if (type !== "click" && isField(target)) writeField(target);
-      const handler = target.closest(`[${attribute}]`);
-      if (handler) run(readStmts(handler, attribute));
+      const handler = target.closest<HTMLElement>(`[${attribute}]`);
+      // A click on a control whose Action is in flight runs none of its
+      // statements, so the optimistic writes are not applied twice.
+      if (handler && !(type === "click" && isSending(handler))) {
+        run(readStmts(handler, attribute), handler);
+      }
     });
   }
 
@@ -312,6 +457,16 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       // A morph resets bindings to the server HTML, so render them again even
       // when no snapshot changed the store.
       scheduleRender();
+    },
+    send(control, url, body) {
+      if (isSending(control)) return Promise.resolve({ ok: false });
+      return sendAction(
+        control,
+        url,
+        body,
+        readStmts(control, signalAttributes.onSuccess),
+        readStmts(control, signalAttributes.onError)
+      );
     },
     write,
     read,
