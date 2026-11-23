@@ -1,11 +1,11 @@
 <section class="hero">
   <div class="hero-intro">
-    <p class="hero-category">A TypeScript framework</p>
-    <h1>Render from<br />committed state</h1>
+    <p class="hero-category">A TypeScript web framework</p>
+    <h1>Stay in sync<br />with the server</h1>
     <p class="hero-summary">
-      Data changes are committed on the server. You specify which changes to
-      announce and which parts of the page subscribe. The browser applies the
-      HTML rendered from the committed data.
+      hypersig.ts keeps the page in sync with committed server state. When data
+      changes, the server renders HTML for the affected parts and sends it to
+      browsers that have them open.
     </p>
     <div class="hero-links">
       <a class="button" href="./start/">Run the example</a>
@@ -13,62 +13,42 @@
     </div>
   </div>
 
-  <figure class="update-example">
-    <figcaption>Two tabs showing the same counter</figcaption>
-    <div class="example-step">
-      <span class="example-origin">Tab A</span>
-      <span>Increment the shared counter</span>
-    </div>
-    <div class="example-step example-server">
-      <span class="example-origin">Server</span>
-      <span
-        >Change the value from <strong>24</strong> to <strong>25</strong></span
-      >
-    </div>
-    <div class="example-tabs">
-      <div class="example-tab">
-        <p>Tab A</p>
-        <dl>
-          <div class="updated-counter">
-            <dt>Shared</dt>
-            <dd>25</dd>
-          </div>
-          <div>
-            <dt>Separate</dt>
-            <dd>7</dd>
-          </div>
-        </dl>
-      </div>
-      <div class="example-tab">
-        <p>Tab B</p>
-        <dl>
-          <div class="updated-counter">
-            <dt>Shared</dt>
-            <dd>25</dd>
-          </div>
-          <div>
-            <dt>Separate</dt>
-            <dd>7</dd>
-          </div>
-        </dl>
-      </div>
-    </div>
-    <p class="example-caption">
-      Announcing the change updates the subscribed counter in both tabs.
+  <section class="freshness" aria-labelledby="freshness-title">
+    <h2 id="freshness-title">A page can go stale at any time</h2>
+    <p>
+      The page displays data as it was when the server read it. If another write
+      commits in the meantime, that data is already stale when it appears.
     </p>
-  </figure>
+    <p>
+      The same update mechanism handles changes after a save, out-of-order
+      updates, and changes made while the browser was offline.
+    </p>
+  </section>
 </section>
 
-<section class="rationale" aria-labelledby="rationale-title">
-  <div>
-    <h2 id="rationale-title">Where displayed values are decided</h2>
-    <p>
-      If an application keeps separate copies of its order list and totals in
-      the browser, saving an order also means deciding how to refresh each copy.
-      hypersig.ts renders those views from the saved data and sends them to
-      their subscribers. The same process applies to a change made by the
-      current user, another user, or a scheduled job.
-    </p>
-  </div>
-  <a href="./why/">Read the design rationale</a>
+<section class="update-flow" aria-labelledby="update-flow-title">
+  <h2 id="update-flow-title">How a change reaches the page</h2>
+  <ol class="flow-cards" role="list">
+    <li>
+      <h3>Commit changes on the server</h3>
+      <p>
+        The server validates input and saves the data. Once the write commits,
+        application code announces what changed.
+      </p>
+    </li>
+    <li>
+      <h3>Update the affected parts</h3>
+      <p>
+        You declare which changes each part of the page receives. The server
+        renders HTML for those parts and the browser applies it.
+      </p>
+    </li>
+    <li>
+      <h3>Resync after reconnecting</h3>
+      <p>
+        The browser skips older updates. When it reconnects, it receives HTML
+        rendered from the current server state.
+      </p>
+    </li>
+  </ol>
 </section>

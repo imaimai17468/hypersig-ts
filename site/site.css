@@ -225,127 +225,50 @@ pre {
   color: var(--text);
   border-color: var(--line);
 }
-.update-example {
-  min-width: 0;
-  margin: 0;
-  padding: clamp(1.15rem, 2.7vw, 2rem);
+.freshness {
+  padding: clamp(1.3rem, 3vw, 2.35rem);
   border: 1px solid var(--line);
-  border-radius: 1rem;
-  background: var(--panel);
-}
-.update-example figcaption {
-  margin-bottom: 0.85rem;
-  color: var(--text);
-  font-size: 0.91rem;
-  font-weight: 680;
-}
-.example-step {
-  display: grid;
-  grid-template-columns: 5rem minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 0.4rem;
-  padding: 0.55rem 0;
-  font-size: 0.85rem;
-}
-.example-origin {
-  color: var(--muted);
-}
-.example-server {
-  border-top: 1px solid var(--line);
-}
-.example-tabs {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
-  margin-top: 1.5rem;
-}
-.example-tabs::before,
-.example-tabs::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-}
-.example-tabs::before {
-  top: -0.55rem;
-  left: 25%;
-  width: 50%;
-  height: 0.55rem;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 0.35rem 0.35rem 0 0;
-}
-.example-tabs::after {
-  top: -1.05rem;
-  left: 50%;
-  height: 0.55rem;
-  border-left: 1px solid var(--line);
-}
-.example-tab {
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 0.58rem;
-}
-.example-tab > p {
-  padding: 0.42rem 0.67rem;
+  border-radius: 0.95rem;
   background: var(--panel-soft);
-  font-size: 0.73rem;
-  font-weight: 640;
 }
-.example-tab dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0;
+.freshness h2 {
+  max-width: 24ch;
+  font-size: clamp(1.35rem, 2.3vw, 1.9rem);
+  text-wrap: balance;
 }
-.example-tab dl > div {
-  min-width: 0;
-  padding: 0.6rem 0.55rem 0.7rem;
-}
-.example-tab dt {
+.freshness p {
+  margin-top: 0.85rem;
   color: var(--muted);
-  font-size: 0.69rem;
+  font-size: 0.95rem;
 }
-.example-tab dd {
-  margin: 0;
-  color: var(--muted);
-  font-size: clamp(1.24rem, 2.2vw, 1.65rem);
-  font-weight: 680;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.35;
-}
-.updated-counter {
-  background: var(--accent-soft);
-}
-.updated-counter dt,
-.updated-counter dd {
-  color: var(--accent);
-}
-.example-caption {
-  margin-top: 0.9rem;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-.rationale {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.3rem 2rem;
+.update-flow {
   padding-top: 1.8rem;
   border-top: 1px solid var(--line);
 }
-.rationale h2 {
+.update-flow h2 {
   font-size: clamp(1.45rem, 2.2vw, 1.85rem);
 }
-.rationale p {
-  max-width: 46rem;
-  margin-top: 0.65rem;
-  color: var(--muted);
-  font-size: 0.94rem;
+.flow-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0 0;
+  padding: 0;
+  list-style: none;
 }
-.rationale > a {
-  flex: none;
+.flow-cards li {
+  padding: clamp(1.1rem, 2.5vw, 1.65rem);
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--panel);
+}
+.flow-cards h3 {
+  font-size: 1.08rem;
+}
+.flow-cards p {
+  margin-top: 0.6rem;
+  color: var(--muted);
   font-size: 0.91rem;
-  font-weight: 640;
 }
 
 .docs-shell {
@@ -458,8 +381,8 @@ pre {
     gap: 2.25rem;
     padding-top: 3.5rem;
   }
-  .update-example {
-    max-width: 35rem;
+  .freshness {
+    max-width: 40rem;
   }
 }
 @media (max-width: 680px) {
@@ -535,17 +458,8 @@ pre {
   .hero h1 {
     font-size: clamp(2.08rem, 9vw, 3.6rem);
   }
-  .rationale {
-    flex-direction: column;
-  }
-  .example-step {
-    grid-template-columns: 4.15rem minmax(0, 1fr);
-  }
-  .example-tab dl > div {
-    padding-inline: 0.43rem;
-  }
-  .example-tab dt {
-    font-size: 0.64rem;
+  .flow-cards {
+    grid-template-columns: minmax(0, 1fr);
   }
   .article dl {
     grid-template-columns: minmax(0, 1fr);

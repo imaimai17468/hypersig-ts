@@ -1,10 +1,11 @@
 <section class="hero">
   <div class="hero-intro">
-    <p class="hero-category">TypeScript フレームワーク</p>
-    <h1 lang="en">Render from<br />committed state</h1>
+    <p class="hero-category">TypeScript の Web フレームワーク</p>
+    <h1 lang="en">Stay in sync<br />with the server</h1>
     <p class="hero-summary">
-      データはサーバーで確定します。開発者が、どの変更を通知し、画面のどこがその通知を受け取るかをコードに書きます。ブラウザはサーバーで生成した
-      HTML を受け取り、該当箇所を更新します。
+      hypersig.ts は、サーバーで確定したデータに画面を同期し続けるための Web
+      フレームワークです。データが変わると、サーバーが該当箇所の HTML
+      を生成し、開いている画面へ送ります。
     </p>
     <div class="hero-links">
       <a class="button" href="./start/">サンプルを動かす</a>
@@ -12,57 +13,39 @@
     </div>
   </div>
 
-  <figure class="update-example">
-    <figcaption>二つのタブで同じカウンターを表示する例</figcaption>
-    <div class="example-step">
-      <span class="example-origin">タブ A</span>
-      <span>共有カウンターを増やす</span>
-    </div>
-    <div class="example-step example-server">
-      <span class="example-origin">サーバー</span>
-      <span>値を <strong>24</strong> から <strong>25</strong> に更新</span>
-    </div>
-    <div class="example-tabs">
-      <div class="example-tab">
-        <p>タブ A</p>
-        <dl>
-          <div class="updated-counter">
-            <dt>共有</dt>
-            <dd>25</dd>
-          </div>
-          <div>
-            <dt>独立</dt>
-            <dd>7</dd>
-          </div>
-        </dl>
-      </div>
-      <div class="example-tab">
-        <p>タブ B</p>
-        <dl>
-          <div class="updated-counter">
-            <dt>共有</dt>
-            <dd>25</dd>
-          </div>
-          <div>
-            <dt>独立</dt>
-            <dd>7</dd>
-          </div>
-        </dl>
-      </div>
-    </div>
-    <p class="example-caption">
-      共有カウンターの変更を通知すると、両方のタブで、その通知を受け取る箇所が更新されます。
+  <section class="freshness" aria-labelledby="freshness-title">
+    <h2 id="freshness-title">表示はいつでも古くなりうる</h2>
+    <p>
+      画面に届くのは、サーバーが読み取った時点のデータです。表示した直後でも、その間に保存が確定していれば、表示はもう古くなっています。
     </p>
-  </figure>
+    <p>
+      保存後の再取得、応答の順序、切断中に起きた変更への対応を、同じ仕組みで扱います。
+    </p>
+  </section>
 </section>
 
-<section class="rationale" aria-labelledby="rationale-title">
-  <div>
-    <h2 id="rationale-title">画面の値がどこで決まるか</h2>
-    <p>
-      注文を更新したとき、ブラウザにある注文一覧や集計も別々に直す構成では、どの値が最新かを画面側で管理する必要があります。hypersig.ts
-      では、サーバーが保存したデータから一覧や集計を描画し、登録された表示先に送ります。操作した人、別の利用者、定期処理のどれが変更した場合も、この流れは同じです。
-    </p>
-  </div>
-  <a href="./why/">この設計で減らすものを読む</a>
+<section class="update-flow" aria-labelledby="update-flow-title">
+  <h2 id="update-flow-title">変更が画面に届くまで</h2>
+  <ol class="flow-cards" role="list">
+    <li>
+      <h3>サーバーで変更を確定する</h3>
+      <p>
+        サーバーで入力を検証し、データを保存します。保存が確定したら、何が変わったかをアプリのコードで明示的に通知します。
+      </p>
+    </li>
+    <li>
+      <h3>関係する箇所だけを更新する</h3>
+      <p>
+        開発者は、画面の各部分がどの変更を受け取るかを指定します。サーバーは指定に従って
+        HTML を生成し、ブラウザは該当箇所に反映します。
+      </p>
+    </li>
+    <li>
+      <h3>接続が戻ったら同期する</h3>
+      <p>
+        ブラウザは古い更新を適用せず、再接続時にはサーバーの最新状態から生成した
+        HTML を受け取ります。
+      </p>
+    </li>
+  </ol>
 </section>

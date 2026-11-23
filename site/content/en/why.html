@@ -1,17 +1,18 @@
 <h1>Why hypersig</h1>
 <p class="lead">
-  The path from saving data to updating a page should be traceable in the server
-  code. hypersig.ts defines that path from a committed change to the HTML
-  applied to the affected parts of the page.
+  The data a browser receives reflects the moment the server read it. A write
+  that commits afterward can leave the page stale. hypersig.ts uses committed
+  changes on the server to drive page updates.
 </p>
 
 <section id="copies">
-  <h2>Keeping copies of server data in the browser</h2>
+  <h2>How a page goes stale</h2>
   <p>
-    Consider a browser that fetches an order list and stores the count and total
-    separately. After saving an order, the application has to refresh those
-    values and handle the case where an earlier request comes back late. It also
-    needs a way to learn about a change made by another user or a scheduled job.
+    An order list can already be stale when it arrives if an order was added
+    after the server read it. When a user saves an order, the application needs
+    to decide when to reload the list and totals and what to do if an older
+    response arrives late. Scheduled jobs and dropped connections raise the same
+    question of how to bring the page up to date.
   </p>
   <p>
     Focus and unfinished input are local to the browser. A separate copy of
@@ -43,7 +44,22 @@
 </section>
 
 <section id="remix-frames">
-  <h2>Updating one part of the page</h2>
+  <h2>Designs for loading data and updating views</h2>
+  <p>
+    With htmx, an HTML element specifies where to send a request and where to
+    put the HTML that comes back. The server renders what the browser displays,
+    so the browser needs less code to turn the same data into UI.
+    <a href="https://htmx.org/docs/#introduction">htmx basics</a>
+  </p>
+  <p>
+    TanStack Start lets you put data loading on a route and define which
+    functions run on the server. Types connect URL search parameters to the data
+    and components that use them.
+    <a
+      href="https://tanstack.com/start/latest/docs/framework/react/start-vs-nextjs"
+      >TanStack Start design</a
+    >
+  </p>
   <p>
     Remix 3 can place HTML from another URL in a region called a
     <code>Frame</code>. A link, a form, or an explicit reload can select which

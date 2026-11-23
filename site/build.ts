@@ -19,7 +19,7 @@ const locales = {
     skip: "Skip to content",
     start: "Get started",
     description:
-      "A TypeScript framework for updating views from committed server state.",
+      "A TypeScript web framework for keeping pages in sync with committed server state.",
     titles: [
       "Overview",
       "Get started",
@@ -40,7 +40,7 @@ const locales = {
     skip: "本文へ移動",
     start: "はじめる",
     description:
-      "サーバーで確定したデータをもとに、関連する画面を更新する TypeScript フレームワーク。",
+      "サーバーで確定したデータに画面を同期し続けるための TypeScript の Web フレームワーク。",
     titles: [
       "概要",
       "はじめる",
