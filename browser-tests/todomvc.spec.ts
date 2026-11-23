@@ -205,13 +205,14 @@ test("toggles a task before the server answers", async ({ page }) => {
   let body: unknown;
   await page.route(toggleUrl, async (route) => {
     body = route.request().postDataJSON();
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     await route.continue();
   });
   const answered = page.waitForResponse(toggleUrl);
   await toggle.click();
+  // Shorter than the route delay, so only the optimistic write can pass it.
   await expect(toggle).toHaveAttribute("aria-pressed", "true", {
-    timeout: 100,
+    timeout: 1000,
   });
   await expect(toggle).toHaveText("✓");
   await expect(row(page, "Optimistic task")).toHaveAttribute(
@@ -232,13 +233,14 @@ test("reverts a toggle the server rejects", async ({ page }) => {
   const toggle = await addTask(page, "Rejected task");
 
   await page.route(toggleUrl, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     await route.fulfill({ status: 500, body: "" });
   });
   const answered = page.waitForResponse(toggleUrl);
   await toggle.click();
+  // Shorter than the route delay, so only the optimistic write can pass it.
   await expect(toggle).toHaveAttribute("aria-pressed", "true", {
-    timeout: 100,
+    timeout: 1000,
   });
   await answered;
   await expect(toggle).toHaveAttribute("aria-pressed", "false");

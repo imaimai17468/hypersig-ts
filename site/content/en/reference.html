@@ -169,6 +169,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>style</code> in the type and at run time.
       <code>bindValue</code> binds a text, number, or checkbox input to a
       <code>string</code>, <code>number</code>, or <code>boolean</code> signal.
+      It also binds a hidden input, so a signal can decide the value a form
+      submits. The runtime reads a bound hidden input when it starts, so a value
+      restored from a draft replaces the rendered one.
     </dd>
     <dt>Expressions</dt>
     <dd>
@@ -184,9 +187,11 @@ const e = editor.with({ base: draft.revision });</code></pre>
     <dd>
       Also <code>on.input</code> and <code>on.change</code>. Runs statements in
       order: <code>signal.set(expr)</code>, <code>signal.toggle()</code> for a
-      boolean, <code>ref.focus()</code>, and <code>action.call(input)</code>.
-      <code>ref({ name })</code> names an element with
-      <code>{...ref.attr()}</code> so that <code>focus()</code> can find it.
+      boolean, <code>draftRef.focus()</code>, and
+      <code>action.call(input)</code>.
+      <code>const draftRef = ref({ name })</code> creates a ref, and
+      <code>{...draftRef.attr()}</code> names the element that
+      <code>draftRef.focus()</code> moves focus to.
     </dd>
     <dt><code>action.call(input, options)</code></dt>
     <dd>

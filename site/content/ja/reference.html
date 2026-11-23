@@ -153,7 +153,10 @@ const e = editor.with({ base: draft.revision });</code></pre>
       は、テキスト、数値、チェックボックスの入力欄を、<code>string</code>、<code>number</code>、<code
         >boolean</code
       >
-      の Signal に結びます。
+      の Signal に結びます。hidden
+      の入力欄にも結べるので、フォームが送信する値を Signal
+      で決められます。ランタイムは起動時に hidden
+      の入力欄の値を読むので、下書きから復元した値が描画した値より優先されます。
     </dd>
     <dt>式</dt>
     <dd>
@@ -170,12 +173,13 @@ const e = editor.with({ base: draft.revision });</code></pre>
     <dd>
       <code>on.input</code> と <code>on.change</code>
       もあります。文を順に実行します。使える文は、<code>signal.set(expr)</code>、真偽値の
-      <code>signal.toggle()</code>、<code>ref.focus()</code>、<code
+      <code>signal.toggle()</code>、<code>draftRef.focus()</code>、<code
         >action.call(input)</code
       >
-      です。<code>ref({ name })</code> が返す
-      <code>{...ref.attr()}</code> を要素に付けると、<code>focus()</code>
-      がその要素を見つけます。
+      です。<code>const draftRef = ref({ name })</code> で ref を作り、<code
+        >{...draftRef.attr()}</code
+      >
+      を付けた要素に <code>draftRef.focus()</code> がフォーカスを移します。
     </dd>
     <dt><code>action.call(input, options)</code></dt>
     <dd>
