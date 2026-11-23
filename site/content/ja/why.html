@@ -4,28 +4,31 @@
 </p>
 
 <p>
-  まず、これまでのフレームワークがデータの再取得や表示更新をどう扱ってきたかを見ます。そのうえで、hypersig.ts
-  がサーバーで確定した変更を起点に、開いている画面をどう同期するかを説明します。
+  既存のフレームワークが表示の同期をどう扱い、どんな判断がアプリ側に残るのかを見ます。そのうえで、hypersig.ts
+  がその負担を減らすために何を引き受けるかを説明します。
 </p>
 <nav class="article-contents" aria-label="このページの目次">
   <ol>
     <li>
-      <a href="#existing-frameworks">これまでのフレームワークが解消したこと</a>
+      <a href="#existing-frameworks">同期と型に残る課題</a>
     </li>
     <li><a href="#hypersig-design">hypersig の設計</a></li>
   </ol>
 </nav>
 
 <section class="design-part" id="existing-frameworks">
-  <h2>これまでのフレームワークが解消したこと</h2>
+  <h2>同期と型に残る課題</h2>
   <section id="copies">
-    <h3>画面が古くなる理由</h3>
+    <h3>React 系の状態管理と更新の最適化</h3>
     <p>
-      注文一覧は、取得した直後でも、その間に注文が追加されていれば古くなっています。画面から注文を保存するときは、一覧や集計をいつ取り直すか、古い応答が遅れて届いたときにどう扱うかも決める必要があります。定期処理でデータが変わったときや、通信が切れたときにも同じ問題が起きます。
+      React
+      は、入力フォームやエディタなど、ブラウザ内の状態に応じて表示を更新するのに向いています。サーバーのデータもブラウザで保持する構成では、たとえば注文を取り消したときに、詳細、注文一覧、件数のどれが古くなるかをアプリ側で把握する必要があります。
     </p>
     <p>
-      フォームの入力やフォーカスはブラウザで管理できます。共有する業務データもブラウザに保存すると、そのコピーが最新かどうかを画面ごとに管理する負担が生じます。React
-      のドキュメントでも、すでにある値から計算できる値を別の状態に持つと同期の処理が増えることや、データ取得の応答順に注意が必要なことを説明しています。
+      <strong
+        >同期を正しく保ちながら、再取得や再描画を絞ることが難しくなります。</strong
+      >
+      更新を絞るには、どの値を保持し、どの値を計算し直すかを見極め、取得、保存、描画の関係を追う必要があります。こうした判断は経験に左右されます。コーディングエージェントも、ひとつのコンポーネントを読むだけでは、別の画面が同じデータをどこで使っているかを確認できません。
       <a href="https://react.dev/learn/you-might-not-need-an-effect"
         >React の状態と Effect の解説</a
       >
@@ -33,50 +36,71 @@
   </section>
 
   <section id="remix-revalidation">
-    <h3>Remix がフォーム送信から解消したこと</h3>
-    <p>
-      初期の Remix は、HTML のフォームと HTTP を基本に置きました。Remix v2
-      では、フォーム送信でサーバーの処理を実行したあと、画面に必要なデータを自動で取り直します。開発者は保存のたびにクライアントのキャッシュを書き換える手順を書かずに済みます。再取得が重なったときも、古い応答で新しい表示を上書きしないようにします。
-      <a href="https://remix.run/blog/remix-v1">Remix v1 の発表</a> ·
+    <h3>Remix と rshono の操作後の更新</h3>
+    <p id="remix-frames">
+      Remix v2
+      は、フォーム送信後に画面のデータを自動で取り直し、応答が前後しても古い値で上書きしないようにします。Remix
+      3 では、別の URL が返す HTML で画面の一部を更新できます。rshono
+      のメモの例では、保存の応答に新しい表示のデータも含まれます。
       <a href="https://v2.remix.run/docs/discussion/data-flow/"
-        >データの再取得</a
+        >Remix のデータ再取得</a
       >
       ·
-      <a href="https://v2.remix.run/docs/discussion/concurrency/"
-        >並行するリクエスト</a
+      <a href="https://v2.remix.run/docs/discussion/concurrency/">応答の順序</a>
+      ·
+      <a href="https://docs.remix.run/streaming-ui-with-frames/"
+        >Remix 3 の部分更新</a
+      >
+      ·
+      <a href="https://www.rshono.com/docs/usage">rshono の保存例</a>
+    </p>
+    <p>
+      <strong
+        >操作への応答だけで更新する構成では、開いたままの画面にその後の変更を知らせる仕組みが別に要ります。</strong
+      >
+      たとえば、定期処理で再集計した件数を表示に反映するには、画面がその変更を知る必要があります。
+    </p>
+  </section>
+
+  <section id="htmx">
+    <h3>htmx の部分更新と型</h3>
+    <p>
+      htmx では、サーバーが返した HTML を画面の一部に反映できます。HTML
+      の属性に送信先や更新先を書くので、操作と更新箇所を近くで読めます。
+    </p>
+    <p>
+      <strong
+        >属性に書いた送信先や更新先と、サーバーの実装が一致するかは、標準の書き方では型で確認できません。</strong
+      >
+      JSX で HTML を生成することもできますが、属性に URL
+      や要素のセレクターを文字列で書くと、その値とサーバー側の処理との対応は
+      TypeScript には分かりません。
+      <a href="https://htmx.org/docs/#introduction"
+        >htmx のリクエストと更新先</a
       >
     </p>
   </section>
 
-  <section id="remix-frames">
-    <h3>データ取得と表示更新の設計</h3>
+  <section id="tanstack-start">
+    <h3>TanStack Start の型とキャッシュ</h3>
     <p>
-      htmx では、操作に使う HTML 要素に、どこへリクエストを送り、返ってきた HTML
-      を画面のどこに入れるかを書けます。サーバーが生成した表示をそのまま使えるので、ブラウザで同じデータから画面を組み立て直す処理が減ります。
-      <a href="https://htmx.org/docs/#introduction">htmx の基本</a>
+      TanStack Start は、URL
+      の検索条件やルートが読み込むデータを型でつなぎます。読み込んだデータはルートのキャッシュで再利用でき、必要に応じて
+      TanStack Query も使えます。
     </p>
     <p>
-      TanStack Start
-      では、ページに必要なデータをいつ読み込むかをルートに書き、サーバーで実行する処理を関数として定義できます。URL
-      の検索条件から画面に渡すデータまで型がつながります。
+      <strong
+        >キャッシュを使うと、どの取得結果を再利用し、保存後に何を取り直すかはアプリ側で決めます。</strong
+      >
+      注文を取り消したとき、詳細の取得結果を更新しても、検索条件ごとに保存した注文一覧や件数が更新されるとは限りません。取得の型が合っていても、どの取得結果に影響するかは注文の仕様で決まります。
+      <a href="https://tanstack.com/router/latest/docs/guide/data-loading"
+        >ルートのデータ取得とキャッシュ</a
+      >
+      ·
       <a
-        href="https://tanstack.com/start/latest/docs/framework/react/start-vs-nextjs"
-        >TanStack Start の設計</a
+        href="https://tanstack.com/query/latest/docs/framework/react/guides/invalidations-from-mutations"
+        >TanStack Query の保存後の再取得</a
       >
-    </p>
-    <p>
-      Remix 3 では、画面の一部に別の URL が返す HTML を表示できます。この領域を
-      <code>Frame</code>
-      と呼びます。リンクやフォーム、明示的な再取得で、どの領域を更新するか指定できます。ブラウザ側でコンポーネントを動かす場合も、再描画のタイミングをコードで指定します。
-      <a href="https://docs.remix.run/streaming-ui-with-frames/"
-        >Remix 3 の Frame</a
-      >
-      · <a href="https://docs.remix.run/">Remix 3 の設計</a>
-    </p>
-    <p>
-      rshono は、サーバー側でデータを読み取る React
-      のコンポーネントと、画面から呼べるサーバー関数を近くに置きます。公式のメモの例では、保存したリクエストの応答で、そのページの新しい表示に必要なデータも返します。応答を待つ間に仮の表示を出す方法も用意されています。
-      <a href="https://www.rshono.com/docs/usage">rshono のフォームと更新</a>
     </p>
   </section>
 </section>
@@ -84,8 +108,17 @@
 <section class="design-part" id="hypersig-design">
   <h2>hypersig の設計</h2>
   <p>
-    フォーム送信後の再取得は、その操作で変わったデータを画面に反映する方法です。開いたままの画面は、その後の変更でも古くなります。hypersig.ts
-    は、その変化も扱うために、サーバーで変更が確定したことを画面更新の起点にします。
+    hypersig.ts は、サーバーで変更が確定したことを画面更新の起点にします。画面は
+    TypeScript の型を使える JSX
+    で書き、操作に渡す値と、どのデータの変更を受け取るかを型付きで指定します。更新先は、サーバーがその指定から判断します。
+  </p>
+  <p>
+    アプリは確定した変更を通知し、フレームワークが関係する表示だけを描画して送り直します。サーバーで
+    HTML を生成して型で操作を結びつける点は、Rust 版 hypersig
+    から引き継いだ考え方です。
+    <a href="https://imaimai17468.github.io/hypersig/learn/why/"
+      >Rust 版 hypersig の設計</a
+    >
   </p>
 
   <section id="commit-to-display">
@@ -96,7 +129,7 @@
       HTML を生成します。ブラウザは、その HTML を画面の該当部分に反映します。
     </p>
     <p>
-      同じ注文を表示している別の利用者にも、その人が画面を開いたときの登録に従って更新を送ります。定期処理も、データを保存してから同じ変更を通知できます。どの処理が通知を出し、どの表示が受け取るかは、アプリのコードで確認できます。
+      同じ注文を表示している別の利用者にも、その人が画面を開いたときの登録に従って更新を送ります。定期処理も、データを保存してから同じ変更を通知できます。
     </p>
   </section>
 
@@ -107,7 +140,7 @@
       HTML が届いたときに更新します。
     </p>
     <p>
-      確定から画面に反映されるまでには通信時間があります。接続が戻ったらサーバーの最新状態を読み直します。アプリには、変更の通知と、通知を受け取る画面をコードで指定する責任があります。
+      確定から画面に反映されるまでには通信時間があります。接続が戻ったらサーバーの最新状態を読み直します。どの変更を通知し、どの範囲を更新するかはアプリで決めます。更新する範囲を広く取れば、その分サーバーの描画処理も増えます。
     </p>
     <p>
       <a href="../concepts/">更新の流れを読む</a> ·

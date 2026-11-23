@@ -5,33 +5,40 @@
 </p>
 
 <p>
-  First, we look at how existing frameworks handle reloading data and updating
-  views. Then we explain how hypersig.ts uses committed server changes to keep
-  an open page in sync.
+  We look at how existing frameworks keep views up to date and which decisions
+  are still left to the application. Then we explain what hypersig.ts takes on
+  to reduce that work.
 </p>
 <nav class="article-contents" aria-label="On this page">
   <ol>
-    <li><a href="#existing-frameworks">What existing frameworks solved</a></li>
+    <li>
+      <a href="#existing-frameworks"
+        >What remains in synchronization and typing</a
+      >
+    </li>
     <li><a href="#hypersig-design">The hypersig design</a></li>
   </ol>
 </nav>
 
 <section class="design-part" id="existing-frameworks">
-  <h2>What existing frameworks solved</h2>
+  <h2>What remains in synchronization and typing</h2>
   <section id="copies">
-    <h3>How a page goes stale</h3>
+    <h3>State synchronization and optimization in React</h3>
     <p>
-      An order list can already be stale when it arrives if an order was added
-      after the server read it. When a user saves an order, the application
-      needs to decide when to reload the list and totals and what to do if an
-      older response arrives late. Scheduled jobs and dropped connections raise
-      the same question of how to bring the page up to date.
+      React is useful for updating views from browser state, such as in forms
+      and editors. When the browser also holds server data, the application has
+      to know which values become stale. Canceling an order can affect its
+      detail view, the order list, and the order count.
     </p>
     <p>
-      Focus and unfinished input are local to the browser. A separate copy of
-      shared application data must be kept current. The React docs describe the
-      extra synchronization introduced by redundant state and the need to
-      account for out-of-order responses when fetching data.
+      <strong
+        >Keeping those values in sync while limiting refetches and renders is
+        hard.</strong
+      >
+      Narrowing an update takes experience. You need to decide which values to
+      store or derive, then trace reads, writes, and renders to check that the
+      views still agree. A developer or coding agent looking at one component
+      cannot see where else the application uses the same data.
       <a href="https://react.dev/learn/you-might-not-need-an-effect"
         >React on redundant state and Effects</a
       >
@@ -39,56 +46,81 @@
   </section>
 
   <section id="remix-revalidation">
-    <h3>What Remix changed about form submissions</h3>
-    <p>
-      Early Remix centered writes on HTML forms and HTTP. Remix v2 runs the
-      server action and automatically reloads the data used by the page.
-      Application code can leave revalidation to the framework. When requests
-      overlap, Remix also decides which responses are current enough to apply.
-      <a href="https://remix.run/blog/remix-v1">Remix v1 announcement</a> ·
+    <h3>Updates after an action in Remix and rshono</h3>
+    <p id="remix-frames">
+      Remix v2 reloads page data after a form submission and prevents older
+      responses from overwriting newer ones. Remix 3 can update part of a page
+      with HTML from another URL. In the rshono notes example, the save response
+      includes fresh data for the page.
       <a href="https://v2.remix.run/docs/discussion/data-flow/"
-        >Data revalidation</a
+        >Remix data revalidation</a
       >
       ·
       <a href="https://v2.remix.run/docs/discussion/concurrency/"
-        >Network concurrency</a
+        >Response ordering</a
+      >
+      ·
+      <a href="https://docs.remix.run/streaming-ui-with-frames/"
+        >Remix 3 partial updates</a
+      >
+      ·
+      <a href="https://www.rshono.com/docs/usage">Saving in rshono</a>
+    </p>
+    <p>
+      <strong
+        >When updates follow an action response, open pages still need a way to
+        learn about later changes.</strong
+      >
+      For example, the page needs to learn that a scheduled job recalculated the
+      order count before it can show the new value.
+    </p>
+  </section>
+
+  <section id="htmx">
+    <h3>Partial updates and types in htmx</h3>
+    <p>
+      htmx applies server-rendered HTML to part of the page. The HTML attributes
+      keep the request URL and update target near the element that triggers the
+      request.
+    </p>
+    <p>
+      <strong
+        >With the standard attributes, a type checker does not verify that the
+        request or its target matches the application.</strong
+      >
+      You can generate htmx markup with JSX. If a URL or selector is written as
+      a string attribute, TypeScript still cannot check its relationship to the
+      server handler or the target element.
+      <a href="https://htmx.org/docs/#introduction"
+        >htmx requests and update targets</a
       >
     </p>
   </section>
 
-  <section id="remix-frames">
-    <h3>Designs for loading data and updating views</h3>
+  <section id="tanstack-start">
+    <h3>Types and caching in TanStack Start</h3>
     <p>
-      With htmx, an HTML element specifies where to send a request and where to
-      put the HTML that comes back. The server renders what the browser
-      displays, so the browser needs less code to turn the same data into UI.
-      <a href="https://htmx.org/docs/#introduction">htmx basics</a>
+      TanStack Start connects the types for URL search parameters and the data a
+      route loads. The router can reuse cached loader results, and the
+      application can also use TanStack Query.
     </p>
     <p>
-      TanStack Start lets you put data loading on a route and define which
-      functions run on the server. Types connect URL search parameters to the
-      data and components that use them.
+      <strong
+        >When the application uses a cache, it decides which results can be
+        reused and which to reload after a save.</strong
+      >
+      Updating the cached detail for a canceled order may leave cached lists and
+      counts for various filters stale. The types can describe each result,
+      while the application's order rules determine which results the
+      cancellation affects.
+      <a href="https://tanstack.com/router/latest/docs/guide/data-loading"
+        >Route data loading and caching</a
+      >
+      ·
       <a
-        href="https://tanstack.com/start/latest/docs/framework/react/start-vs-nextjs"
-        >TanStack Start design</a
+        href="https://tanstack.com/query/latest/docs/framework/react/guides/invalidations-from-mutations"
+        >TanStack Query invalidation after a write</a
       >
-    </p>
-    <p>
-      Remix 3 can place HTML from another URL in a region called a
-      <code>Frame</code>. A link, a form, or an explicit reload can select which
-      region to update. Browser components also let the application explicitly
-      decide when to render.
-      <a href="https://docs.remix.run/streaming-ui-with-frames/"
-        >Remix 3 Frames</a
-      >
-      · <a href="https://docs.remix.run/">Remix 3 design</a>
-    </p>
-    <p>
-      rshono puts React components that read data on the server close to the
-      server functions that update it. In its notes example, the response to a
-      save includes fresh data for the page. The guide also shows how to display
-      a tentative result while an action is pending.
-      <a href="https://www.rshono.com/docs/usage">rshono forms and updates</a>
     </p>
   </section>
 </section>
@@ -96,10 +128,20 @@
 <section class="design-part" id="hypersig-design">
   <h2>The hypersig design</h2>
   <p>
-    Reloading after a form submission reflects the changes made by that
-    operation. A page that stays open can go stale again as more changes happen.
-    To account for those changes, hypersig.ts begins updating views when a
-    change commits on the server.
+    In hypersig.ts, a committed server change starts the update. You write views
+    in typed JSX and use typed values for action input and for the changes each
+    view subscribes to. The server determines which open views to update from
+    those subscriptions.
+  </p>
+  <p>
+    The application announces a committed change, and the framework renders and
+    sends the affected views. This keeps the browser's job to applying HTML and
+    avoids updating a separate copy of the fetched data there. Server-rendered
+    HTML with typed connections to server operations is an idea hypersig.ts
+    takes from the Rust framework.
+    <a href="https://imaimai17468.github.io/hypersig/learn/why/"
+      >The Rust hypersig design</a
+    >
   </p>
 
   <section id="commit-to-display">
@@ -114,8 +156,7 @@
     <p>
       Another user looking at the same order receives the update according to
       their own page subscriptions. A scheduled job can announce the same change
-      after saving it. The application code shows both where a notification is
-      published and which views receive it.
+      after saving it.
     </p>
   </section>
 
@@ -128,8 +169,9 @@
     </p>
     <p>
       Delivery takes time. After a connection drops, reconnecting reads the
-      current state again. The application is responsible for declaring the
-      changes it publishes and the views that subscribe.
+      current state again. The application decides which changes to publish and
+      how much of a page to update. A larger view can take more work to render
+      on the server.
     </p>
     <p>
       <a href="../concepts/">Read the update sequence</a> ·
