@@ -1,8 +1,10 @@
 import { report } from "./diagnostics.js";
 import type { LiveDiagnostic } from "./diagnostics.js";
+import { identifierPattern } from "./identifier.js";
 import type {
   LiveRenderContext,
   LiveView,
+  NamedView,
   Principal,
   SharedLiveView,
   SharedLoadOptions,
@@ -12,8 +14,8 @@ import { maxViews, renderContext } from "./render.js";
 import type {
   LeafSnapshot,
   LiveRenderer,
-  SharedFragments,
   ViewInstance,
+  ViewRegistry,
 } from "./render.js";
 import { streamPage } from "./stream.js";
 import type { LiveConnection } from "./stream.js";
@@ -79,7 +81,24 @@ export function createLiveRuntime<
   )
     throw new RangeError("Invalid Live View send timeout");
   const pages = new Map<string, PageSession<User, Event>>();
-  const shared: SharedFragments = new WeakMap();
+  const ids = new WeakMap<object, string>();
+  const counts = new Map<string, number>();
+  const registry: ViewRegistry = {
+    shared: new WeakMap(),
+    identify(definition) {
+      const known = ids.get(definition);
+      if (known) return known;
+      const name = definition.name ?? "view";
+      if (!identifierPattern.test(name))
+        throw new Error(`Invalid Live View name: ${name}`);
+      const count = (counts.get(name) ?? 0) + 1;
+      counts.set(name, count);
+      // The number follows the last hyphen, so names that end in digits stay distinct.
+      const id = `${name}-${count}`;
+      ids.set(definition, id);
+      return id;
+    },
+  };
 
   function evict(token: string, page: PageSession<User, Event>) {
     pages.delete(token);
@@ -87,22 +106,29 @@ export function createLiveRuntime<
   }
 
   return {
-    live<Params, Data>(
+    live<Params, Data, const Name extends string = never>(
       this: void,
-      definition: LiveView<Params, Data, User, Event, Markup>
-    ) {
+      definition: LiveView<Params, Data, User, Event, Markup> & NamedView<Name>
+    ): LiveView<Params, Data, User, Event, Markup> {
       return definition;
     },
-    liveShared<Params, Data extends SharedValue>(
+    liveShared<
+      Params,
+      Data extends SharedValue,
+      const Name extends string = never,
+    >(
       this: void,
-      definition: SharedLiveView<Params, Data, User, Event, Markup>,
+      definition: SharedLiveView<Params, Data, User, Event, Markup> &
+        NamedView<Name>,
       options?: SharedLoadOptions<Params, Data, User>
     ): SharedLiveView<Params, Data, User, Event, Markup> {
       if (!options) return definition;
       const inFlight = new Map<string, Promise<Data>>();
       const revision = definition.revision?.bind(definition);
+      const key = definition.key?.bind(definition);
       return {
-        key: (params) => definition.key(params),
+        ...(definition.name !== undefined && { name: definition.name }),
+        ...(key && { key }),
         authorize: (params, user) => definition.authorize(params, user),
         subscribe: (params, user) => definition.subscribe(params, user),
         renderShared: (data) => definition.renderShared(data),
@@ -157,7 +183,7 @@ export function createLiveRuntime<
         () => {
           if (++count > maxViews) throw new Error("Too many Live Views");
         },
-        shared
+        registry
       );
       const document = await renderer.serialize(render(context, token));
 

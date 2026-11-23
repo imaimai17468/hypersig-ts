@@ -48,6 +48,13 @@ export type SharedFragments = WeakMap<
   { data: SharedValue; html: Promise<string> }
 >;
 
+/** Runtime-wide state that every page render of the runtime shares. */
+export interface ViewRegistry {
+  shared: SharedFragments;
+  /** Returns the same id for a definition on every call within the runtime. */
+  identify(definition: { readonly name?: string }): string;
+}
+
 export function renderContext<
   User extends Principal,
   Event extends Topic,
@@ -58,7 +65,7 @@ export function renderContext<
   views: Map<string, ViewInstance<User, Event>>,
   mode: "initial" | "update",
   admit: () => void,
-  shared: SharedFragments,
+  registry: ViewRegistry,
   parent?: string
 ): LiveRenderContext<User, Event, Markup> {
   return {
@@ -69,10 +76,12 @@ export function renderContext<
       params: Params
     ) {
       if (!(await definition.authorize(params, user))) return renderer.empty();
-      const key = definition.key(params);
-      const target = parent ? `${parent}/${key}` : key;
+      const id = registry.identify(definition);
+      const key = definition.key?.(params);
+      const segment = key === undefined ? id : `${id}.${key}`;
+      const target = parent ? `${parent}/${segment}` : segment;
       if (
-        !keyPattern.test(key) ||
+        (key !== undefined && !keyPattern.test(key)) ||
         views.has(target) ||
         target.split("/").length > maxDepth
       ) {
@@ -93,6 +102,7 @@ export function renderContext<
         skipUnchanged: Boolean(revision) || "renderShared" in definition,
         async render(current, childMode, admitChild) {
           const children = new Map<string, ViewInstance<User, Event>>();
+          const { shared } = registry;
           if ("renderShared" in definition) {
             const data = await definition.load(params, current);
             const previous = childMode === "update" && shared.get(definition);
@@ -118,7 +128,7 @@ export function renderContext<
             children,
             childMode,
             admitChild,
-            shared,
+            registry,
             target
           );
           const html = await renderer.serialize(

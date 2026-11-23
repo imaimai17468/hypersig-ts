@@ -77,7 +77,9 @@ const href = links.counters[":counterKey"].$path({
     <code>Action</code> と呼びます。
   </p>
   <p>
-    <code>hypersig.action(name, definition)</code> で登録します。Standard Schema
+    <code>hypersig.action(name, definition)</code>
+    で登録します。名前は英数字、<code>_</code>、<code>-</code>
+    からなるリテラルで書きます。Standard Schema
     に対応するスキーマで入力と出力を検証し、<code>authorize</code>
     で操作する権限を確認してから <code>execute</code> を実行します。
   </p>
@@ -124,8 +126,21 @@ await hypersig.publish(changed(id));</code></pre>
     でページ内に配置します。
   </p>
   <dl>
+    <dt><code>name</code></dt>
+    <dd>
+      省略できます。ページ内のキーの先頭になり、<code>counter-1</code>
+      のようになります。ランタイムが定義ごとに番号を付けるので、別々の定義のキーが重なることはありません。英数字、<code>_</code>、<code
+        >-</code
+      >
+      以外を含むリテラルは型エラーになります。
+    </dd>
     <dt><code>key</code></dt>
-    <dd>ページ内の同じ表示を識別できる、変わらない値を返します。</dd>
+    <dd>
+      省略できます。同じ親の下に同じ定義を複数置くときに、<code
+        >counter-1.main</code
+      >
+      と <code>counter-1.other</code> のように区別します。
+    </dd>
     <dt><code>subscribe</code></dt>
     <dd>受け取る変更通知の対象を Topic で指定します。</dd>
     <dt><code>authorize</code></dt>

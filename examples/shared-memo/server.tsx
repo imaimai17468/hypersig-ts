@@ -135,7 +135,7 @@ const save = hypersig.action("save-memo", {
 });
 
 const publishedMemo = hypersig.live({
-  key: () => "shared-memo",
+  name: "shared-memo",
   subscribe: () => [memoChanged()],
   authorize: () => true,
   load: () => store.read(),

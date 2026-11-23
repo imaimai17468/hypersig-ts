@@ -68,7 +68,7 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
   let allowed = true;
 
   const child = runtime.live({
-    key: () => "child",
+    name: "child",
     revision: (params: { format: string; channel: "child" | "other" }) =>
       params.format,
     subscribe: (params) => [change(params.channel)],
@@ -87,7 +87,7 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
   delete unversioned.revision;
   let currentChild = child;
   const sentinel = runtime.live({
-    key: () => "sentinel",
+    name: "sentinel",
     revision: () => 1,
     subscribe: () => [change("sentinel")],
     authorize: () => true,
@@ -95,7 +95,7 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
     render: (marker) => marker,
   });
   const parent = runtime.live({
-    key: () => "parent",
+    name: "parent",
     subscribe: () => [change("parent")],
     authorize: () => true,
     load: () => ({ format, channel }),
@@ -112,16 +112,18 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
     return page.view(parent, {});
   });
   expect(initial).toContain("plain:0");
-  expect(runtime.openPage("missing", ["parent"], user).status).toBe("expired");
+  expect(runtime.openPage("missing-1", ["parent-1"], user).status).toBe(
+    "expired"
+  );
   expect(runtime.openPage(token, [], user).status).toBe("invalid-count");
-  expect(runtime.openPage(token, ["parent/child"], user).status).toBe(
+  expect(runtime.openPage(token, ["parent-1/child-1"], user).status).toBe(
     "unknown-view"
   );
   expect(
-    runtime.openPage(token, ["parent"], { sessionId: "other" }).status
+    runtime.openPage(token, ["parent-1"], { sessionId: "other" }).status
   ).toBe("denied");
 
-  const page = runtime.openPage(token, ["parent"], user);
+  const page = runtime.openPage(token, ["parent-1"], user);
   if (page.status !== "open") throw new Error("Expected a registered page");
   const connection = createConnection();
   const live = page.connect(connection, () => user);
@@ -134,16 +136,16 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
     });
   }
   try {
-    await update("parent");
-    await update("parent/child", "plain:0");
-    await update("parent/sentinel", "marker");
+    await update("parent-1");
+    await update("parent-1/child-1", "plain:0");
+    await update("parent-1/sentinel-1", "marker");
     await expect(connection.read()).resolves.toEqual({ type: "ready" });
     expect(draws).toBe(2);
 
     await runtime.publish(change("parent"));
-    await update("parent");
+    await update("parent-1");
     await runtime.publish(change("sentinel"));
-    await update("parent/sentinel", "marker");
+    await update("parent-1/sentinel-1", "marker");
     expect(draws).toBe(2);
 
     value = 1;
@@ -151,44 +153,132 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
       runtime.publish(change("parent")),
       runtime.publish(change("child")),
     ]);
-    await update("parent");
-    await update("parent/child", "plain:1");
+    await update("parent-1");
+    await update("parent-1/child-1", "plain:1");
 
     format = "formatted";
     await runtime.publish(change("parent"));
-    await update("parent");
-    await update("parent/child", "formatted:1");
+    await update("parent-1");
+    await update("parent-1/child-1", "formatted:1");
 
     channel = "other";
     await runtime.publish(change("parent"));
-    await update("parent");
-    await update("parent/child", "formatted:1");
+    await update("parent-1");
+    await update("parent-1/child-1", "formatted:1");
     await runtime.publish(change("child"));
     await runtime.publish(change("sentinel"));
-    await update("parent/sentinel", "marker");
+    await update("parent-1/sentinel-1", "marker");
     value = 2;
     await runtime.publish(change("other"));
-    await update("parent/child", "formatted:2");
+    await update("parent-1/child-1", "formatted:2");
 
+    // A different definition is a different view, even with the same name.
     currentChild = replacement;
     await runtime.publish(change("parent"));
-    await update("parent");
-    await update("parent/child", "replacement:formatted:2");
+    await update("parent-1");
+    await update("parent-1/child-2", "replacement:formatted:2");
 
     currentChild = unversioned;
     for (let i = 0; i < 2; i++) {
       await runtime.publish(change("parent"));
-      await update("parent");
-      await update("parent/child", "replacement:formatted:2");
+      await update("parent-1");
+      await update("parent-1/child-3", "replacement:formatted:2");
     }
 
     allowed = false;
     await runtime.publish(change("other"));
-    await update("parent/child", "");
+    await update("parent-1/child-3", "");
   } finally {
     connection.close();
     await live;
   }
+});
+
+it("keys each Live View definition apart from every other definition", async () => {
+  const change = topic("change", () => "all");
+  const runtime = createLiveRuntime<
+    Principal,
+    ReturnType<typeof change>,
+    string
+  >({ renderer, pubsub: createMemoryPubSub() });
+  const base = {
+    subscribe: () => [change()],
+    authorize: () => true,
+    load: () => "",
+  };
+  const first = runtime.live({
+    ...base,
+    name: "panel",
+    render: () => "first",
+  });
+  const second = runtime.live({
+    ...base,
+    name: "panel",
+    render: () => "second",
+  });
+  const unnamed = runtime.live({ ...base, render: () => "unnamed" });
+  const panel1 = runtime.live({
+    ...base,
+    name: "panel1",
+    render: () => "suffixed",
+  });
+  const repeated = runtime.live({
+    ...base,
+    name: "item",
+    key: (params: { id: string }) => params.id,
+    load: (params: { id: string }) => params.id,
+    render: (id) => id,
+  });
+  const user = { sessionId: "viewer" };
+
+  const html = await runtime.renderPage(user, async (page) =>
+    [
+      await page.view(first, {}),
+      await page.view(second, {}),
+      await page.view(unnamed, {}),
+      await page.view(panel1, {}),
+      await page.view(repeated, { id: "a" }),
+      await page.view(repeated, { id: "b" }),
+    ].join("")
+  );
+  expect(html).toBe(
+    [
+      '<div data-target="panel-1">first</div>',
+      '<div data-target="panel-2">second</div>',
+      '<div data-target="view-1">unnamed</div>',
+      '<div data-target="panel1-1">suffixed</div>',
+      '<div data-target="item-1.a">a</div>',
+      '<div data-target="item-1.b">b</div>',
+    ].join("")
+  );
+  const again = await runtime.renderPage(user, (page) => page.view(second, {}));
+  expect(again).toBe('<div data-target="panel-2">second</div>');
+
+  await expect(
+    runtime.renderPage(user, async (page) => {
+      await page.view(repeated, { id: "a" });
+      return page.view(repeated, { id: "a" });
+    })
+  ).rejects.toThrow("Invalid, duplicate or too-deep Live View key: item-1.a");
+  await expect(
+    runtime.renderPage(user, async (page) => {
+      await page.view(first, {});
+      return page.view(first, {});
+    })
+  ).rejects.toThrow("Invalid, duplicate or too-deep Live View key: panel-1");
+
+  const name: string = "no.dots";
+  const invalid = runtime.live({ ...base, name, render: () => "" });
+  await expect(
+    runtime.renderPage(user, (page) => page.view(invalid, {}))
+  ).rejects.toThrow("Invalid Live View name: no.dots");
+
+  runtime.live({
+    ...base,
+    // @ts-expect-error A literal name with "/" would break the parent/child key path.
+    name: "no/slash",
+    render: () => "",
+  });
 });
 
 it("reconciles a missed notification without sending unchanged HTML", async () => {
@@ -219,7 +309,7 @@ it("reconciles a missed notification without sending unchanged HTML", async () =
     },
   });
   const view = runtime.live({
-    key: () => "counter",
+    name: "counter",
     authorize: () => true,
     subscribe: () => [changed()],
     load: () => value,
@@ -231,7 +321,7 @@ it("reconciles a missed notification without sending unchanged HTML", async () =
     token = key;
     return page.view(view, {});
   });
-  const registered = runtime.openPage(token, ["counter"], user);
+  const registered = runtime.openPage(token, ["counter-1"], user);
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -250,10 +340,10 @@ it("reconciles a missed notification without sending unchanged HTML", async () =
       update: { version: 2, html: "1" },
     });
     expect(diagnostics).toEqual([
-      { type: "render", target: "counter", reason: "connect" },
+      { type: "render", target: "counter-1", reason: "connect" },
       { type: "publish-error", topic: changed() },
-      { type: "render", target: "counter", reason: "reconcile" },
-      { type: "render", target: "counter", reason: "reconcile" },
+      { type: "render", target: "counter-1", reason: "reconcile" },
+      { type: "render", target: "counter-1", reason: "reconcile" },
     ]);
   } finally {
     connection.close();
@@ -274,7 +364,7 @@ it("shares leaf HTML across equal snapshots while checking access for each viewe
   const drawn: string[] = [];
   let revision = 0;
   const view = runtime.liveShared({
-    key: () => "status",
+    name: "status",
     authorize: (_params: object, user) => user.allowed,
     subscribe: (_params, user) => [changed(user.group)],
     load: (_params, user) => `${user.group}:${revision}`,
@@ -289,7 +379,7 @@ it("shares leaf HTML across equal snapshots while checking access for each viewe
       token = key;
       return page.view(view, {});
     });
-    const registered = runtime.openPage(token, ["status"], user);
+    const registered = runtime.openPage(token, ["status-1"], user);
     if (registered.status !== "open")
       throw new Error("Expected a registered page");
     const connection = createConnection();
@@ -363,7 +453,7 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
     },
   });
   const view = runtime.live({
-    key: () => "snapshot",
+    name: "snapshot",
     subscribe: () => [changed()],
     authorize: () => true,
     async load() {
@@ -393,7 +483,7 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
     token = key;
     return page.view(view, {});
   });
-  const registered = runtime.openPage(token, ["snapshot"], user);
+  const registered = runtime.openPage(token, ["snapshot-1"], user);
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -451,7 +541,7 @@ it("merges overlapping authorized loads by scope and revision and releases both 
   let requests = 0;
   const view = runtime.liveShared(
     {
-      key: () => "status",
+      name: "status",
       authorize: (_params: object, user) => user.allowed,
       subscribe: () => [changed()],
       load: (_params, user): string =>
@@ -484,7 +574,7 @@ it("merges overlapping authorized loads by scope and revision and releases both 
       token = key;
       return page.view(view, {});
     });
-    const registered = runtime.openPage(token, ["status"], user);
+    const registered = runtime.openPage(token, ["status-1"], user);
     if (registered.status !== "open")
       throw new Error("Expected registered page");
     const connection = createConnection();
@@ -529,7 +619,7 @@ it("merges overlapping authorized loads by scope and revision and releases both 
     await runtime.publish(changed());
     await expect(alice.connection.read()).resolves.toEqual({
       type: "view-error",
-      target: "status",
+      target: "status-1",
     });
     fail = false;
     await runtime.publish(changed());
@@ -561,7 +651,7 @@ it("reuses only the initial SSR snapshot and processes updates during its revisi
     pubsub: createMemoryPubSub(),
   });
   const view = runtime.live({
-    key: () => "leaf",
+    name: "leaf",
     authorize: () => true,
     subscribe: () => [changed()],
     load() {
@@ -585,7 +675,7 @@ it("reuses only the initial SSR snapshot and processes updates during its revisi
     token = key;
     return page.view(view, {});
   });
-  const registered = runtime.openPage(token, ["leaf"], user);
+  const registered = runtime.openPage(token, ["leaf-1"], user);
   if (registered.status !== "open") throw new Error("Expected registered page");
   const first = createConnection();
   const initial = registered.connect(first, () => user);
@@ -624,7 +714,7 @@ it("reuses only the initial SSR snapshot and processes updates during its revisi
     return page.view(view, {});
   });
   value = 2;
-  const changedBeforeConnect = runtime.openPage(token, ["leaf"], user);
+  const changedBeforeConnect = runtime.openPage(token, ["leaf-1"], user);
   if (changedBeforeConnect.status !== "open")
     throw new Error("Expected registered page");
   const late = createConnection();
@@ -662,7 +752,7 @@ it("omits an unchanged leaf frame and closes a stalled stream", async () => {
     },
   });
   const view = runtime.liveShared({
-    key: () => "leaf",
+    name: "leaf",
     authorize: () => true,
     subscribe: () => [changed()],
     load: () => value,
@@ -674,7 +764,7 @@ it("omits an unchanged leaf frame and closes a stalled stream", async () => {
     token = key;
     return page.view(view, {});
   });
-  const registered = runtime.openPage(token, ["leaf"], user);
+  const registered = runtime.openPage(token, ["leaf-1"], user);
   if (registered.status !== "open") throw new Error("Expected registered page");
   const live = createConnection();
   const open = registered.connect(live, () => user);
@@ -790,7 +880,7 @@ it("rebinds a disconnected broker subscription and reads the changes missed duri
     },
   });
   const view = runtime.live({
-    key: () => "counter",
+    name: "counter",
     subscribe: () => [changed()],
     authorize: () => true,
     load: () => count,
@@ -802,7 +892,7 @@ it("rebinds a disconnected broker subscription and reads the changes missed duri
     token = key;
     return page.view(view, {});
   });
-  const registered = runtime.openPage(token, ["counter"], user);
+  const registered = runtime.openPage(token, ["counter-1"], user);
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -817,7 +907,7 @@ it("rebinds a disconnected broker subscription and reads the changes missed duri
     disconnect();
     await expect(connection.read()).resolves.toEqual({
       type: "view-error",
-      target: "counter",
+      target: "counter-1",
     });
     expect(unsubscribeCount).toBe(1);
     count = 2;
@@ -861,7 +951,7 @@ it("delivers a fast root update while another root loads and keeps the slow root
   const entered = deferred();
   const blocked = deferred();
   const slowView = runtime.live({
-    key: () => "slow",
+    name: "slow",
     authorize: () => true,
     subscribe: () => [changed("slow")],
     async load() {
@@ -875,7 +965,7 @@ it("delivers a fast root update while another root loads and keeps the slow root
     render: (value) => String(value),
   });
   const fastView = runtime.live({
-    key: () => "fast",
+    name: "fast",
     authorize: () => true,
     subscribe: () => [changed("fast")],
     load: () => fast,
@@ -887,7 +977,7 @@ it("delivers a fast root update while another root loads and keeps the slow root
     token = key;
     return (await page.view(slowView, {})) + (await page.view(fastView, {}));
   });
-  const registered = runtime.openPage(token, ["slow", "fast"], user);
+  const registered = runtime.openPage(token, ["slow-1", "fast-1"], user);
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -904,7 +994,7 @@ it("delivers a fast root update while another root loads and keeps the slow root
     await runtime.publish(changed("fast"));
     await expect(connection.read()).resolves.toMatchObject({
       type: "update",
-      update: { target: "fast", version: 3, html: "1" },
+      update: { target: "fast-1", version: 3, html: "1" },
     });
     slow = 2;
     await runtime.publish(changed("slow"));
@@ -915,7 +1005,7 @@ it("delivers a fast root update while another root loads and keeps the slow root
     ] as const) {
       await expect(connection.read()).resolves.toMatchObject({
         type: "update",
-        update: { target: "slow", version, html },
+        update: { target: "slow-1", version, html },
       });
     }
   } finally {

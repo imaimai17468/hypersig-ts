@@ -48,7 +48,8 @@ const increment = hypersig.action("increment", {
 });
 
 const counter = live({
-  key: ({ id }: { id: CounterId }) => `counter:${id}`,
+  name: "counter",
+  key: ({ id }: { id: CounterId }) => id,
   revision: ({ id }) => id,
   subscribe: ({ id }) => [counterChanged(id)],
   authorize: (_params, _user) => true,
@@ -114,7 +115,7 @@ const moveCounter = hypersig.action("move-counter", {
 });
 
 const nestedCounter = hypersig.live({
-  key: () => "nested",
+  name: "nested",
   subscribe: () => [layoutChanged()],
   authorize: () => true,
   load: () => ({ visible: isNestedVisible, moved: isMoved }),
@@ -152,7 +153,7 @@ const addNotebook = hypersig.action("add-notebook", {
   },
 });
 const orderSummary = hypersig.live({
-  key: () => "order-summary",
+  name: "order-summary",
   subscribe: () => [orderChanged()],
   authorize: () => true,
   async load() {

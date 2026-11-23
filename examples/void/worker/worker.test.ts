@@ -112,7 +112,7 @@ async function readPage(front: Frontend, cookie: string, id = "main") {
   const endpoint = /data-hs-stream="([^"]+)"/.exec(html)?.[1];
   assert.ok(endpoint);
   const streamUrl = new URL(endpoint, origin);
-  streamUrl.searchParams.set("view", `counter:${id}`);
+  streamUrl.searchParams.set("view", `counter-1.${id}`);
   return { html, streamUrl };
 }
 

@@ -5,6 +5,8 @@ import type { SSEStreamingApi } from "hono/streaming";
 import type { HtmlEscapedString } from "hono/utils/html";
 import { registerAction } from "./action.js";
 import type { ActionDefinition } from "./action.js";
+import { identifierPattern } from "./identifier.js";
+import type { Identifier } from "./identifier.js";
 import type { LiveRuntimeOptions } from "./live-runtime.js";
 import { createLiveRuntime } from "./live-runtime.js";
 import type { LiveRenderContext, Principal } from "./live.js";
@@ -145,11 +147,15 @@ export function createHypersig<User extends Principal, Event extends Topic>(
     live: runtime.live,
     liveShared: runtime.liveShared,
     publish: runtime.publish,
-    action<Wire, Input, Value, Output>(
-      name: string,
+    /**
+     * Registers an Action under a literal name. A second Action with the same
+     * name throws here, when the application starts.
+     */
+    action<const Name extends string, Wire, Input, Value, Output>(
+      name: Identifier<Name>,
       definition: ActionDefinition<Wire, Input, Value, Output, User>
     ) {
-      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name) || actions.has(name)) {
+      if (!identifierPattern.test(name) || actions.has(name)) {
         throw new Error(`Invalid or duplicate Action name: ${name}`);
       }
       actions.add(name);

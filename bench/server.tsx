@@ -80,7 +80,7 @@ function Catalog() {
 }
 
 const counterDefinition = {
-  key: () => "counter",
+  name: "counter",
   subscribe: () => [changed("counter")],
   authorize: () => true,
   load: () => loadCount(count),
@@ -118,7 +118,7 @@ const counter =
     : hypersig.live({ ...counterDefinition, render: renderCounter });
 
 const independent = hypersig.live({
-  key: () => "independent",
+  name: "independent",
   subscribe: () => [changed("independent")],
   authorize() {
     independentChecks++;

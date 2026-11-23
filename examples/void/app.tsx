@@ -49,7 +49,8 @@ export function createCounterApp({
   });
 
   const counter = hypersig.live({
-    key: ({ key }: { key: CounterKey }) => `counter:${key}`,
+    name: "counter",
+    key: ({ key }: { key: CounterKey }) => key,
     subscribe: ({ key }) => [changed(key)],
     authorize: () => true,
     load: ({ key }) => store.read(key),

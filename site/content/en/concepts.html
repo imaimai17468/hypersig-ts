@@ -21,10 +21,11 @@
 <section id="boundaries">
   <h2>Choosing View boundaries</h2>
   <p>
-    Give each Live View a stable key and subscribe to the Topics that affect its
-    output. Use separate boundaries for independently changing regions. Put an
-    order summary and its total in the same View if both should display the same
-    revision.
+    Subscribe each Live View to the Topics that affect its output. The runtime
+    keys each definition apart, and <code>key</code> is needed only when one
+    parent places the same definition more than once. Use separate boundaries
+    for independently changing regions. Put an order summary and its total in
+    the same View if both should display the same revision.
   </p>
   <p>
     The first page response already contains HTML. Live View components run on

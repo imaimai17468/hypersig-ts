@@ -52,7 +52,7 @@ test("shared tasks react across sessions and tabs, with updates scoped to each f
     await expect(completed.getByText("1 item left")).toBeVisible();
     await expect(row(completed, "Book tickets")).toHaveCount(0);
     expect(fragments).toHaveLength(1);
-    expect(fragments[0]).toContain('"target":"todo-counts"');
+    expect(fragments[0]).toContain('"target":"todo-counts-1"');
 
     fragments.length = 0;
     await page.getByLabel("Edit: Book tickets").click();

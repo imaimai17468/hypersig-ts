@@ -12,6 +12,7 @@
   <figure class="hero-example">
     <figcaption>Define the counter view</figcaption>
     <pre><code>const counter = live({
+  name: "counter",
   key: ({ id }: { id: CounterId }) =&gt; id,
   subscribe: ({ id }) =&gt; [
     counterChanged(id),

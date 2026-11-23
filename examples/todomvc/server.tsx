@@ -146,7 +146,8 @@ function TodoRow({ todo }: { todo: Todo }) {
 }
 
 const list = live({
-  key: ({ filter }: { filter: Filter }) => `todos:${filter}`,
+  name: "todos",
+  key: ({ filter }: { filter: Filter }) => filter,
   subscribe: ({ filter }) =>
     filter === "all"
       ? [todosChanged("active"), todosChanged("completed")]
@@ -169,7 +170,7 @@ const list = live({
 });
 
 const counts = live({
-  key: () => "todo-counts",
+  name: "todo-counts",
   subscribe: () => [countsChanged()],
   authorize: () => true,
   load: () => ({

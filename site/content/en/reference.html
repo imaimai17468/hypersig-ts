@@ -72,8 +72,9 @@ const href = links.counters[":counterKey"].$path({
 <section id="actions">
   <h2>Actions</h2>
   <p>
-    Use <code>hypersig.action(name, definition)</code> with Standard Schema
-    input and output definitions, an <code>authorize</code> check, and an
+    Use <code>hypersig.action(name, definition)</code> with a literal name of
+    letters, digits, <code>_</code>, or <code>-</code>, Standard Schema input
+    and output definitions, an <code>authorize</code> check, and an
     <code>execute</code> function.
   </p>
   <pre><code>&lt;button type="button" {...increment.bind({ counterId: "main" })}&gt;
@@ -98,8 +99,18 @@ const href = links.counters[":counterKey"].$path({
 <section id="live-views">
   <h2>Live Views</h2>
   <dl>
+    <dt><code>name</code></dt>
+    <dd>
+      Optional. Starts the view's key in the page, such as
+      <code>counter-1</code>. The runtime numbers each definition, so two
+      definitions never share a key. A literal name with characters other than
+      letters, digits, <code>_</code>, or <code>-</code> is a type error.
+    </dd>
     <dt><code>key</code></dt>
-    <dd>Returns a stable identifier within the current boundary.</dd>
+    <dd>
+      Optional. Tells apart instances of the same definition under one parent,
+      such as <code>counter-1.main</code> and <code>counter-1.other</code>.
+    </dd>
     <dt><code>subscribe</code></dt>
     <dd>Returns the Topics that affect this view.</dd>
     <dt><code>authorize</code></dt>

@@ -1,3 +1,4 @@
+import type { Identifier } from "./identifier.js";
 import type { Topic } from "./topic.js";
 
 export interface Principal {
@@ -27,7 +28,17 @@ interface LiveViewDefinition<
   User extends Principal,
   Event extends Topic,
 > {
-  key(params: Params): string;
+  /**
+   * Starts this view's key in the page, so diagnostics and the DOM read as the
+   * view. The runtime appends a number per definition, so two definitions never
+   * share a key. Defaults to `view`.
+   */
+  name?: string;
+  /**
+   * Tells apart instances of this definition placed under the same parent.
+   * Required only when the parent places the definition more than once.
+   */
+  key?(params: Params): string;
   /**
    * Changes when the parent supplies different render inputs for this identity.
    * Data changes still arrive through the view's topics.
@@ -97,14 +108,24 @@ export interface SharedLiveView<
   renderShared(data: NoInfer<Data>): MaybePromise<Markup>;
 }
 
+/**
+ * Checks a literal `name` when a definition is written. A name typed as
+ * `string`, such as one spread from another definition, is checked when the
+ * view first renders.
+ */
+export interface NamedView<Name extends string> {
+  name?: string extends Name ? string : Identifier<Name>;
+}
+
 export function live<
   Params,
   Data,
   User extends Principal,
   Event extends Topic,
   Markup,
+  const Name extends string = never,
 >(
-  view: LiveView<Params, Data, User, Event, Markup>
+  view: LiveView<Params, Data, User, Event, Markup> & NamedView<Name>
 ): LiveView<Params, Data, User, Event, Markup> {
   return view;
 }
