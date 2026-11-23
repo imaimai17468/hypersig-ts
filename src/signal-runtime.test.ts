@@ -132,6 +132,11 @@ it("converts number inputs and ignores non-finite values", async () => {
   input("#base").value = "1e999";
   dispatch("#base", "change");
   expect(runtime.read(e.base.path)).toBe(7);
+  input("#base").value = "";
+  dispatch("#base", "input");
+  input("#base").value = "  ";
+  dispatch("#base", "change");
+  expect(runtime.read(e.base.path)).toBe(7);
 
   input("#done").checked = true;
   dispatch("#done", "change");
@@ -255,6 +260,7 @@ it("keeps a focused input's value when its Live View snapshot arrives", async ()
       children: [
         element("input", { id: "title", ...m.bindValue(m.title) }),
         element("span", { id: "revision", ...m.bindText(m.revision) }),
+        element("span", { id: "echo", ...m.bindText(m.title) }),
       ],
     })
   );
@@ -273,7 +279,21 @@ it("keeps a focused input's value when its Live View snapshot arrives", async ()
   await settle();
 
   expect(title.value).toBe("typing");
+  expect(runtime.read(m.title.path)).toBe("typing");
+  expect(find("#echo").textContent).toBe("typing");
   expect(find("#revision").textContent).toBe("2");
+
+  title.blur();
+  view.setAttribute(
+    "data-hs-signals",
+    m.with({ title: "published", revision: 3 }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(view);
+  await settle();
+  expect(runtime.read(m.title.path)).toBe("published");
+  expect(title.value).toBe("published");
+  expect(find("#echo").textContent).toBe("published");
+  expect(find("#revision").textContent).toBe("3");
 });
 
 it("ignores malformed signal attributes and keeps other bindings working", async () => {

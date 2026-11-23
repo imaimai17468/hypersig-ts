@@ -32,7 +32,8 @@ export interface SignalRuntimeOptions {
 export interface SignalRuntime {
   /**
    * Stores the `data-hs-signals` values inside a morphed Live View as values
-   * the server confirmed. Nested `[data-hs-view]` elements are skipped.
+   * the server confirmed. Nested `[data-hs-view]` elements are skipped, and so
+   * is the path of a focused bound input, so typing is not overwritten.
    */
   applySnapshots(view: HTMLElement): void;
   write(path: SignalPath, value: JsonValue): void;
@@ -113,12 +114,17 @@ function readValueBinding(element: Element): ValueBinding | undefined {
   return isSignalPath(path) && isInputKind(kind) ? { path, kind } : undefined;
 }
 
-/** Converts the entered value, or returns `undefined` when it does not fit. */
+/**
+ * Converts the entered value, or returns `undefined` when it is blank or not
+ * a finite number for a `number` signal.
+ */
 function readField(field: Field, kind: InputKind): JsonValue | undefined {
   if (kind === "boolean") {
     return "checked" in field ? field.checked : undefined;
   }
   if (kind === "string") return field.value;
+  // `Number` reads a blank value as 0, which the user did not enter.
+  if (field.value.trim() === "") return undefined;
   const number = Number(field.value);
   return Number.isFinite(number) ? number : undefined;
 }
@@ -158,9 +164,18 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (isAppPath(path)) write(path, value);
   }
 
-  function loadSnapshot(element: Element) {
-    for (const [path, value] of readSnapshot(element))
-      writeFromApp(path, value);
+  /** Skips the path in `editingKey`, which a focused input is editing. */
+  function loadSnapshot(element: Element, editingKey?: string) {
+    for (const [path, value] of readSnapshot(element)) {
+      if (JSON.stringify(path) !== editingKey) writeFromApp(path, value);
+    }
+  }
+
+  function findEditingKey(): string | undefined {
+    const focused = root.activeElement;
+    const binding =
+      focused && isField(focused) ? readValueBinding(focused) : undefined;
+    return binding && JSON.stringify(binding.path);
   }
 
   function writeField(field: Field) {
@@ -280,11 +295,14 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
 
   return {
     applySnapshots(view) {
+      const editingKey = findEditingKey();
       for (const element of [
         view,
         ...view.querySelectorAll(`[${signalAttributes.signals}]`),
       ]) {
-        if (element.closest(viewSelector) === view) loadSnapshot(element);
+        if (element.closest(viewSelector) === view) {
+          loadSnapshot(element, editingKey);
+        }
       }
     },
     write,
