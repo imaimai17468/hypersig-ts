@@ -2,6 +2,9 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Principal } from "./live.js";
+import type { JsonValue } from "./protocol.js";
+
+export type { JsonValue } from "./protocol.js";
 
 type MaybePromise<Value> = Value | Promise<Value>;
 
@@ -43,19 +46,6 @@ export interface ActionDefinition<
     user: User
   ): MaybePromise<Response>;
 }
-
-/**
- * A value that `JSON.stringify` writes and `JSON.parse` reads back as the same
- * shape. An optional property may be `undefined`, which the JSON leaves out.
- * `NaN` and `Infinity` are numbers here but arrive as `null`.
- */
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue | undefined };
 
 type BindInput<Wire> = [Wire] extends [JsonValue]
   ? Wire
