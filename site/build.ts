@@ -6,7 +6,15 @@ const output = resolve(process.argv[2] ?? "dist/docs");
 const origin = "https://imaimai17468.github.io/hypersig-ts/";
 const repository = "https://github.com/imaimai17468/hypersig-ts";
 const original = "https://imaimai17468.github.io/hypersig/";
-const pages = ["", "start", "why", "concepts", "reference", "deploy"] as const;
+const pages = [
+  "",
+  "start",
+  "why",
+  "concepts",
+  "reference",
+  "deploy",
+  "limits",
+] as const;
 const languages = ["en", "ja"] as const;
 type Language = (typeof languages)[number];
 type Page = (typeof pages)[number];
@@ -27,6 +35,7 @@ const locales = {
       "Core concepts",
       "API reference",
       "Deployment",
+      "Performance and limits",
     ],
     original: "Rust hypersig",
     legal: "Documentation",
@@ -48,6 +57,7 @@ const locales = {
       "基本概念",
       "API リファレンス",
       "デプロイ",
+      "性能と制約",
     ],
     original: "Rust 版 hypersig",
     legal: "ドキュメント",

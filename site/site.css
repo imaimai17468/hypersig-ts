@@ -365,7 +365,7 @@ pre {
   flex-wrap: wrap;
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 1200px) {
   .topbar-inner {
     gap: 1rem;
     flex-wrap: wrap;
@@ -377,6 +377,9 @@ pre {
     border-top: 1px solid var(--line);
     padding-top: 0.55rem;
   }
+}
+
+@media (max-width: 1040px) {
   .docs-shell {
     grid-template-columns: 10.5rem minmax(0, 1fr);
     gap: 1.35rem;

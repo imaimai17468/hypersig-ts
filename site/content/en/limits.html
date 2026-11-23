@@ -1,0 +1,88 @@
+<h1>Performance and limits</h1>
+<p class="lead">
+  Serving HTML updates involves reading data, rendering HTML, and sending it to
+  each connection. The cost depends on what each change updates and how many
+  connections are displaying that data.
+</p>
+
+<section id="database">
+  <h2>Can an update increase SQL traffic</h2>
+  <p>
+    Yes. The application's <code>load</code> function reads the data. During a
+    normal update, only views subscribed to the change load again. Pending
+    notifications for the same view on one connection can be combined. Initial
+    connection and reconnection also read data to synchronize the display.
+  </p>
+  <p>
+    If 200 connections subscribe to the same order count and every load runs a
+    SQL query, one change can cause 200 reads. Rendering a smaller view can
+    reduce work and transfer size. If the loader runs the same query, the number
+    of reads stays the same.
+  </p>
+</section>
+
+<section id="rendering">
+  <h2>How much rendering and transfer can be avoided</h2>
+  <p>
+    The server renders the subscribed part of the page and sends its HTML to
+    each connection. The browser applies only the necessary DOM changes within
+    that part. When a count changes frequently, a fixed list can sit outside the
+    area updated with the count.
+  </p>
+  <p>
+    In a published local benchmark with 500 rows in the initial HTML and 200
+    connections, moving the list out of the updated view reduced each update
+    event from <strong>23,924 B to 102 B</strong>. The unrelated view rendered
+    zero times during those updates. The figures describe this specific page.
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/bench/README.md"
+      >Benchmark setup and reproduction steps</a
+    >
+  </p>
+</section>
+
+<section id="sharing">
+  <h2>Work that can be shared across connections</h2>
+  <p>
+    <strong>These measurements use an implementation in development.</strong>
+    Render sharing reuses HTML when loads for the same view return equal values.
+    Read sharing lets overlapping loads reuse one read when they need the same
+    data, access scope, and committed revision.
+  </p>
+  <p>
+    In a local benchmark with 200 connections displaying the same counter and 12
+    sequential updates, sharing reduced HTML renders from
+    <strong>2,400 to 12</strong>. In a separate run, read sharing also reduced
+    SQLite SELECTs from <strong>2,400 to 12</strong>. That run selected the data
+    revision from memory and waited 12 milliseconds before each SELECT. The time
+    to deliver each update to all connections stayed similar.
+  </p>
+  <p>
+    Authorization checks and delivery still happen per connection. If selecting
+    the data revision requires a SQL query, that read still happens. In your
+    application, measure query count, rendering time, and transfer size
+    separately.
+  </p>
+</section>
+
+<section id="connection">
+  <h2>What happens when a connection drops</h2>
+  <p>
+    While disconnected, the page shows the last state it received. Reconnecting
+    renders from the current data on the server. If a save commits and a failure
+    interrupts publication, an open page may miss that change. To retry
+    delivery, the application can record a pending notification in the same
+    transaction as the save.
+  </p>
+</section>
+
+<section id="fit">
+  <h2>Work that belongs in the browser</h2>
+  <p>
+    The browser can handle focus and unfinished input. Operations that need
+    immediate computation on each gesture, such as drawing, and features that
+    need to save offline require browser-side logic. hypersig.ts handles
+    delivery and display of changes committed on the server.
+  </p>
+  <p><a href="../deploy/">Check the production setup</a></p>
+</section>

@@ -44,5 +44,26 @@ mise exec -- bun run example:counter</code></pre>
     contains the Hono routes, the Action, and the Live View. For a larger
     example, run <code>mise exec -- bun run example:todomvc</code>.
   </p>
+  <ol>
+    <li>
+      <code>increment</code> validates input and changes the value, then
+      announces it with
+      <code>hypersig.publish(counterChanged(counterId))</code>.
+    </li>
+    <li>
+      <code>counter</code> defines the part of the page that updates. Its
+      <code>subscribe</code> names the same change, and its <code>load</code>
+      reads the value.
+    </li>
+    <li>
+      <code>page.view(counter, { id: "main" })</code> renders that view in the
+      page and registers it to receive updates.
+    </li>
+  </ol>
+  <p>
+    With your own data, start with one read and one write. Subscribe the view to
+    the change you publish after the write. Check permissions in both the write
+    operation and the view.
+  </p>
   <p><a href="../concepts/">Read the core concepts</a></p>
 </section>

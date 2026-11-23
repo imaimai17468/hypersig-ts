@@ -45,3 +45,24 @@
     >
   </p>
 </section>
+
+<section id="verification">
+  <h2>Troubleshoot saves and live updates</h2>
+  <ol>
+    <li>
+      In the browser developer tools, check the response to the POST. If the
+      save fails, check input validation, authorization, and the configured
+      public origin.
+    </li>
+    <li>
+      If the save succeeds but the view stays stale, check the SSE connection in
+      the network panel. If it stays open without an update event, check
+      publication after the save, the view subscription, and access to the view.
+    </li>
+    <li>
+      Open the same data in another tab and check that both tabs update. Take
+      one tab offline briefly and check that it catches up after reconnecting.
+    </li>
+  </ol>
+  <p><a href="../limits/">Read about query and delivery costs</a></p>
+</section>

@@ -39,5 +39,24 @@ mise exec -- bun run example:counter</code></pre>
     >で、サーバーで値を変更する処理と、その値を画面に表示するコードを確認できます。項目の追加や絞り込みを試す場合は
     <code>mise exec -- bun run example:todomvc</code> を実行します。
   </p>
+  <ol>
+    <li>
+      <code>increment</code> は入力を検証して値を変更し、そのあと
+      <code>hypersig.publish(counterChanged(counterId))</code>
+      で変更を通知します。
+    </li>
+    <li>
+      <code>counter</code> は変更に合わせて更新する画面の一部です。
+      <code>subscribe</code> に同じ通知を指定し、<code>load</code>
+      で値を取得します。
+    </li>
+    <li>
+      <code>page.view(counter, { id: "main" })</code>
+      をページに置くと、その表示を生成して変更通知の配信先に登録します。
+    </li>
+  </ol>
+  <p>
+    自分のデータで試すときは、まず一つの読み取り処理と一つの保存処理を選び、保存後に送る通知を読み取り側にも指定します。アクセス権の確認は、保存する処理と表示する処理の両方に設定します。
+  </p>
   <p><a href="../concepts/">基本概念を読む</a></p>
 </section>
