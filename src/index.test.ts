@@ -412,6 +412,32 @@ it("accepts only literal Action names and rejects a repeated name at registratio
   hypersig.action(name, definition);
 });
 
+it("binds only JSON input and leaves other input to forms", () => {
+  const { hypersig } = setup();
+  const schedule = hypersig.action("schedule", {
+    input: v.object({ at: v.date(), note: v.optional(v.string()) }),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  // @ts-expect-error A Date becomes a string in JSON, so the schema would reject it.
+  schedule.bind({ at: new Date() });
+  expect(schedule.form()).toMatchObject({ action: schedule.url });
+
+  const rename = hypersig.action("rename", {
+    input: v.object({ title: v.string(), note: v.optional(v.string()) }),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(rename.bind({ title: "Draft" })["data-hs-input"]).toBe(
+    '{"title":"Draft"}'
+  );
+  expectTypeOf<typeof rename.bind>()
+    .parameter(0)
+    .toEqualTypeOf<{ title: string; note?: string | undefined }>();
+});
+
 it("reports a failed render without exposing its error or interrupting other views", async () => {
   const logger = vi.spyOn(console, "error").mockImplementation(() => {});
   const { app, pageUrl, load, commitOutsideAction, publish } = setup();

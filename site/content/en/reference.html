@@ -81,7 +81,9 @@ const href = links.counters[":counterKey"].$path({
   Increment main
 &lt;/button&gt;</code></pre>
   <p>
-    <code>action.bind(input)</code> binds typed data to a button.
+    <code>action.bind(input)</code> binds typed data to a button and sends it as
+    JSON, so an input type that is not JSON, such as one with a
+    <code>Date</code>, is a type error there.
     <code>action.form()</code> supplies attributes for an HTML form. The Action
     response reports the result. Subscribed Views update over SSE.
   </p>

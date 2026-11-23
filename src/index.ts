@@ -3,6 +3,7 @@ export type {
   ActionDefinition,
   ActionFormResult,
   ActionIssue,
+  JsonValue,
 } from "./action.js";
 export { createHypersig } from "./hono.js";
 export type {

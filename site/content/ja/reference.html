@@ -87,7 +87,9 @@ const href = links.counters[":counterKey"].$path({
   Increment main
 &lt;/button&gt;</code></pre>
   <p>
-    <code>action.bind(input)</code> は送信する値をボタンに設定します。<code
+    <code>action.bind(input)</code>
+    は送信する値をボタンに設定し、JSON で送ります。<code>Date</code>
+    を含むような JSON にできない入力の型は、ここで型エラーになります。<code
       >action.form()</code
     >
     はフォームに渡す属性を返します。サーバーは処理結果を応答として返します。
