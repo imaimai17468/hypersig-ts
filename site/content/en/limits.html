@@ -61,6 +61,36 @@
   </p>
 </section>
 
+<section id="design">
+  <h2>Limits of the design</h2>
+  <p>
+    Signals change values the server already rendered. These come from how the
+    framework is built rather than from the kind of application:
+  </p>
+  <ul>
+    <li>
+      Adding an item to a list waits for the server. Signals update elements
+      that are already on the page, and the browser does not render new list
+      items. In the TodoMVC example, toggling a task shows at once, and adding
+      one appears when the list's Live View updates.
+    </li>
+    <li>
+      Pages need a connection to the server. Committed data arrives over SSE,
+      and the server process keeps each page's registration, so a page does not
+      work offline. With several server instances, route a page's requests to
+      the process that registered it.
+    </li>
+    <li>
+      A JavaScript library such as a map or a rich text editor runs from your
+      own script, outside Live Views. There is no typed wrapper for it yet.
+    </li>
+    <li>
+      Following a link loads the next page from the server. There is no
+      client-side navigation.
+    </li>
+  </ul>
+</section>
+
 <section id="connection">
   <h2>What happens when a connection drops</h2>
   <p>
