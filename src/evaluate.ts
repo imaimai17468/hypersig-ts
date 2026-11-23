@@ -1,4 +1,5 @@
 import type { ExprNode, JsonValue, SignalPath } from "./protocol.js";
+import { maxNestingDepth } from "./protocol.js";
 
 export interface EvaluationContext {
   read(path: SignalPath): JsonValue | undefined;
@@ -12,6 +13,10 @@ function isRecord(
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Compares objects by their JSON text, so two objects with the same entries in
+ * a different key order are not equal.
+ */
 function isEqual(left: JsonValue, right: JsonValue): boolean {
   if (typeof left !== "object" || left === null) return Object.is(left, right);
   return JSON.stringify(left) === JSON.stringify(right);
@@ -64,59 +69,58 @@ function concatenate(left: JsonValue, right: JsonValue): JsonValue {
   return `${left}${right}`;
 }
 
+/** A node nested deeper than `maxNestingDepth` evaluates to `null`. */
 export function evaluate(
   node: ExprNode,
   context: EvaluationContext
 ): JsonValue {
+  return evaluateAt(node, context, 1);
+}
+
+function evaluateAt(
+  node: ExprNode,
+  context: EvaluationContext,
+  depth: number
+): JsonValue {
+  if (depth > maxNestingDepth) return null;
+  const evaluateChild = (child: ExprNode) =>
+    evaluateAt(child, context, depth + 1);
   switch (node[0]) {
     case "lit":
       return node[1];
     case "sig":
       return context.read(node[1]) ?? null;
     case "not":
-      return !isTruthy(evaluate(node[1], context));
+      return !isTruthy(evaluateChild(node[1]));
     case "and":
       return (
-        isTruthy(evaluate(node[1], context)) &&
-        isTruthy(evaluate(node[2], context))
+        isTruthy(evaluateChild(node[1])) && isTruthy(evaluateChild(node[2]))
       );
     case "or":
       return (
-        isTruthy(evaluate(node[1], context)) ||
-        isTruthy(evaluate(node[2], context))
+        isTruthy(evaluateChild(node[1])) || isTruthy(evaluateChild(node[2]))
       );
     case "eq":
-      return isEqual(evaluate(node[1], context), evaluate(node[2], context));
+      return isEqual(evaluateChild(node[1]), evaluateChild(node[2]));
     case "ne":
-      return !isEqual(evaluate(node[1], context), evaluate(node[2], context));
+      return !isEqual(evaluateChild(node[1]), evaluateChild(node[2]));
     case "gt":
     case "ge":
     case "lt":
     case "le":
-      return compare(
-        node[0],
-        evaluate(node[1], context),
-        evaluate(node[2], context)
-      );
+      return compare(node[0], evaluateChild(node[1]), evaluateChild(node[2]));
     case "add":
     case "sub":
     case "mul":
-      return calculate(
-        node[0],
-        evaluate(node[1], context),
-        evaluate(node[2], context)
-      );
+      return calculate(node[0], evaluateChild(node[1]), evaluateChild(node[2]));
     case "concat":
-      return concatenate(
-        evaluate(node[1], context),
-        evaluate(node[2], context)
-      );
+      return concatenate(evaluateChild(node[1]), evaluateChild(node[2]));
     case "if":
-      return isTruthy(evaluate(node[1], context))
-        ? evaluate(node[2], context)
-        : evaluate(node[3], context);
+      return isTruthy(evaluateChild(node[1]))
+        ? evaluateChild(node[2])
+        : evaluateChild(node[3]);
     case "get": {
-      const target = evaluate(node[1], context);
+      const target = evaluateChild(node[1]);
       return (
         (isRecord(target) && Object.hasOwn(target, node[2])
           ? target[node[2]]

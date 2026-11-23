@@ -127,14 +127,26 @@ const binaryOperators: ReadonlySet<string> = new Set([
   "concat",
 ]);
 
+/**
+ * The deepest nesting accepted from an attribute, counted separately for a
+ * JSON value and for a tree of nodes. Deeper input is malformed, so checking
+ * and evaluating it cannot overflow the stack.
+ */
+export const maxNestingDepth = 64;
+
 export function isJsonValue(value: unknown): value is JsonValue {
+  return isJsonValueAt(value, 1);
+}
+
+function isJsonValueAt(value: unknown, depth: number): value is JsonValue {
   if (value === null) return true;
   if (typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (typeof value !== "object" || depth > maxNestingDepth) return false;
+  const isEntry = (entry: unknown) => isJsonValueAt(entry, depth + 1);
+  if (Array.isArray(value)) return value.every(isEntry);
   return Object.values(value).every(
-    (entry) => entry === undefined || isJsonValue(entry)
+    (entry) => entry === undefined || isEntry(entry)
   );
 }
 
@@ -147,11 +159,16 @@ export function isSignalPath(value: unknown): value is SignalPath {
 }
 
 export function isExprNode(value: unknown): value is ExprNode {
-  if (!Array.isArray(value)) return false;
+  return isExprNodeAt(value, 1);
+}
+
+function isExprNodeAt(value: unknown, depth: number): value is ExprNode {
+  if (!Array.isArray(value) || depth > maxNestingDepth) return false;
   const [tag, first, second, third] = value as unknown[];
   if (typeof tag !== "string") return false;
+  const isChild = (child: unknown) => isExprNodeAt(child, depth + 1);
   if (binaryOperators.has(tag)) {
-    return value.length === 3 && isExprNode(first) && isExprNode(second);
+    return value.length === 3 && isChild(first) && isChild(second);
   }
   switch (tag) {
     case "lit":
@@ -159,18 +176,16 @@ export function isExprNode(value: unknown): value is ExprNode {
     case "sig":
       return value.length === 2 && isSignalPath(first);
     case "not":
-      return value.length === 2 && isExprNode(first);
+      return value.length === 2 && isChild(first);
     case "if":
       return (
         value.length === 4 &&
-        isExprNode(first) &&
-        isExprNode(second) &&
-        isExprNode(third)
+        isChild(first) &&
+        isChild(second) &&
+        isChild(third)
       );
     case "get":
-      return (
-        value.length === 3 && isExprNode(first) && typeof second === "string"
-      );
+      return value.length === 3 && isChild(first) && typeof second === "string";
     case "uuid":
     case "output":
       return value.length === 1;
@@ -180,11 +195,20 @@ export function isExprNode(value: unknown): value is ExprNode {
 }
 
 export function isStmtNode(value: unknown): value is StmtNode {
-  if (!Array.isArray(value)) return false;
+  return isStmtNodeAt(value, 1);
+}
+
+/** A statement's expressions and nested statements count toward its depth. */
+function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
+  if (!Array.isArray(value) || depth > maxNestingDepth) return false;
   const [tag, first, second, third, fourth] = value as unknown[];
   switch (tag) {
     case "set":
-      return value.length === 3 && isSignalPath(first) && isExprNode(second);
+      return (
+        value.length === 3 &&
+        isSignalPath(first) &&
+        isExprNodeAt(second, depth + 1)
+      );
     case "toggle":
       return value.length === 2 && isSignalPath(first);
     case "focus":
@@ -193,24 +217,33 @@ export function isStmtNode(value: unknown): value is StmtNode {
       return (
         value.length === 5 &&
         typeof first === "string" &&
-        isExprRecord(second) &&
-        isStmtList(third) &&
-        isStmtList(fourth)
+        isExprRecord(second, depth + 1) &&
+        isStmtListAt(third, depth + 1) &&
+        isStmtListAt(fourth, depth + 1)
       );
     default:
       return false;
   }
 }
 
-function isExprRecord(value: unknown): value is Record<string, ExprNode> {
+function isExprRecord(
+  value: unknown,
+  depth: number
+): value is Record<string, ExprNode> {
   return (
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
-    Object.values(value).every(isExprNode)
+    Object.values(value).every((node) => isExprNodeAt(node, depth))
   );
 }
 
 export function isStmtList(value: unknown): value is StmtNode[] {
-  return Array.isArray(value) && value.every(isStmtNode);
+  return isStmtListAt(value, 1);
+}
+
+function isStmtListAt(value: unknown, depth: number): value is StmtNode[] {
+  return (
+    Array.isArray(value) && value.every((stmt) => isStmtNodeAt(stmt, depth))
+  );
 }

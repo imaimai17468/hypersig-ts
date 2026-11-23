@@ -42,7 +42,7 @@ export interface SignalRuntimeOptions {
 
 /**
  * The browser's signal store. The runtime owns the values; statements, bound
- * inputs and Live View snapshots update them. Bindings in the document show a
+ * inputs (also when their form resets) and Live View snapshots update them. Bindings in the document show a
  * new value after a microtask.
  */
 export interface SignalRuntime {
@@ -50,8 +50,9 @@ export interface SignalRuntime {
    * Stores the `data-hs-signals` values of elements inside a morphed Live View
    * (not the view element itself, which a morph leaves unchanged) as values
    * the server confirmed. Nested `[data-hs-view]` elements are skipped, and so
-   * is the path of a focused bound input, so typing is not overwritten. Every
-   * binding in the document is evaluated again after a microtask.
+   * is the path of a focused bound text control (see `isTextControl`), so
+   * typing is not overwritten. Every binding in the document is evaluated
+   * again after a microtask.
    */
   applySnapshots(view: HTMLElement): void;
   /**
@@ -105,6 +106,31 @@ function isElement(target: EventTarget | null): target is Element {
 function isField(element: Element): element is Field {
   return element.tagName === "INPUT" || element.tagName === "TEXTAREA";
 }
+
+const textInputTypes: ReadonlySet<string> = new Set([
+  "email",
+  "number",
+  "password",
+  "search",
+  "tel",
+  "text",
+  "url",
+]);
+
+/**
+ * Reports a field whose typed value a Live View morph keeps while it has
+ * focus. A morph still syncs other controls, such as `checked`.
+ */
+export function isTextControl(element: Element | null): element is Field {
+  return (
+    element !== null &&
+    isField(element) &&
+    (element.tagName === "TEXTAREA" || textInputTypes.has(element.type))
+  );
+}
+
+/** Elements whose text the browser runs or applies as code. */
+const codeElementNames: ReadonlySet<string> = new Set(["SCRIPT", "STYLE"]);
 
 function isInputKind(value: unknown): value is InputKind {
   return value === "string" || value === "number" || value === "boolean";
@@ -246,8 +272,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
 
   function findEditingKey(): string | undefined {
     const focused = root.activeElement;
-    const binding =
-      focused && isField(focused) ? readValueBinding(focused) : undefined;
+    const binding = isTextControl(focused)
+      ? readValueBinding(focused)
+      : undefined;
     return binding && JSON.stringify(binding.path);
   }
 
@@ -272,6 +299,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       const value = evaluate(node, context);
       if (booleanAttributeNames.has(name)) {
         element.toggleAttribute(name, isTruthy(value));
+        // After the user clicks, only the property affects the display.
+        if (name === "checked" && isField(element) && "checked" in element) {
+          element.checked = isTruthy(value);
+        }
       } else {
         element.setAttribute(name, formatText(value));
       }
@@ -279,7 +310,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   }
 
   function renderValue(element: Element) {
-    if (!isField(element) || element === root.activeElement) return;
+    if (!isField(element)) return;
+    // A morph keeps the typed value of a focused text control, so render
+    // leaves it too. Other controls show the store value.
+    if (element === root.activeElement && isTextControl(element)) return;
     const binding = readValueBinding(element);
     const value = binding && read(binding.path);
     if (!binding || value === undefined) return;
@@ -293,6 +327,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
 
   function render() {
     for (const element of root.querySelectorAll(`[${signalAttributes.text}]`)) {
+      if (codeElementNames.has(element.tagName)) continue;
       const node = readExpr(element, signalAttributes.text);
       if (!node) continue;
       const text = formatText(evaluate(node, context));
@@ -454,6 +489,20 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       }
     });
   }
+
+  // The event fires before the form resets its fields and the reset fires no
+  // input events, so the fields are read after the event.
+  root.addEventListener("reset", (event) => {
+    const form = event.target;
+    if (!isElement(form)) return;
+    queueMicrotask(() => {
+      for (const element of form.querySelectorAll(
+        `[${signalAttributes.bind}]`
+      )) {
+        if (isField(element)) writeField(element);
+      }
+    });
+  });
 
   return {
     applySnapshots(view) {

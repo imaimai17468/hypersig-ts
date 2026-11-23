@@ -902,3 +902,161 @@ it("reverts to a null value the server sent while the call was pending", async (
   await settle();
   expect(runtime.read(n.text.path)).toBeNull();
 });
+
+it("shows the store value in a focused checkbox that a morph reset", async () => {
+  const task = signals({ done: false, note: "" }, { name: "focused-check" });
+  const t = task.with({});
+  const { page, find, input, click } = createPage(
+    render("div", {
+      "data-hs-view": "task",
+      children: [
+        element("p", { id: "snapshot", ...t.init() }),
+        element("input", {
+          id: "done",
+          type: "checkbox",
+          ...t.bindValue(t.done),
+        }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  const done = input("#done");
+  done.focus();
+  click("#done");
+  expect(runtime.read(t.done.path)).toBe(true);
+  // A morph syncs `checked` from the server HTML even on a focused checkbox.
+  done.checked = false;
+  find("#snapshot").setAttribute(
+    "data-hs-signals",
+    t.with({ done: true }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(find("[data-hs-view]"));
+  await settle();
+  expect(page.activeElement).toBe(done);
+  expect(done.checked).toBe(true);
+
+  find("#snapshot").setAttribute(
+    "data-hs-signals",
+    t.with({ done: false }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(find("[data-hs-view]"));
+  await settle();
+  expect(runtime.read(t.done.path)).toBe(false);
+  expect(done.checked).toBe(false);
+});
+
+it("reads bound fields again after their form resets", async () => {
+  const composer = signals(
+    { title: "", count: 0, urgent: false },
+    { name: "reset-composer" }
+  );
+  const c = composer.with({});
+  const { page, find, input, dispatch } = createPage(
+    render("form", {
+      id: "form",
+      ...c.init(),
+      children: [
+        element("input", { id: "title", ...c.bindValue(c.title) }),
+        element("input", {
+          id: "count",
+          type: "number",
+          ...c.bindValue(c.count),
+        }),
+        element("input", {
+          id: "urgent",
+          type: "checkbox",
+          ...c.bindValue(c.urgent),
+        }),
+        element("span", { id: "echo", ...c.bindText(c.title) }),
+      ],
+    }) + render("input", { id: "outside", ...c.bindValue(c.title) })
+  );
+  const runtime = startSignals({ root: page });
+
+  input("#title").value = "typed";
+  dispatch("#title", "input");
+  input("#count").value = "3";
+  dispatch("#count", "input");
+  find("#urgent").click();
+  await settle();
+  expect(find("#echo").textContent).toBe("typed");
+
+  find<HTMLFormElement>("#form").reset();
+  await settle();
+  expect(runtime.read(c.title.path)).toBe("");
+  expect(runtime.read(c.urgent.path)).toBe(false);
+  expect(runtime.read(c.count.path)).toBe(0);
+  expect(find("#echo").textContent).toBe("");
+  expect(input("#outside").value).toBe("");
+});
+
+it("does not write bound text into script or style elements", async () => {
+  const code = signals({ text: "alert(1)" }, { name: "script-text" });
+  const c = code.with({});
+  const { page, find } = createPage(
+    render("div", { ...c.init() }) +
+      `<script id="script" data-hs-text='${JSON.stringify(c.text.node)}'></script>` +
+      `<style id="style" data-hs-text='${JSON.stringify(c.text.node)}'></style>` +
+      render("span", { id: "span", ...c.bindText(c.text) })
+  );
+  startSignals({ root: page });
+  await settle();
+
+  expect(find("#script").textContent).toBe("");
+  expect(find("#style").textContent).toBe("");
+  expect(find("#span").textContent).toBe("alert(1)");
+});
+
+it("binds the checked property so a clicked checkbox follows the signal", async () => {
+  const filter = signals({ all: true }, { name: "checked-attr" });
+  const f = filter.with({});
+  const { page, find, input, click } = createPage(
+    render("div", { ...f.init() }) +
+      render("input", {
+        id: "all",
+        type: "checkbox",
+        ...f.bindAttr({ checked: f.all }),
+      }) +
+      render("button", { id: "off", ...on.click(f.all.set(false)) }) +
+      render("button", { id: "on", ...on.click(f.all.set(true)) })
+  );
+  startSignals({ root: page });
+
+  const all = input("#all");
+  expect(all.checked).toBe(true);
+  click("#all");
+  expect(all.checked).toBe(false);
+  click("#on");
+  await settle();
+  expect(all.checked).toBe(true);
+  expect(all.hasAttribute("checked")).toBe(true);
+  click("#off");
+  await settle();
+  expect(all.checked).toBe(false);
+  expect(find("#all").hasAttribute("checked")).toBe(false);
+});
+
+it("ignores a pathologically nested binding and keeps rendering the others", async () => {
+  const depth = 100_000;
+  const nested = `${'["not",'.repeat(depth)}["lit",1]${"]".repeat(depth)}`;
+  const statement = `[["set",["deep","x"],${nested}]]`;
+  const label = signals({ text: "ok" }, { name: "deep-neighbor" });
+  const l = label.with({});
+  const { page, find, click } = createPage(
+    render("div", { ...l.init() }) +
+      `<span id="deep" data-hs-text='${nested}'>keep</span>` +
+      `<button id="deep-click" data-hs-on-click='${statement}'>x</button>` +
+      render("span", { id: "label", ...l.bindText(l.text) }) +
+      render("button", { id: "rename", ...on.click(l.text.set("renamed")) })
+  );
+  const runtime = startSignals({ root: page });
+
+  expect(find("#deep").textContent).toBe("keep");
+  expect(find("#label").textContent).toBe("ok");
+  click("#deep-click");
+  expect(runtime.read(["deep", "x"])).toBeUndefined();
+  click("#rename");
+  await settle();
+  expect(find("#label").textContent).toBe("renamed");
+});

@@ -4,7 +4,7 @@ import { preserveDrafts, restoreDrafts } from "./drafts.js";
 import { events, isJsonValue } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
-import { startSignals } from "./signal-runtime.js";
+import { isTextControl, startSignals } from "./signal-runtime.js";
 
 function isUpdate(value: unknown): value is HtmlUpdate {
   return (
@@ -33,16 +33,6 @@ function readData(event: Event): unknown {
   } catch {
     return;
   }
-}
-
-function isTextControl(element: Element | null) {
-  return (
-    element instanceof HTMLTextAreaElement ||
-    (element instanceof HTMLInputElement &&
-      ["email", "number", "password", "search", "tel", "text", "url"].includes(
-        element.type
-      ))
-  );
 }
 
 function updateViews(

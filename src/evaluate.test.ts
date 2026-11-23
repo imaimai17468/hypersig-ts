@@ -129,3 +129,42 @@ it("allows only listed attributes", () => {
     expect(isBindableAttribute(name)).toBe(false);
   }
 });
+
+/** An `if` chain `levels` nodes deep that evaluates to the innermost literal. */
+function nestExpr(levels: number): ExprNode {
+  let node: ExprNode = ["lit", "deep"];
+  for (let level = 1; level < levels; level += 1) {
+    node = ["if", ["lit", true], node, ["lit", "shallow"]];
+  }
+  return node;
+}
+
+/** A `call` statement whose success handlers nest `levels` statements deep. */
+function nestStmt(levels: number): unknown {
+  let stmt: unknown = ["toggle", ["a"]];
+  for (let level = 1; level < levels; level += 1) {
+    stmt = ["call", "/a", {}, [stmt], []];
+  }
+  return stmt;
+}
+
+it("rejects and stops evaluating nodes nested deeper than 64 levels", () => {
+  expect(isExprNode(nestExpr(64))).toBe(true);
+  expect(isExprNode(nestExpr(65))).toBe(false);
+  expect(isExprNode(["lit", JSON.parse("[".repeat(64) + "]".repeat(64))])).toBe(
+    true
+  );
+  expect(isExprNode(["lit", JSON.parse("[".repeat(65) + "]".repeat(65))])).toBe(
+    false
+  );
+  expect(isStmtNode(nestStmt(64))).toBe(true);
+  expect(isStmtNode(nestStmt(65))).toBe(false);
+  // The expression inside a statement counts toward the same depth.
+  expect(isStmtNode(["set", ["a"], nestExpr(63)])).toBe(true);
+  expect(isStmtNode(["set", ["a"], nestExpr(64)])).toBe(false);
+
+  const context = createContext({});
+  expect(evaluate(nestExpr(64), context)).toBe("deep");
+  expect(evaluate(nestExpr(65), context)).toBeNull();
+  expect(() => evaluate(nestExpr(100_000), context)).not.toThrow();
+});
