@@ -310,6 +310,18 @@ pre {
   font-size: 1.46rem;
   margin-bottom: 0.55rem;
 }
+.article .article-contents {
+  margin-top: 1rem;
+}
+.article .design-part {
+  margin-top: 2.5rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid var(--line);
+}
+.design-part h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.15rem;
+}
 .article p + p,
 .article p + pre,
 .article pre + p {

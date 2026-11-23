@@ -1,120 +1,139 @@
 <h1>Why hypersig</h1>
 <p class="lead">
-  The data a browser receives reflects the moment the server read it. A write
-  that commits afterward can leave the page stale. hypersig.ts uses committed
-  changes on the server to drive page updates.
+  Server state can change while data is on its way to the browser. The design
+  starts from the assumption that any page can go stale.
 </p>
 
-<section id="copies">
-  <h2>How a page goes stale</h2>
-  <p>
-    An order list can already be stale when it arrives if an order was added
-    after the server read it. When a user saves an order, the application needs
-    to decide when to reload the list and totals and what to do if an older
-    response arrives late. Scheduled jobs and dropped connections raise the same
-    question of how to bring the page up to date.
-  </p>
-  <p>
-    Focus and unfinished input are local to the browser. A separate copy of
-    shared application data must be kept current. The React docs describe the
-    extra synchronization introduced by redundant state and the need to account
-    for out-of-order responses when fetching data.
-    <a href="https://react.dev/learn/you-might-not-need-an-effect"
-      >React on redundant state and Effects</a
-    >
-  </p>
+<p>
+  First, we look at how existing frameworks handle reloading data and updating
+  views. Then we explain how hypersig.ts uses committed server changes to keep
+  an open page in sync.
+</p>
+<nav class="article-contents" aria-label="On this page">
+  <ol>
+    <li><a href="#existing-frameworks">What existing frameworks solved</a></li>
+    <li><a href="#hypersig-design">The hypersig design</a></li>
+  </ol>
+</nav>
+
+<section class="design-part" id="existing-frameworks">
+  <h2>What existing frameworks solved</h2>
+  <section id="copies">
+    <h3>How a page goes stale</h3>
+    <p>
+      An order list can already be stale when it arrives if an order was added
+      after the server read it. When a user saves an order, the application
+      needs to decide when to reload the list and totals and what to do if an
+      older response arrives late. Scheduled jobs and dropped connections raise
+      the same question of how to bring the page up to date.
+    </p>
+    <p>
+      Focus and unfinished input are local to the browser. A separate copy of
+      shared application data must be kept current. The React docs describe the
+      extra synchronization introduced by redundant state and the need to
+      account for out-of-order responses when fetching data.
+      <a href="https://react.dev/learn/you-might-not-need-an-effect"
+        >React on redundant state and Effects</a
+      >
+    </p>
+  </section>
+
+  <section id="remix-revalidation">
+    <h3>What Remix changed about form submissions</h3>
+    <p>
+      Early Remix centered writes on HTML forms and HTTP. Remix v2 runs the
+      server action and automatically reloads the data used by the page.
+      Application code can leave revalidation to the framework. When requests
+      overlap, Remix also decides which responses are current enough to apply.
+      <a href="https://remix.run/blog/remix-v1">Remix v1 announcement</a> ·
+      <a href="https://v2.remix.run/docs/discussion/data-flow/"
+        >Data revalidation</a
+      >
+      ·
+      <a href="https://v2.remix.run/docs/discussion/concurrency/"
+        >Network concurrency</a
+      >
+    </p>
+  </section>
+
+  <section id="remix-frames">
+    <h3>Designs for loading data and updating views</h3>
+    <p>
+      With htmx, an HTML element specifies where to send a request and where to
+      put the HTML that comes back. The server renders what the browser
+      displays, so the browser needs less code to turn the same data into UI.
+      <a href="https://htmx.org/docs/#introduction">htmx basics</a>
+    </p>
+    <p>
+      TanStack Start lets you put data loading on a route and define which
+      functions run on the server. Types connect URL search parameters to the
+      data and components that use them.
+      <a
+        href="https://tanstack.com/start/latest/docs/framework/react/start-vs-nextjs"
+        >TanStack Start design</a
+      >
+    </p>
+    <p>
+      Remix 3 can place HTML from another URL in a region called a
+      <code>Frame</code>. A link, a form, or an explicit reload can select which
+      region to update. Browser components also let the application explicitly
+      decide when to render.
+      <a href="https://docs.remix.run/streaming-ui-with-frames/"
+        >Remix 3 Frames</a
+      >
+      · <a href="https://docs.remix.run/">Remix 3 design</a>
+    </p>
+    <p>
+      rshono puts React components that read data on the server close to the
+      server functions that update it. In its notes example, the response to a
+      save includes fresh data for the page. The guide also shows how to display
+      a tentative result while an action is pending.
+      <a href="https://www.rshono.com/docs/usage">rshono forms and updates</a>
+    </p>
+  </section>
 </section>
 
-<section id="remix-revalidation">
-  <h2>What Remix changed about form submissions</h2>
+<section class="design-part" id="hypersig-design">
+  <h2>The hypersig design</h2>
   <p>
-    Early Remix centered writes on HTML forms and HTTP. Remix v2 runs the server
-    action and automatically reloads the data used by the page. Application code
-    can leave revalidation to the framework. When requests overlap, Remix also
-    decides which responses are current enough to apply.
-    <a href="https://remix.run/blog/remix-v1">Remix v1 announcement</a> ·
-    <a href="https://v2.remix.run/docs/discussion/data-flow/"
-      >Data revalidation</a
-    >
-    ·
-    <a href="https://v2.remix.run/docs/discussion/concurrency/"
-      >Network concurrency</a
-    >
+    Reloading after a form submission reflects the changes made by that
+    operation. A page that stays open can go stale again as more changes happen.
+    To account for those changes, hypersig.ts begins updating views when a
+    change commits on the server.
   </p>
-</section>
 
-<section id="remix-frames">
-  <h2>Designs for loading data and updating views</h2>
-  <p>
-    With htmx, an HTML element specifies where to send a request and where to
-    put the HTML that comes back. The server renders what the browser displays,
-    so the browser needs less code to turn the same data into UI.
-    <a href="https://htmx.org/docs/#introduction">htmx basics</a>
-  </p>
-  <p>
-    TanStack Start lets you put data loading on a route and define which
-    functions run on the server. Types connect URL search parameters to the data
-    and components that use them.
-    <a
-      href="https://tanstack.com/start/latest/docs/framework/react/start-vs-nextjs"
-      >TanStack Start design</a
-    >
-  </p>
-  <p>
-    Remix 3 can place HTML from another URL in a region called a
-    <code>Frame</code>. A link, a form, or an explicit reload can select which
-    region to update. Browser components also let the application explicitly
-    decide when to render.
-    <a href="https://docs.remix.run/streaming-ui-with-frames/"
-      >Remix 3 Frames</a
-    >
-    · <a href="https://docs.remix.run/">Remix 3 design</a>
-  </p>
-  <p>
-    rshono puts React components that read data on the server close to the
-    server functions that update it. In its notes example, the response to a
-    save includes fresh data for the page. The guide also shows how to display a
-    tentative result while an action is pending.
-    <a href="https://www.rshono.com/docs/usage">rshono forms and updates</a>
-  </p>
-  <p>
-    These designs reduce the work involved in getting data from a server
-    operation back to a page. Updating other pages that are already open also
-    requires a way to identify who should receive the change.
-  </p>
-</section>
+  <section id="commit-to-display">
+    <h3>Updating the page from a committed change</h3>
+    <p>
+      When a page opens in hypersig.ts, its server code declares which changes
+      each view needs to receive. Suppose the application saves an order and
+      then announces that change. The server renders the subscribed order list
+      from the current data and sends its HTML. The browser applies that HTML to
+      the corresponding region.
+    </p>
+    <p>
+      Another user looking at the same order receives the update according to
+      their own page subscriptions. A scheduled job can announce the same change
+      after saving it. The application code shows both where a notification is
+      published and which views receive it.
+    </p>
+  </section>
 
-<section id="commit-to-display">
-  <h2>Updating the page from a committed change</h2>
-  <p>
-    When a page opens in hypersig.ts, its server code declares which changes
-    each view needs to receive. Suppose the application saves an order and then
-    announces that change. The server renders the subscribed order list from the
-    current data and sends its HTML. The browser applies that HTML to the
-    corresponding region.
-  </p>
-  <p>
-    Another user looking at the same order receives the update according to
-    their own page subscriptions. A scheduled job can announce the same change
-    after saving it. The application code shows both where a notification is
-    published and which views receive it.
-  </p>
-</section>
-
-<section id="sync">
-  <h2>While saving or reconnecting</h2>
-  <p>
-    Application views display committed server data. A form can keep unfinished
-    input and show that saving is in progress. The order list updates when HTML
-    rendered from the saved data arrives.
-  </p>
-  <p>
-    Delivery takes time. After a connection drops, reconnecting reads the
-    current state again. The application is responsible for declaring the
-    changes it publishes and the views that subscribe.
-  </p>
-  <p>
-    <a href="../concepts/">Read the update sequence</a> ·
-    <a href="../start/">Try it in two tabs</a>
-  </p>
+  <section id="sync">
+    <h3>While saving or reconnecting</h3>
+    <p>
+      Application views display committed server data. A form can keep
+      unfinished input and show that saving is in progress. The order list
+      updates when HTML rendered from the saved data arrives.
+    </p>
+    <p>
+      Delivery takes time. After a connection drops, reconnecting reads the
+      current state again. The application is responsible for declaring the
+      changes it publishes and the views that subscribe.
+    </p>
+    <p>
+      <a href="../concepts/">Read the update sequence</a> ·
+      <a href="../start/">Try it in two tabs</a>
+    </p>
+  </section>
 </section>
