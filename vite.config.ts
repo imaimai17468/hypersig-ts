@@ -43,7 +43,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["src/**/*.{test,spec}.ts"],
+        files: ["src/**/*.{test,spec}.{ts,tsx}"],
         plugins: ["vitest"],
         rules: {
           "vitest/no-focused-tests": "error",
@@ -52,7 +52,7 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ["src/**/*.{test,spec}.ts"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     environment: "jsdom",
   },
 });
