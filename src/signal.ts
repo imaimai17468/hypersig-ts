@@ -106,8 +106,11 @@ type AttributeBindings<Attrs> = {
       : never;
 };
 
+/** `id` is left out: an owned element whose `id` changed is replaced. */
 type ElementBindings<Attributes extends CustomElementSpec["attributes"]> = {
-  readonly [K in keyof Attributes]?: Attributes[K] | Expr<Attributes[K]>;
+  readonly [K in Exclude<keyof Attributes, "id">]?:
+    | Attributes[K]
+    | Expr<Attributes[K]>;
 };
 
 export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
@@ -138,14 +141,14 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
    * expression of the declared type. A `true` value renders the attribute
    * empty and `false` leaves it out; other values render as text. Throws for
    * a name that is not lowercase, starts with `on` (including names such as
-   * `open`), is `style`, or starts with `data-hs-`. Only the type checks that a
-   * key is declared: an object from a variable with extra keys still writes
-   * them.
+   * `once`), is `style` or `id`, or starts with `data-hs-`. Only the type checks
+   * that a key is declared: an object from a variable with extra keys still
+   * writes them.
    */
   bindElement<Spec extends CustomElementSpec>(
     element: CustomElement<Spec>,
     values: ElementBindings<Spec["attributes"]>
-  ): Record<string, string | true> & {
+  ): Record<string, string> & {
     [customElementAttributes.elementAttr]: string;
   };
   bindValue(signal: Signal<string> | Signal<number> | Signal<boolean>): {
@@ -468,8 +471,8 @@ function bindAttributes(
 function bindElementAttributes(
   values: Readonly<Record<string, ExprInput | undefined>>,
   valueOf: (expr: ExprHandle) => JsonValue
-): Record<string, string | true> {
-  const rendered: Record<string, string | true> = {};
+): Record<string, string> {
+  const rendered: Record<string, string> = {};
   const nodes: Record<string, ExprNode> = {};
   for (const [name, input] of Object.entries(values)) {
     if (input === undefined) continue;
@@ -479,8 +482,9 @@ function bindElementAttributes(
     const node = nodeOf(input);
     nodes[name] = node;
     const value = valueOf(new ExprHandle(node));
+    // Hono renders `true` as "true" for names outside its boolean list.
     if (typeof value !== "boolean") rendered[name] = formatText(value);
-    else if (value) rendered[name] = true;
+    else if (value) rendered[name] = "";
   }
   rendered[customElementAttributes.elementAttr] = JSON.stringify(nodes);
   return rendered;

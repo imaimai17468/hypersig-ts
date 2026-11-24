@@ -51,6 +51,9 @@ type NamedHtmlAttributes = {
 /**
  * The props of `Element`: the HTML attributes Hono JSX names, `role`, `part`,
  * `exportparts`, `aria-*`, `data-*`, `children`, and the declared attributes as fixed values.
+ * A `true` value renders the attribute empty and `false` leaves it out, except
+ * for `aria-*`, `data-*`, `draggable`, `spellcheck` and `contenteditable`,
+ * whose booleans render as `"true"` or `"false"`.
  * Bind a declared attribute to a signal with `scope.bindElement` instead, and
  * do not write the same attribute both ways: the later prop wins.
  */
@@ -112,8 +115,39 @@ type CheckedTagName<Spec extends CustomElementSpec> = [
 ] extends [never]
   ? [InvalidEventName<Spec>] extends [never]
     ? CustomTagName
-    : `Event "${InvalidEventName<Spec>}" needs a lowercase letter followed by lowercase letters, digits, -, ., : or _`
-  : `Attribute "${InvalidAttributeName<Spec>}" needs a lowercase name that is not on*, style or data-hs-*`;
+    : `Event "${InvalidEventName<Spec>}" needs a lowercase letter followed by lowercase letters, digits, -, ., : or _, and cannot be click, input, change or submit`
+  : `Attribute "${InvalidAttributeName<Spec>}" needs a lowercase name that is not on*, style, id or data-hs-*`;
+
+/** Attributes whose values `"true"` and `"false"` mean different things. */
+const textBooleanAttributes: ReadonlySet<string> = new Set([
+  "draggable",
+  "spellcheck",
+  "contenteditable",
+]);
+
+function rendersBooleanAsText(name: string): boolean {
+  return (
+    name.startsWith("aria-") ||
+    name.startsWith("data-") ||
+    textBooleanAttributes.has(name)
+  );
+}
+
+/**
+ * Hono renders `true` as `"true"` for attribute names outside its own list,
+ * so a boolean becomes an empty value or no attribute here.
+ */
+function renderBooleanProps(
+  props: Readonly<Record<string, unknown>>
+): Record<string, unknown> {
+  const rendered: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(props)) {
+    if (typeof value !== "boolean" || rendersBooleanAsText(name)) {
+      rendered[name] = value;
+    } else if (value) rendered[name] = "";
+  }
+  return rendered;
+}
 
 type HandlerEntry = [string, EventHandler<JsonValue> | undefined];
 
@@ -133,10 +167,12 @@ function serializeHandlers(entries: readonly HandlerEntry[]): string {
 /**
  * Declares a custom element whose JavaScript the application loads. The tag
  * name starts with a lowercase letter, holds a `-`, and has only lowercase
- * letters, digits, `-`, `.` and `_`; characters other than letters are checked
- * when this is called. With `ownsChildren`, the element's JavaScript renders
- * its children, and a Live View update keeps them while it updates the
- * element's attributes.
+ * letters, digits, `-`, `.` and `_`; characters other than letters, and the
+ * names HTML reserves such as `font-face`, are checked when this is called.
+ * With `ownsChildren`, the element's JavaScript renders its children, and a
+ * Live View update keeps them while it updates the element's attributes. The
+ * browser runtime ignores hypersig attributes inside those children: their
+ * bindings, handlers, snapshots and refs do nothing.
  */
 export function customElement<
   Spec extends CustomElementSpec = { attributes: {}; events: {} },
@@ -159,7 +195,7 @@ export function customElement(
   return {
     tag,
     ownsChildren,
-    Element: (props) => <Tag {...props} {...marker} />,
+    Element: (props) => <Tag {...renderBooleanProps(props)} {...marker} />,
     on: (
       eventOrHandlers:
         | string

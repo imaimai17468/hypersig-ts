@@ -67,7 +67,7 @@ it("binds declared attributes from a scope", () => {
       label: locked.score.gt(2).choose("good", "bad"),
     })
   ).toEqual({
-    readonly: true,
+    readonly: "",
     label: "good",
     "data-hs-element-attr": JSON.stringify({
       readonly: ["sig", ["rating-score-1", "locked"]],
@@ -114,8 +114,8 @@ it("serializes custom event handlers", () => {
       ],
     ]),
   });
-  // @ts-expect-error The element dispatches no "change" event.
-  rating.on("change", () => []);
+  // @ts-expect-error The element dispatches no "select" event.
+  rating.on("select", () => []);
   // @ts-expect-error The rate detail is a number, not a string.
   rating.on("rate", (detail) => signals({ s: "" }).s.set(detail));
 });
@@ -151,4 +151,66 @@ it("renders shadow part attributes", async () => {
   expect(
     String(await plain.Element({ part: "box", exportparts: "star" }))
   ).toBe('<plain-box part="box" exportparts="star"></plain-box>');
+});
+
+const box = customElement<{
+  attributes: { compact: boolean; size: number };
+  events: Record<never, never>;
+}>("x-box");
+
+it("renders a declared boolean attribute empty when true and leaves it out when false", async () => {
+  expect(String(await box.Element({ compact: true }))).toBe(
+    '<x-box compact=""></x-box>'
+  );
+  expect(String(await box.Element({ compact: false, size: 2 }))).toBe(
+    '<x-box size="2"></x-box>'
+  );
+
+  const flags = signals({ on: true }, { name: "box-compact" });
+  const shown = flags.with({});
+  const bound = shown.bindElement(box, { compact: shown.on });
+  expect(String(await box.Element(bound))).toBe(
+    `<x-box compact="" data-hs-element-attr="${JSON.stringify({
+      compact: ["sig", ["box-compact-1", "on"]],
+    }).replaceAll('"', "&quot;")}"></x-box>`
+  );
+  const hidden = flags.with({ on: false });
+  expect(
+    String(await box.Element(hidden.bindElement(box, { compact: hidden.on })))
+  ).not.toContain("compact=");
+});
+
+it("rejects the event names the runtime delegates", () => {
+  for (const name of ["click", "input", "change", "submit"] as const) {
+    const delegated = customElement<{
+      attributes: {};
+      events: Record<typeof name, number>;
+    }>(
+      // @ts-expect-error A custom event cannot take a name the runtime delegates.
+      "delegated-event"
+    );
+    expect(() => delegated.on(name, () => [])).toThrow(name);
+  }
+});
+
+it("rejects the reserved custom element names", () => {
+  // The type accepts these names, so they fail when called.
+  expect(() => customElement("font-face")).toThrow("font-face");
+  expect(() => customElement("annotation-xml")).toThrow("annotation-xml");
+  expect(() => customElement("missing-glyph")).toThrow("missing-glyph");
+});
+
+it("does not bind id through bindElement", () => {
+  const withId = customElement<{
+    attributes: { id: string; size: number };
+    events: {};
+  }>(
+    // @ts-expect-error A declared attribute cannot be id.
+    "id-box"
+  );
+  const scope = signals({ name: "a" }, { name: "box-id" }).with({});
+  expect(() =>
+    // @ts-expect-error bindElement takes no id even when the spec declares it.
+    scope.bindElement(withId, { id: scope.name, size: 1 })
+  ).toThrow("id");
 });

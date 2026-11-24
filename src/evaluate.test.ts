@@ -187,7 +187,7 @@ it("reads the detail of a custom event", () => {
 });
 
 it("recognizes custom element names", () => {
-  for (const name of ["star-rating", "x-1", "a-b.c_d", "my-"]) {
+  for (const name of ["star-rating", "x-1", "a-b.c_d", "my-", "font-face-x"]) {
     expect(isCustomElementName(name)).toBe(true);
   }
   for (const name of [
@@ -198,6 +198,14 @@ it("recognizes custom element names", () => {
     "-a",
     "a-b!",
     "",
+    "annotation-xml",
+    "color-profile",
+    "font-face",
+    "font-face-src",
+    "font-face-uri",
+    "font-face-format",
+    "font-face-name",
+    "missing-glyph",
   ]) {
     expect(isCustomElementName(name)).toBe(false);
   }
@@ -207,7 +215,15 @@ it("allows custom element attributes other than handlers, style and runtime attr
   for (const name of ["value", "max", "aria-label", "data-x"]) {
     expect(isBindableCustomAttribute(name)).toBe(true);
   }
-  for (const name of ["onrate", "onclick", "style", "data-hs-x", "Value", ""]) {
+  for (const name of [
+    "onrate",
+    "onclick",
+    "style",
+    "id",
+    "data-hs-x",
+    "Value",
+    "",
+  ]) {
     expect(isBindableCustomAttribute(name)).toBe(false);
   }
 });
@@ -216,7 +232,18 @@ it("recognizes custom event names", () => {
   for (const name of ["rate", "hover:star", "a.b_c-d", "x1"]) {
     expect(isCustomEventName(name)).toBe(true);
   }
-  for (const name of ["Rate", "rAte", "1rate", ":rate", "rate!", ""]) {
+  for (const name of [
+    "Rate",
+    "rAte",
+    "1rate",
+    ":rate",
+    "rate!",
+    "",
+    "click",
+    "input",
+    "change",
+    "submit",
+  ]) {
     expect(isCustomEventName(name)).toBe(false);
   }
 });

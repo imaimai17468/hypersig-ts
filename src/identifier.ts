@@ -54,20 +54,24 @@ type CustomAttributeChar = LowercaseLetter | CharsOf<"0123456789-._">;
 
 /**
  * Whether a literal is a custom event name: a lowercase letter followed by
- * lowercase letters, digits, `-`, `.`, `:` or `_`.
+ * lowercase letters, digits, `-`, `.`, `:` or `_`, and not an event the
+ * runtime delegates (`click`, `input`, `change` or `submit`).
  */
 export type IsCustomEventName<Name extends string> = string extends Name
   ? false
-  : StartsLowercase<Name, CustomEventChar>;
+  : Name extends "click" | "input" | "change" | "submit"
+    ? false
+    : StartsLowercase<Name, CustomEventChar>;
 
 /**
  * Whether a literal is an attribute name a custom element may have bound: a
  * lowercase letter followed by lowercase letters, digits, `-`, `.` or `_`,
- * and not an event handler (`on*`), `style`, or a runtime `data-hs-*` name.
+ * and not an event handler (`on*`), `style`, `id`, or a runtime `data-hs-*`
+ * name.
  */
 export type IsCustomAttributeName<Name extends string> = string extends Name
   ? false
-  : Name extends `on${string}` | "style" | `data-hs-${string}`
+  : Name extends `on${string}` | "style" | "id" | `data-hs-${string}`
     ? false
     : StartsLowercase<Name, CustomAttributeChar>;
 

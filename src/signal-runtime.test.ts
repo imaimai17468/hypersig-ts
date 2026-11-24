@@ -1460,3 +1460,189 @@ it("applies the name list to data-hs-attr on a custom element", async () => {
   expect(find("#rating").hasAttribute("value")).toBe(false);
   expect(find("#rating").getAttribute("data-count")).toBe("5");
 });
+
+it("runs result statements of a call from a custom event with its detail", async () => {
+  const e = signals({ saved: 0 }, { name: "custom-call-detail" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...e.init(),
+      children: element("star-rating", {
+        id: "rating",
+        ...rating.on("rate", (detail) =>
+          bump.call(
+            { count: detail },
+            {
+              onSuccess: () => e.saved.set(detail),
+              onError: e.saved.set(detail.mul(-1)),
+            }
+          )
+        ),
+      }),
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  dispatchCustom(find("#rating"), "rate", 4);
+  expect(request(0).body).toBe(JSON.stringify({ count: 4 }));
+  request(0).respond({ ok: true, data: 4 });
+  await settle();
+  expect(runtime.read(e.saved.path)).toBe(4);
+
+  dispatchCustom(find("#rating"), "rate", 2);
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(e.saved.path)).toBe(-2);
+});
+
+it("does not rewrite bound attributes or text whose value is unchanged", async () => {
+  const stars = signals(
+    { count: 3, open: true, pressed: true, other: 0 },
+    { name: "custom-unchanged" }
+  ).with({});
+  const { page } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: [
+        element("star-rating", {
+          id: "rating",
+          ...stars.bindAttr({
+            "aria-pressed": stars.pressed,
+            "data-count": stars.count,
+          }),
+          ...stars.bindElement(rating, {
+            value: stars.count,
+            open: stars.open,
+          }),
+        }),
+        element("span", { id: "text", ...stars.bindText(stars.count) }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+  await settle();
+  const view = page.defaultView;
+  if (!view) throw new Error("The frame has no window");
+  const records: MutationRecord[] = [];
+  const observer = new view.MutationObserver((found) => records.push(...found));
+  const takeRecords = () => records.splice(0);
+  observer.observe(page.body, {
+    attributes: true,
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+
+  runtime.write(stars.other.path, 1);
+  await settle();
+  expect(takeRecords()).toEqual([]);
+
+  runtime.write(stars.count.path, 4);
+  await settle();
+  const changed = takeRecords()
+    .filter((record) => record.type === "attributes")
+    .map((record) => record.attributeName);
+  expect(changed.sort((a, b) => String(a).localeCompare(String(b)))).toEqual([
+    "data-count",
+    "value",
+  ]);
+  observer.disconnect();
+});
+
+it("ignores hypersig attributes inside the children of an owned element", async () => {
+  const s = signals(
+    { count: 1, typed: "", other: 0 },
+    { name: "owned-inside" }
+  ).with({});
+  const field = ref({ name: "owned-field" });
+  const inner = signals({ count: 0 }, { name: "owned-snapshot" }).with({
+    count: 9,
+  });
+  const { page, find, click, dispatch } = createPage(
+    render("div", {
+      ...s.init(),
+      children: [
+        element("star-rating", {
+          id: "rating",
+          "data-hs-owns-children": "",
+          ...s.bindElement(rating, { value: s.count }),
+          ...rating.on("rate", (detail) => s.count.set(detail)),
+          children: [
+            element("button", {
+              id: "inner-click",
+              ...on.click(s.count.set(100)),
+            }),
+            element("span", { id: "inner-text", "data-hs-text": "x" }),
+            element("p", { id: "inner-snapshot", ...inner.init() }),
+            element("input", {
+              id: "inner-input",
+              ...s.bindValue(s.typed),
+              ...field.attr(),
+              ...on.input(s.other.set(1)),
+            }),
+            element("other-box", {
+              id: "inner-custom",
+              ...rating.on("rate", (detail) => s.other.set(detail)),
+            }),
+          ],
+        }),
+        element("button", { id: "focus", ...on.click(field.focus()) }),
+      ],
+    })
+  );
+  find("#inner-text").setAttribute(
+    "data-hs-text",
+    JSON.stringify(s.count.node)
+  );
+  find("#inner-text").textContent = "server";
+  const runtime = startSignals({ root: page });
+  await settle();
+
+  expect(runtime.read(inner.count.path)).toBe(undefined);
+  expect(find("#inner-text").textContent).toBe("server");
+  expect(find("#rating").getAttribute("value")).toBe("1");
+
+  click("#inner-click");
+  await settle();
+  expect(runtime.read(s.count.path)).toBe(1);
+
+  find<HTMLInputElement>("#inner-input").value = "typed";
+  dispatch("#inner-input", "input");
+  await settle();
+  expect(runtime.read(s.typed.path)).toBe("");
+  expect(runtime.read(s.other.path)).toBe(0);
+
+  click("#focus");
+  expect(page.activeElement).not.toBe(find("#inner-input"));
+
+  dispatchCustom(find("#inner-custom"), "rate", 5);
+  expect(runtime.read(s.other.path)).toBe(0);
+  dispatchCustom(find("#rating"), "rate", 3);
+  expect(runtime.read(s.count.path)).toBe(3);
+  await settle();
+  expect(find("#rating").getAttribute("value")).toBe("3");
+  expect(find("#inner-text").textContent).toBe("server");
+});
+
+it("ignores hand-written delegated event names and id bindings on a custom element", async () => {
+  const s = signals({ count: 0 }, { name: "custom-reserved" }).with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...s.init(),
+      children: element("star-rating", {
+        id: "rating",
+        "data-hs-on-custom": JSON.stringify([
+          ["click", [["set", s.count.path, ["lit", 1]]]],
+        ]),
+        "data-hs-element-attr": JSON.stringify({ id: ["lit", "other"] }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  await settle();
+
+  click("#rating");
+  expect(runtime.read(s.count.path)).toBe(0);
+  expect(find("#rating").id).toBe("rating");
+  expect(runtime.boundElementAttributes(find("#rating")).size).toBe(0);
+});

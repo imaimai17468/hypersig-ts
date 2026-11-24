@@ -131,35 +131,56 @@ export function isBindableAttribute(name: string): boolean {
 
 const customElementNamePattern = /^[a-z][a-z0-9._-]*-[a-z0-9._-]*$/;
 
+/** Names HTML reserves, which `customElements.define` rejects. */
+const reservedElementNames: ReadonlySet<string> = new Set([
+  "annotation-xml",
+  "color-profile",
+  "font-face",
+  "font-face-src",
+  "font-face-uri",
+  "font-face-format",
+  "font-face-name",
+  "missing-glyph",
+]);
+
 /**
  * Accepts a lowercase letter followed by lowercase letters, digits, `-`, `.`
- * or `_`, with at least one `-`.
+ * or `_`, with at least one `-`, except the names HTML reserves, such as
+ * `font-face`.
  */
 export function isCustomElementName(name: string): boolean {
-  return customElementNamePattern.test(name);
+  return customElementNamePattern.test(name) && !reservedElementNames.has(name);
 }
 
 const customEventNamePattern = /^[a-z][a-z0-9.:_-]*$/;
 
+/** Events the runtime listens to for every element. */
+const delegatedEventNames = ["click", "input", "change", "submit"] as const;
+
+const delegatedEventNameSet: ReadonlySet<string> = new Set(delegatedEventNames);
+
 /**
  * Accepts a lowercase letter followed by lowercase letters, digits, `-`, `.`,
- * `:` or `_`.
+ * `:` or `_`, except the events the runtime delegates (`click`, `input`,
+ * `change` and `submit`).
  */
 export function isCustomEventName(name: string): boolean {
-  return customEventNamePattern.test(name);
+  return customEventNamePattern.test(name) && !delegatedEventNameSet.has(name);
 }
 
 const customAttributeNamePattern = /^[a-z][a-z0-9._-]*$/;
 
 /**
  * Accepts the lowercase attribute names a custom element may have bound,
- * except event handlers (`on*`), `style`, and the runtime's `data-hs-*`.
+ * except event handlers (`on*`), `style`, `id`, and the runtime's
+ * `data-hs-*`.
  */
 export function isBindableCustomAttribute(name: string): boolean {
   return (
     customAttributeNamePattern.test(name) &&
     !name.startsWith("on") &&
     name !== "style" &&
+    name !== "id" &&
     !name.startsWith("data-hs-")
   );
 }

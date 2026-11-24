@@ -204,6 +204,15 @@ function isSnapshotEntry(entry: unknown): entry is SnapshotEntry {
 
 type CustomEventHandler = [event: string, stmts: StmtNode[]];
 
+/**
+ * Sets an attribute only when its value changes, so a custom element's
+ * `attributeChangedCallback` does not run for writes to other signals.
+ * `toggleAttribute` already leaves an attribute in the requested state alone.
+ */
+function writeAttribute(element: Element, name: string, value: string) {
+  if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
 function isCustomEventHandler(entry: unknown): entry is CustomEventHandler {
   return (
     Array.isArray(entry) &&
@@ -222,6 +231,27 @@ function readCustomEventHandlers(element: Element): CustomEventHandler[] {
 
 function isCustomElement(element: Element): boolean {
   return isCustomElementName(element.localName);
+}
+
+const ownerSelector = `[${customElementAttributes.ownsChildren}]`;
+
+/**
+ * Reports an element inside the children of a `data-hs-owns-children`
+ * element. Its JavaScript renders them, and they may carry user content, so
+ * the runtime ignores their hypersig attributes.
+ */
+function isOwnedChild(element: Element): boolean {
+  return element.parentElement?.closest(ownerSelector) != null;
+}
+
+/** Lists the elements under `root` matching `selector` that the runtime handles. */
+function findHandled<E extends Element = Element>(
+  root: ParentNode,
+  selector: string
+): E[] {
+  return [...root.querySelectorAll<E>(selector)].filter(
+    (element) => !isOwnedChild(element)
+  );
 }
 
 function readSnapshot(element: Element): SnapshotEntry[] {
@@ -351,7 +381,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
           element.checked = isTruthy(value);
         }
       } else {
-        element.setAttribute(name, formatText(value));
+        writeAttribute(element, name, formatText(value));
       }
     }
   }
@@ -364,7 +394,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       if (!isBindableCustomAttribute(name)) continue;
       const value = evaluate(node, context);
       if (typeof value === "boolean") element.toggleAttribute(name, value);
-      else element.setAttribute(name, formatText(value));
+      else writeAttribute(element, name, formatText(value));
     }
   }
 
@@ -400,6 +430,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       // Unlike a click, a custom event runs while the element's request is in
       // flight: editors and pickers fire often, and skipping would lose input.
       element.addEventListener(event, (fired) => {
+        if (isOwnedChild(element)) return;
         const detail: unknown = "detail" in fired ? fired.detail : null;
         for (const [name, stmts] of readCustomEventHandlers(element)) {
           if (name === event) {
@@ -411,39 +442,42 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   }
 
   function render() {
-    for (const element of root.querySelectorAll<HTMLElement>(
+    for (const element of findHandled<HTMLElement>(
+      root,
       `[${customElementAttributes.onCustom}]`
     )) {
       if (isCustomElement(element)) listenToCustomEvents(element);
     }
-    for (const element of root.querySelectorAll(`[${signalAttributes.text}]`)) {
+    for (const element of findHandled(root, `[${signalAttributes.text}]`)) {
       if (codeElementNames.has(element.tagName)) continue;
       const node = readExpr(element, signalAttributes.text);
       if (!node) continue;
       const text = formatText(evaluate(node, context));
       if (element.textContent !== text) element.textContent = text;
     }
-    for (const element of root.querySelectorAll(`[${signalAttributes.show}]`)) {
+    for (const element of findHandled(root, `[${signalAttributes.show}]`)) {
       const node = readExpr(element, signalAttributes.show);
       if (node) {
         element.toggleAttribute("hidden", !isTruthy(evaluate(node, context)));
       }
     }
-    for (const element of root.querySelectorAll(`[${signalAttributes.attr}]`)) {
+    for (const element of findHandled(root, `[${signalAttributes.attr}]`)) {
       renderAttributes(element);
     }
-    for (const element of root.querySelectorAll(
+    for (const element of findHandled(
+      root,
       `[${customElementAttributes.elementAttr}]`
     )) {
       renderElementAttributes(element);
     }
-    for (const element of root.querySelectorAll(`[${signalAttributes.bind}]`)) {
+    for (const element of findHandled(root, `[${signalAttributes.bind}]`)) {
       renderValue(element);
     }
   }
 
   function focusRef(id: string) {
-    for (const element of root.querySelectorAll<HTMLElement>(
+    for (const element of findHandled<HTMLElement>(
+      root,
       `[${signalAttributes.ref}]`
     )) {
       if (element.getAttribute(signalAttributes.ref) === id) {
@@ -462,7 +496,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     url: string,
     body: string | FormData,
     onSuccess: readonly StmtNode[],
-    onError: readonly StmtNode[]
+    onError: readonly StmtNode[],
+    detail: JsonValue = null
   ): Promise<SendResult> {
     const pendingPath = ["$pending", url];
     addCount(sendingControls, control, 1);
@@ -481,9 +516,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     write(pendingPath, addCount(sendingUrls, url, -1) > 0);
     if (result.ok) {
       write(["$restored", url], false);
-      run(onSuccess, control, result.data);
+      run(onSuccess, control, result.data, detail);
     } else {
-      run(onError, control);
+      run(onError, control, null, detail);
     }
     return result;
   }
@@ -521,7 +556,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
             url,
             JSON.stringify(body),
             onSuccess,
-            onError
+            onError,
+            detail
           );
           break;
         }
@@ -529,15 +565,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
   }
 
-  for (const element of root.querySelectorAll(
-    `[${signalAttributes.signals}]`
-  )) {
+  for (const element of findHandled(root, `[${signalAttributes.signals}]`)) {
     loadSnapshot(element);
   }
   for (const url of options.restoredActions ?? []) {
     write(["$restored", url], true);
   }
-  for (const element of root.querySelectorAll(`[${signalAttributes.bind}]`)) {
+  for (const element of findHandled(root, `[${signalAttributes.bind}]`)) {
     const binding = readValueBinding(element);
     if (binding && isField(element) && isEdited(element, binding.kind)) {
       writeField(element);
@@ -550,11 +584,17 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     root.addEventListener(type, (event) => {
       const target = event.target;
       if (!isElement(target)) return;
-      if (type !== "click" && isField(target)) writeField(target);
+      if (type !== "click" && isField(target) && !isOwnedChild(target)) {
+        writeField(target);
+      }
       const handler = target.closest<HTMLElement>(`[${attribute}]`);
       // A click on a control whose Action is in flight runs none of its
       // statements, so its writes and calls are not repeated.
-      if (handler && !(type === "click" && isSending(handler))) {
+      if (
+        handler &&
+        !isOwnedChild(handler) &&
+        !(type === "click" && isSending(handler))
+      ) {
         run(readStmts(handler, attribute), handler);
       }
     });
@@ -566,9 +606,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     const form = event.target;
     if (!isElement(form)) return;
     queueMicrotask(() => {
-      for (const element of form.querySelectorAll(
-        `[${signalAttributes.bind}]`
-      )) {
+      for (const element of findHandled(form, `[${signalAttributes.bind}]`)) {
         if (isField(element)) writeField(element);
       }
     });
@@ -577,7 +615,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   return {
     applySnapshots(view) {
       const editingKey = findEditingKey();
-      for (const element of view.querySelectorAll(
+      for (const element of findHandled(
+        view,
         `[${signalAttributes.signals}]`
       )) {
         if (element.closest(viewSelector) === view) {
