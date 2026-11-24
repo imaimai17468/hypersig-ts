@@ -40,7 +40,16 @@ export type {
   SharedValue,
   SnapshotRevision,
 } from "./live.js";
-export { lit, on, ref, refs, signalFamily, signals, uuid } from "./signal.js";
+export {
+  lit,
+  on,
+  ref,
+  refs,
+  signalFamily,
+  signals,
+  timer,
+  uuid,
+} from "./signal.js";
 export type {
   Expr,
   KeyCombination,
@@ -50,6 +59,7 @@ export type {
   SignalGroup,
   SignalRef,
   SignalScope,
+  SignalTimer,
 } from "./signal.js";
 export type { ExprNode, SignalPath, StmtNode } from "./protocol.js";
 export { connectionStatusOutlet, errorOutlet } from "./outlet.js";

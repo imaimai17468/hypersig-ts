@@ -1,7 +1,7 @@
 // The automatic JSX runtime that `<span {...props} />` compiles to.
 import { jsx } from "hono/jsx/jsx-runtime";
 import * as v from "valibot";
-import { expect, it, vi } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   createHypersig,
   createMemoryPubSub,
@@ -12,6 +12,7 @@ import {
   ref,
   refs,
   signals,
+  timer,
   uuid,
 } from "./index.js";
 import type { SendResult } from "./signal-runtime.js";
@@ -2251,4 +2252,255 @@ it("runs no key or focus statements on an element while it is sending", async ()
   expect(counts()).toEqual([1, 1]);
   press(find("#first"), { key: "Enter" });
   expect(requests).toHaveLength(2);
+});
+
+/** Fakes only the timers, so promises and the render microtask still run. */
+function useFakeTimeouts() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Two timers and a counter each one's statements bump. */
+function createTimerPage() {
+  const first = timer({ name: "first-timer" });
+  const second = timer({ name: "second-timer" });
+  const s = signals({ first: 0, second: 0 }, { name: "timer-counts" }).with({});
+  const created = createPage(
+    render("div", {
+      ...s.init(),
+      children: [
+        element("button", {
+          id: "start-first",
+          ...on.click(first.after(3000, s.first.set(s.first.add(1)))),
+        }),
+        element("button", { id: "cancel-first", ...on.click(first.cancel()) }),
+        element("button", {
+          id: "start-second",
+          ...on.click(second.after(1000, s.second.set(s.second.add(1)))),
+        }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: created.page });
+  const counts = () => [
+    runtime.read(s.first.path),
+    runtime.read(s.second.path),
+  ];
+  return { ...created, counts };
+}
+
+it("runs a timer's statements once when its delay has passed", () => {
+  useFakeTimeouts();
+  const { click, counts } = createTimerPage();
+
+  click("#start-first");
+  vi.advanceTimersByTime(2999);
+  expect(counts()).toEqual([0, 0]);
+  vi.advanceTimersByTime(1);
+  expect(counts()).toEqual([1, 0]);
+  vi.advanceTimersByTime(10_000);
+  expect(counts()).toEqual([1, 0]);
+});
+
+it("counts the delay again from the last after of the same timer", () => {
+  useFakeTimeouts();
+  const { click, counts } = createTimerPage();
+
+  click("#start-first");
+  vi.advanceTimersByTime(1000);
+  click("#start-first");
+  vi.advanceTimersByTime(2999);
+  expect(counts()).toEqual([0, 0]);
+  vi.advanceTimersByTime(1);
+  expect(counts()).toEqual([1, 0]);
+  vi.advanceTimersByTime(10_000);
+  expect(counts()).toEqual([1, 0]);
+});
+
+it("cancels one timer without touching another", () => {
+  useFakeTimeouts();
+  const { click, counts } = createTimerPage();
+
+  click("#start-first");
+  click("#start-second");
+  click("#cancel-first");
+  vi.advanceTimersByTime(10_000);
+  expect(counts()).toEqual([0, 1]);
+
+  // Another timer's after does not reschedule this one.
+  click("#start-first");
+  vi.advanceTimersByTime(2000);
+  click("#start-second");
+  vi.advanceTimersByTime(1000);
+  expect(counts()).toEqual([1, 2]);
+  // Cancelling a timer with nothing scheduled does nothing.
+  click("#cancel-first");
+  expect(counts()).toEqual([1, 2]);
+});
+
+/** A button whose timer writes a signal and calls `bump` after 1000 ms. */
+function createTimedCallPage() {
+  const later = timer({ name: "timed-call" });
+  const s = signals({ fired: 0 }, { name: "timed-call-state" }).with({});
+  const created = createPage(
+    render("div", {
+      "data-hs-view": "timed",
+      ...s.init(),
+      children: [
+        element("button", {
+          id: "schedule",
+          ...on.click([
+            later.after(1000, [
+              s.fired.set(s.fired.add(1)),
+              bump.call({ count: s.fired }),
+            ]),
+          ]),
+        }),
+      ],
+    })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: created.page, send: sender.send });
+  return { ...created, ...sender, runtime, s };
+}
+
+it("sends a timer's call from the scheduling element while it is on the page", () => {
+  useFakeTimeouts();
+  const { click, find, requests, request, runtime, s } = createTimedCallPage();
+
+  click("#schedule");
+  vi.advanceTimersByTime(1000);
+  expect(runtime.read(s.fired.path)).toBe(1);
+  expect(requests).toHaveLength(1);
+  expect(request(0).control).toBe(find("#schedule"));
+  expect(request(0).body).toBe(JSON.stringify({ count: 1 }));
+  expect(find("#schedule").hasAttribute("data-hs-pending")).toBe(true);
+});
+
+it("runs a timer whose element a morph replaced but sends none of its calls", () => {
+  useFakeTimeouts();
+  const { click, find, requests, runtime, s } = createTimedCallPage();
+
+  click("#schedule");
+  const button = find("#schedule");
+  button.replaceWith(button.cloneNode(true));
+  vi.advanceTimersByTime(1000);
+  expect(runtime.read(s.fired.path)).toBe(1);
+  expect(requests).toHaveLength(0);
+});
+
+it("runs a timer while its element is sending", () => {
+  useFakeTimeouts();
+  const later = timer({ name: "while-sending" });
+  const s = signals({ fired: 0 }, { name: "while-sending-state" }).with({});
+  const { page, find, click } = createPage(
+    render("button", {
+      id: "send",
+      ...s.init(),
+      ...on.click([
+        bump.call({ count: 0 }),
+        later.after(1000, [
+          s.fired.set(s.fired.add(1)),
+          bump.call({ count: s.fired }),
+        ]),
+      ]),
+    })
+  );
+  const { requests, request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  click("#send");
+  expect(find("#send").hasAttribute("data-hs-pending")).toBe(true);
+  vi.advanceTimersByTime(1000);
+  expect(runtime.read(s.fired.path)).toBe(1);
+  // The timer's call goes out next to the one still in flight.
+  expect(requests).toHaveLength(2);
+  expect(request(1).body).toBe(JSON.stringify({ count: 1 }));
+});
+
+it("debounces an input's call while writing the bound value on every input", () => {
+  useFakeTimeouts();
+  const draft = timer({ name: "draft" });
+  const s = signals({ title: "" }, { name: "draft-memo" }).with({});
+  const { page, input, dispatch } = createPage(
+    render("input", {
+      id: "title",
+      ...s.bindValue(s.title),
+      ...on.input([draft.after(500, [saveMemo.call({ title: s.title })])]),
+    })
+  );
+  const { requests, request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  for (const text of ["a", "ab", "abc"]) {
+    input("#title").value = text;
+    dispatch("#title", "input");
+    expect(runtime.read(s.title.path)).toBe(text);
+    vi.advanceTimersByTime(300);
+  }
+  expect(requests).toHaveLength(0);
+  vi.advanceTimersByTime(199);
+  expect(requests).toHaveLength(0);
+  vi.advanceTimersByTime(1);
+  expect(requests).toHaveLength(1);
+  expect(request(0).body).toBe(JSON.stringify({ title: "abc" }));
+  vi.advanceTimersByTime(10_000);
+  expect(requests).toHaveLength(1);
+});
+
+it("runs a timer scheduled in onSuccess with the output and nests timers", async () => {
+  useFakeTimeouts();
+  const outer = timer({ name: "outer" });
+  const inner = timer({ name: "inner" });
+  const s = signals(
+    { revision: 0, visible: false, nested: 0 },
+    { name: "toast-memo" }
+  ).with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      "data-hs-view": "toast",
+      children: [
+        element("button", {
+          id: "save",
+          ...on.click(
+            saveMemo.call(
+              { title: "a" },
+              {
+                onSuccess: (output) => [
+                  s.visible.set(true),
+                  outer.after(3000, [
+                    s.visible.set(false),
+                    s.revision.set(output.get("revision")),
+                    inner.after(1000, [
+                      s.nested.set(1),
+                      bump.call({ count: 1 }),
+                    ]),
+                  ]),
+                ],
+              }
+            )
+          ),
+        }),
+      ],
+    })
+  );
+  const { requests, request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  click("#save");
+  request(0).respond({ ok: true, data: { revision: 7 } });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(runtime.read(s.visible.path)).toBe(true);
+  vi.advanceTimersByTime(3000);
+  expect(runtime.read(s.visible.path)).toBe(false);
+  expect(runtime.read(s.revision.path)).toBe(7);
+  // The element leaves the page before the nested timer fires.
+  find("#save").remove();
+  vi.advanceTimersByTime(1000);
+  expect(runtime.read(s.nested.path)).toBe(1);
+  expect(requests).toHaveLength(1);
 });

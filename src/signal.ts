@@ -19,6 +19,7 @@ import {
   formatJsonAttribute,
   isBindableAttribute,
   isBindableCustomAttribute,
+  isDelay,
   rendersBooleanAsText,
   signalAttributes,
 } from "./protocol.js";
@@ -370,7 +371,7 @@ export function uuid(): ExprHandle {
 
 const nameCounters = new Map<string, number>();
 
-function assignId(kind: "Signal" | "Ref", name: string): string {
+function assignId(kind: "Signal" | "Ref" | "Timer", name: string): string {
   if (!identifierPattern.test(name)) {
     throw new TypeError(
       `${kind} name "${name}" must be 1 to 64 letters, digits, _ or -`
@@ -665,6 +666,46 @@ export function refs(options?: { name?: string }): SignalRefs {
   return {
     attr: (key) => ({ [signalAttributes.ref]: JSON.stringify([id, key]) }),
     focus: (key) => ["focus-key", id, nodeOf(key)],
+  };
+}
+
+export interface SignalTimer {
+  /**
+   * Cancels the timer's reservation and reserves the statements to run `ms`
+   * milliseconds later, so running it again counts from the last run. The
+   * statements see the Action output and event detail of the statements that
+   * ran `after`. Throws a `RangeError` unless `ms` is a non-negative integer.
+   */
+  after(ms: number, stmts: Statements): StmtNode;
+  /** Cancels the timer's reservation. Does nothing when there is none. */
+  cancel(): StmtNode;
+}
+
+/**
+ * Names a timer that holds at most one reservation per page. Define it at the
+ * top level of a module so its ID stays the same across renders.
+ *
+ * A reservation survives the Live View morph that removes the element whose
+ * statements made it. When it fires, its statements run even while that
+ * element has a request in flight, so the same Action may be sent twice at
+ * once. Its `call` statements are sent from that element while it is still
+ * on the page, and are skipped once it has left.
+ */
+export function timer<const Name extends string = never>(
+  options?: NameOption<Name>
+): SignalTimer;
+export function timer(options?: { name?: string }): SignalTimer {
+  const id = assignId("Timer", options?.name ?? "timer");
+  return {
+    after: (ms, stmts) => {
+      if (!isDelay(ms)) {
+        throw new RangeError(
+          `Timer delay ${ms} must be a non-negative integer of milliseconds`
+        );
+      }
+      return ["after", id, ms, listStmts(stmts)];
+    },
+    cancel: () => ["cancel", id],
   };
 }
 

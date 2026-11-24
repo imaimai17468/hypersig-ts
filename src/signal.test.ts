@@ -2,7 +2,16 @@
 import { jsx } from "hono/jsx/jsx-runtime";
 import { expect, it } from "vite-plus/test";
 import type { Expr, Signal } from "./index.js";
-import { lit, on, ref, refs, signalFamily, signals, uuid } from "./index.js";
+import {
+  lit,
+  on,
+  ref,
+  refs,
+  signalFamily,
+  signals,
+  timer,
+  uuid,
+} from "./index.js";
 import { exprOf } from "./signal.js";
 
 it("renders evaluated values for the request", () => {
@@ -434,4 +443,38 @@ it("rejects key names outside the named keys, single characters and the modifier
   expect(() => on.keydown({ ["Shift+" + character]: [] })).toThrow(
     'write "A" itself'
   );
+});
+
+it("writes timer statements that reschedule or cancel one reservation", () => {
+  const toast = timer({ name: "toast" });
+  const s = signals({ visible: true }, { name: "toast-state" }).with({});
+  expect(toast.after(3000, s.visible.set(false))).toEqual([
+    "after",
+    "toast-1",
+    3000,
+    [s.visible.set(false)],
+  ]);
+  expect(toast.after(0, [])).toEqual(["after", "toast-1", 0, []]);
+  expect(toast.cancel()).toEqual(["cancel", "toast-1"]);
+  expect(
+    toast.after(10, [timer({ name: "toast" }).after(5, s.visible.toggle())])
+  ).toEqual([
+    "after",
+    "toast-1",
+    10,
+    [["after", "toast-2", 5, [s.visible.toggle()]]],
+  ]);
+  expect(timer().cancel()).toEqual(["cancel", "timer-1"]);
+  // @ts-expect-error A timer name must be an identifier.
+  expect(() => timer({ name: "bad name" })).toThrow("Timer name");
+  const runtimeName: string = "also bad";
+  expect(() => timer({ name: runtimeName })).toThrow("Timer name");
+});
+
+it("rejects a delay that is not a non-negative integer when after is called", () => {
+  const t = timer({ name: "delay" });
+  expect(() => t.after(-1, [])).toThrow(RangeError);
+  expect(() => t.after(1.5, [])).toThrow(RangeError);
+  expect(() => t.after(Number.NaN, [])).toThrow(RangeError);
+  expect(() => t.after(Number.POSITIVE_INFINITY, [])).toThrow(RangeError);
 });

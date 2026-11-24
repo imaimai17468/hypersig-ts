@@ -74,7 +74,9 @@ export type StmtNode =
   | ["toggle", SignalPath]
   | ["focus", string]
   | ["focus-key", refId: string, key: ExprNode]
-  | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]];
+  | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]]
+  | ["after", timerId: string, ms: number, stmts: StmtNode[]]
+  | ["cancel", timerId: string];
 
 /** Marks a `data-hs-signals` entry as a default rather than an owned value. */
 export const defaultMark = 0;
@@ -364,9 +366,23 @@ function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
         isStmtListAt(third, depth + 1) &&
         isStmtListAt(fourth, depth + 1)
       );
+    case "after":
+      return (
+        value.length === 4 &&
+        typeof first === "string" &&
+        isDelay(second) &&
+        isStmtListAt(third, depth + 1)
+      );
+    case "cancel":
+      return value.length === 2 && typeof first === "string";
     default:
       return false;
   }
+}
+
+/** Accepts the milliseconds a timer waits: a non-negative integer. */
+export function isDelay(value: unknown): boolean {
+  return Number.isInteger(value) && Number(value) >= 0;
 }
 
 function isExprRecord(

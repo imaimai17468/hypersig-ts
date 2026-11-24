@@ -363,6 +363,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   const sendingControls = new Map<Element, number>();
   const sendingUrls = new Map<string, number>();
   const listenedEvents = new WeakMap<Element, Set<string>>();
+  const reservations = new Map<string, ReturnType<typeof setTimeout>>();
   let isRenderQueued = false;
 
   function read(path: SignalPath): JsonValue | undefined {
@@ -593,11 +594,12 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
 
   /**
    * `control` is the element whose handler runs, and sends its `call`
-   * statements.
+   * statements. A timer whose element left the page runs with `null`, which
+   * skips them.
    */
   function run(
     stmts: readonly StmtNode[],
-    control: HTMLElement,
+    control: HTMLElement | null,
     output: JsonValue = null,
     detail: JsonValue = null
   ) {
@@ -621,6 +623,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
           break;
         }
         case "call": {
+          if (!control) break;
           const [, url, input, onSuccess, onError] = stmt;
           const body: Record<string, JsonValue> = {};
           for (const [field, node] of Object.entries(input)) {
@@ -636,6 +639,24 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
           );
           break;
         }
+        case "after": {
+          const [, id, ms, body] = stmt;
+          clearTimeout(reservations.get(id));
+          // Unlike a click, a timer runs while its control is sending, so a
+          // debounced save does not drop the last input.
+          reservations.set(
+            id,
+            setTimeout(() => {
+              reservations.delete(id);
+              run(body, control?.isConnected ? control : null, output, detail);
+            }, ms)
+          );
+          break;
+        }
+        case "cancel":
+          clearTimeout(reservations.get(stmt[1]));
+          reservations.delete(stmt[1]);
+          break;
       }
     }
   }

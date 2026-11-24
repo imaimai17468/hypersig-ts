@@ -111,6 +111,17 @@ it("validates nodes from untrusted attributes", () => {
   expect(isStmtNode(["focus-key", "ref-1"])).toBe(false);
   expect(isStmtNode(["focus-key", 1, ["lit", "a"]])).toBe(false);
   expect(isStmtNode(["focus-key", "ref-1", ["eval"]])).toBe(false);
+  expect(isStmtNode(["after", "t-1", 0, []])).toBe(true);
+  expect(isStmtNode(["after", "t-1", 500, [["toggle", ["a"]]]])).toBe(true);
+  expect(isStmtNode(["after", "t-1", -1, []])).toBe(false);
+  expect(isStmtNode(["after", "t-1", 1.5, []])).toBe(false);
+  expect(isStmtNode(["after", "t-1", "500", []])).toBe(false);
+  expect(isStmtNode(["after", 1, 500, []])).toBe(false);
+  expect(isStmtNode(["after", "t-1", 500, [["bad"]]])).toBe(false);
+  expect(isStmtNode(["after", "t-1", 500])).toBe(false);
+  expect(isStmtNode(["cancel", "t-1"])).toBe(true);
+  expect(isStmtNode(["cancel", 1])).toBe(false);
+  expect(isStmtNode(["cancel", "t-1", 0])).toBe(false);
   expect(
     isStmtNode([
       "call",
