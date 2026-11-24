@@ -132,14 +132,7 @@ li[data-completed="true"] .title {
   }
 }
 
-li[data-hs-pending-item] {
+/* A row whose toggle or delete is in flight keeps its confirmed value. */
+li:has(.row [data-hs-pending]) {
   opacity: 0.55;
-}
-
-li[hidden] {
-  display: none;
-}
-
-ul:has(> li:not([hidden])) ~ .empty {
-  display: none;
 }

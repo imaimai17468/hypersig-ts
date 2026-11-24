@@ -196,65 +196,8 @@ async function addTask(page: Page, title: string) {
   return page.getByRole("button", { name: `Completed: ${title}` });
 }
 
-test("toggles a task before the server answers", async ({ page }) => {
-  await page.goto("/");
-  await waitForLive(page);
-  const toggle = await addTask(page, "Optimistic task");
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-
-  let body: unknown;
-  await page.route(toggleUrl, async (route) => {
-    body = route.request().postDataJSON();
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    await route.continue();
-  });
-  const answered = page.waitForResponse(toggleUrl);
-  await toggle.click();
-  // Shorter than the route delay, so only the optimistic write can pass it.
-  await expect(toggle).toHaveAttribute("aria-pressed", "true", {
-    timeout: 1000,
-  });
-  await expect(toggle).toHaveText("✓");
-  await expect(row(page, "Optimistic task")).toHaveAttribute(
-    "data-completed",
-    "true"
-  );
-  await answered;
-  expect(body).toMatchObject({ completed: true });
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-
-  await page.getByRole("button", { name: "Delete: Optimistic task" }).click();
-  await expect(row(page, "Optimistic task")).toHaveCount(0);
-});
-
-test("reverts a toggle the server rejects", async ({ page }) => {
-  await page.goto("/");
-  await waitForLive(page);
-  const toggle = await addTask(page, "Rejected task");
-
-  await page.route(toggleUrl, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    await route.fulfill({ status: 500, body: "" });
-  });
-  const answered = page.waitForResponse(toggleUrl);
-  await toggle.click();
-  // Shorter than the route delay, so only the optimistic write can pass it.
-  await expect(toggle).toHaveAttribute("aria-pressed", "true", {
-    timeout: 1000,
-  });
-  await answered;
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  await expect(toggle).toHaveText("○");
-
-  await page.unroute(toggleUrl);
-  await page.getByRole("button", { name: "Delete: Rejected task" }).click();
-  await expect(row(page, "Rejected task")).toHaveCount(0);
-});
-
 const addUrl = "**/_hypersig/actions/add-todo";
 const removeUrl = "**/_hypersig/actions/remove-todo";
-const uuidPattern =
-  /name="todoKey"\r\n\r\n([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\r\n/;
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -281,64 +224,104 @@ test.afterEach(async ({ page }) => {
   await cleaner.close();
 });
 
-test("adds a task before the server answers", async ({ page }) => {
+test("adds a task once the server confirms it", async ({ page }) => {
   await page.goto("/");
   await waitForLive(page);
-  let body = "";
   await page.route(addUrl, async (route) => {
-    body = route.request().postData() ?? "";
     await delay(1500);
     await route.continue();
   });
+  const form = page.locator("form.composer");
   const answered = page.waitForResponse(addUrl);
-  await submitTask(page, "Pending task");
-  // Shorter than the route delay, so only the preview can pass it.
-  await expect(row(page, "Pending task")).toBeVisible({ timeout: 1000 });
-  await expect(row(page, "Pending task")).toHaveAttribute(
-    "data-hs-pending-item",
-    ""
-  );
+  await submitTask(page, "Confirmed task");
+  // Shorter than the route delay, so the checks run before the answer.
+  await expect(form).toHaveAttribute("data-hs-pending", "", { timeout: 1000 });
+  await expect(row(page, "Confirmed task")).toHaveCount(0, { timeout: 1000 });
   await answered;
-  expect(body).toMatch(uuidPattern);
-  await expect(
-    page.locator("li[data-hs-pending-item]").filter({ hasText: "Pending task" })
-  ).toHaveCount(0);
-  await expect(row(page, "Pending task")).toHaveCount(1);
-  await expect(row(page, "Pending task")).toBeVisible();
+  await expect(row(page, "Confirmed task")).toHaveCount(1);
+  await expect(form).not.toHaveAttribute("data-hs-pending");
 });
 
-test("removes a preview the server rejects", async ({ page }) => {
+test("marks a toggle as pending until the server confirms it", async ({
+  page,
+}) => {
   await page.goto("/");
   await waitForLive(page);
-  await page.route(addUrl, async (route) => {
+  const toggle = await addTask(page, "Pending toggle");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  await page.route(toggleUrl, async (route) => {
+    await delay(1500);
+    await route.continue();
+  });
+  const answered = page.waitForResponse(toggleUrl);
+  await toggle.click();
+  // Shorter than the route delay, so the checks run before the answer.
+  await expect(toggle).toHaveAttribute("data-hs-pending", "", {
+    timeout: 1000,
+  });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false", {
+    timeout: 1000,
+  });
+  await expect(toggle).toHaveText("○", { timeout: 1000 });
+  await expect(row(page, "Pending toggle")).toHaveCSS("opacity", "0.55", {
+    timeout: 1000,
+  });
+  await answered;
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(toggle).toHaveText("✓");
+  await expect(toggle).not.toHaveAttribute("data-hs-pending");
+  await expect(row(page, "Pending toggle")).toHaveCSS("opacity", "1");
+});
+
+test("keeps the confirmed value when a toggle fails", async ({ page }) => {
+  await page.goto("/");
+  await waitForLive(page);
+  const toggle = await addTask(page, "Failed toggle");
+
+  await page.route(toggleUrl, async (route) => {
     await delay(1500);
     await route.fulfill({ status: 500, body: "" });
   });
-  const answered = page.waitForResponse(addUrl);
-  await submitTask(page, "Rejected add");
-  // Shorter than the route delay, so only the preview can pass it.
-  await expect(row(page, "Rejected add")).toBeVisible({ timeout: 1000 });
+  const answered = page.waitForResponse(toggleUrl);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("data-hs-pending", "", {
+    timeout: 1000,
+  });
   await answered;
-  await expect(row(page, "Rejected add")).toHaveCount(0);
+  await expect(page.locator("[data-hs-error]")).toHaveText(
+    "Action failed (500)."
+  );
+  await expect(toggle).not.toHaveAttribute("data-hs-pending");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(toggle).toHaveText("○");
 });
 
-test("hides a deleted task before the server answers and restores it on failure", async ({
+test("marks a delete as pending and removes the row once confirmed", async ({
   page,
 }) => {
   await page.goto("/");
   await waitForLive(page);
   await addTask(page, "Doomed task");
   const doomed = row(page, "Doomed task");
+  const deleteButton = page.getByRole("button", {
+    name: "Delete: Doomed task",
+  });
 
   await page.route(removeUrl, async (route) => {
     await delay(1500);
     await route.fulfill({ status: 500, body: "" });
   });
   let answered = page.waitForResponse(removeUrl);
-  await page.getByRole("button", { name: "Delete: Doomed task" }).click();
-  // Shorter than the route delay, so only the optimistic write can pass it.
-  await expect(doomed).toBeHidden({ timeout: 1000 });
+  await deleteButton.click();
+  // Shorter than the route delay, so the checks run before the answer.
+  await expect(deleteButton).toHaveAttribute("data-hs-pending", "", {
+    timeout: 1000,
+  });
+  await expect(doomed).toBeVisible({ timeout: 1000 });
+  await expect(doomed).toHaveCSS("opacity", "0.55", { timeout: 1000 });
   await answered;
+  await expect(deleteButton).not.toHaveAttribute("data-hs-pending");
   await expect(doomed).toBeVisible();
 
   await page.unroute(removeUrl);
@@ -347,90 +330,13 @@ test("hides a deleted task before the server answers and restores it on failure"
     await route.continue();
   });
   answered = page.waitForResponse(removeUrl);
-  await page.getByRole("button", { name: "Delete: Doomed task" }).click();
-  await expect(doomed).toBeHidden({ timeout: 1000 });
+  await deleteButton.click();
+  await expect(deleteButton).toHaveAttribute("data-hs-pending", "", {
+    timeout: 1000,
+  });
+  await expect(doomed).toBeVisible({ timeout: 1000 });
   await answered;
   await expect(doomed).toHaveCount(0);
-});
-
-test("keeps the preview while another update arrives", async ({
-  page,
-  browser,
-  baseURL,
-}) => {
-  if (!baseURL) throw new Error("Missing TodoMVC base URL");
-  const peerSession = await browser.newContext({ baseURL });
-  try {
-    await page.goto("/");
-    await waitForLive(page);
-    const peer = await peerSession.newPage();
-    await peer.goto("/");
-    await waitForLive(peer);
-
-    let resume = () => {};
-    const waiting = new Promise<void>((resolve) => {
-      resume = resolve;
-    });
-    await page.route(addUrl, async (route) => {
-      await waiting;
-      await route.continue();
-    });
-    const started = page.waitForRequest(addUrl);
-    const answered = page.waitForResponse(addUrl);
-    await submitTask(page, "Held task");
-    try {
-      await started;
-      const preview = row(page, "Held task");
-      await expect(preview).toHaveAttribute("data-hs-pending-item", "");
-
-      await submitTask(peer, "Peer task");
-      await expect(row(page, "Peer task")).toBeVisible();
-      await expect(preview).toBeVisible();
-      await expect(preview).toHaveCount(1);
-      await expect(preview).toHaveAttribute("data-hs-pending-item", "");
-      await expect(preview.locator(".title")).toHaveText("Held task");
-    } finally {
-      resume();
-    }
-    await answered;
-    await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
-    await expect(row(page, "Held task")).toHaveCount(1);
-  } finally {
-    await peerSession.close();
-  }
-});
-
-test("does not insert on the completed filter", async ({ page }) => {
-  await page.goto("/?filter=completed");
-  await waitForLive(page);
-  let resume = () => {};
-  const waiting = new Promise<void>((resolve) => {
-    resume = resolve;
-  });
-  await page.route(addUrl, async (route) => {
-    await waiting;
-    await route.continue();
-  });
-  const started = page.waitForRequest(addUrl);
-  const answered = page.waitForResponse(addUrl);
-  await submitTask(page, "Active only");
-  try {
-    await started;
-    // onSubmit inserts before the request starts, so a preview would exist.
-    await expect(page.locator("[data-hs-pending-item]")).toHaveCount(0);
-    await expect(row(page, "Active only")).toHaveCount(0);
-  } finally {
-    resume();
-  }
-  await answered;
-  await expect(row(page, "Active only")).toHaveCount(0);
-
-  await page.goto("/");
-  await waitForLive(page);
-  await expect(row(page, "Active only")).toHaveCount(1);
-  await expect(row(page, "Active only")).not.toHaveAttribute(
-    "data-hs-pending-item"
-  );
 });
 
 test("adds a second task in the same page after the first succeeds", async ({
@@ -438,12 +344,6 @@ test("adds a second task in the same page after the first succeeds", async ({
 }) => {
   await page.goto("/");
   await waitForLive(page);
-  const keys: string[] = [];
-  page.on("request", (request) => {
-    if (!request.url().endsWith("/_hypersig/actions/add-todo")) return;
-    const key = uuidPattern.exec(request.postData() ?? "")?.[1];
-    if (key) keys.push(key);
-  });
   const composer = page.getByRole("textbox", { name: "New task" });
 
   for (const title of ["First in a row", "Second in a row"]) {
@@ -455,76 +355,7 @@ test("adds a second task in the same page after the first succeeds", async ({
 
   for (const title of ["First in a row", "Second in a row"]) {
     await expect(row(page, title)).toHaveCount(1);
-    await expect(row(page, title)).not.toHaveAttribute("data-hs-pending-item");
   }
-  await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
-  expect(keys).toHaveLength(2);
-  expect(keys[0]).not.toBe(keys[1]);
-});
-
-test("sends a second add while the first is held and confirms both", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await waitForLive(page);
-  const releases: (() => void)[] = [];
-  await page.route(addUrl, async (route) => {
-    await new Promise<void>((resolve) => releases.push(resolve));
-    await route.continue();
-  });
-  const form = page.locator("form.composer");
-  const responses: Promise<unknown>[] = [];
-  page.on("response", (response) => {
-    if (response.url().endsWith("/_hypersig/actions/add-todo"))
-      responses.push(response.finished());
-  });
-  try {
-    await submitTask(page, "Overlap A");
-    await submitTask(page, "Overlap B");
-    await expect.poll(() => releases.length).toBe(2);
-    const previews = page.locator("li[data-hs-pending-item]");
-    await expect(previews).toHaveCount(2);
-    await expect(previews.nth(0)).toHaveText(/Overlap A/);
-    await expect(previews.nth(1)).toHaveText(/Overlap B/);
-    await expect(form).toHaveAttribute("data-hs-pending", "");
-
-    releases[0]?.();
-    await expect.poll(() => responses.length).toBe(1);
-    await responses[0];
-    // The second send of the form is still in flight.
-    await expect(form).toHaveAttribute("data-hs-pending", "");
-  } finally {
-    for (const release of releases) release();
-  }
-  await expect.poll(() => responses.length).toBe(2);
-  await Promise.all(responses);
-  await expect(form).not.toHaveAttribute("data-hs-pending");
-  await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
-  for (const title of ["Overlap A", "Overlap B"]) {
-    await expect(row(page, title)).toHaveCount(1);
-  }
-});
-
-test("rejects a second add with the same key", async ({ page, baseURL }) => {
-  if (!baseURL) throw new Error("Missing TodoMVC base URL");
-  await page.goto("/");
-  await waitForLive(page);
-  const todoKey = "6f0d8f3e-4b8a-4c3e-9f5e-2a1b3c4d5e6f";
-  const post = () =>
-    page.request.post("/_hypersig/actions/add-todo", {
-      data: { todoKey, todoTitle: "Keyed once" },
-      headers: { Origin: new URL(baseURL).origin, Accept: "application/json" },
-    });
-  expect((await post()).status()).toBe(200);
-  const duplicate = await post();
-  expect(duplicate.status()).toBe(409);
-  expect(await duplicate.json()).toMatchObject({
-    message: "A task with this key already exists.",
-  });
-  await expect(row(page, "Keyed once")).toHaveCount(1);
-  await page.reload();
-  await waitForLive(page);
-  await expect(row(page, "Keyed once")).toHaveCount(1);
 });
 
 test("adds a task with JavaScript disabled", async ({ browser, baseURL }) => {
@@ -536,12 +367,9 @@ test("adds a task with JavaScript disabled", async ({ browser, baseURL }) => {
   try {
     const page = await context.newPage();
     await page.goto("/");
-    const key = page.locator('form.composer input[name="todoKey"]');
-    await expect(key).toHaveAttribute(
-      "value",
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-    );
-    const firstKey = await key.getAttribute("value");
+    await expect(
+      page.locator('form.composer input[type="hidden"]')
+    ).toHaveCount(0);
     await page.getByRole("textbox", { name: "New task" }).fill("Native add");
     const [response] = await Promise.all([
       page.waitForResponse(
@@ -554,8 +382,6 @@ test("adds a task with JavaScript disabled", async ({ browser, baseURL }) => {
     expect(response.status()).toBe(303);
     await expect(page).toHaveURL(baseURL + "/");
     await expect(row(page, "Native add")).toHaveCount(1);
-    // Each page gets a new key, so the next native add is not a duplicate.
-    await expect(key).not.toHaveAttribute("value", firstKey ?? "");
   } finally {
     await context.close();
   }
