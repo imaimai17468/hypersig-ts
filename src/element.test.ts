@@ -132,10 +132,23 @@ it("checks declared attribute and event names", () => {
   expect(() =>
     signals({ n: 0 }).with({}).bindElement(handlerAttribute, { onrate: 1 })
   ).toThrow("onrate");
-  expect(() =>
-    customElement<{ attributes: {}; events: { Rate: number } }>(
-      // @ts-expect-error An event name must be lowercase.
-      "bad-event"
-    )
-  ).not.toThrow();
+  const uppercaseEvent = customElement<{
+    attributes: {};
+    events: { Rate: number };
+  }>(
+    // @ts-expect-error An event name must be lowercase.
+    "bad-event"
+  );
+  // The declaration exists only as a type, so serializing checks the name.
+  expect(() => uppercaseEvent.on("Rate", () => [])).toThrow("Rate");
+});
+
+it("leaves out handlers passed as undefined", () => {
+  expect(rating.on({ rate: undefined })).toEqual({ "data-hs-on-custom": "[]" });
+});
+
+it("renders shadow part attributes", async () => {
+  expect(
+    String(await plain.Element({ part: "box", exportparts: "star" }))
+  ).toBe('<plain-box part="box" exportparts="star"></plain-box>');
 });

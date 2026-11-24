@@ -136,7 +136,10 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
    * Binds the attributes a custom element declares, each to a value or an
    * expression of the declared type. A `true` value renders the attribute
    * empty and `false` leaves it out; other values render as text. Throws for
-   * a name that is not lowercase, or is `on*`, `style`, or `data-hs-*`.
+   * a name that is not lowercase, starts with `on` (including names such as
+   * `open`), is `style`, or starts with `data-hs-`. Only the type checks that a
+   * key is declared: an object from a variable with extra keys still writes
+   * them.
    */
   bindElement<Spec extends CustomElementSpec>(
     element: CustomElement<Spec>,

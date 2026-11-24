@@ -32,9 +32,9 @@ type EventHandler<Detail extends JsonValue> = (
 ) => Statements;
 
 type EventHandlers<Spec extends CustomElementSpec> = {
-  readonly [Name in keyof Spec["events"] & string]?: EventHandler<
-    Spec["events"][Name]
-  >;
+  readonly [Name in keyof Spec["events"] & string]?:
+    | EventHandler<Spec["events"][Name]>
+    | undefined;
 };
 
 /** Hono JSX lets an element take any attribute; this keeps the named ones. */
@@ -49,8 +49,8 @@ type NamedHtmlAttributes = {
 };
 
 /**
- * The props of `Element`: the HTML attributes Hono JSX names, `role`,
- * `aria-*`, `data-*`, `children`, and the declared attributes as fixed values.
+ * The props of `Element`: the HTML attributes Hono JSX names, `role`, `part`,
+ * `exportparts`, `aria-*`, `data-*`, `children`, and the declared attributes as fixed values.
  * Bind a declared attribute to a signal with `scope.bindElement` instead, and
  * do not write the same attribute both ways: the later prop wins.
  */
@@ -59,6 +59,8 @@ export type ElementProps<Spec extends CustomElementSpec> = Partial<
 > &
   Omit<NamedHtmlAttributes, keyof Spec["attributes"]> & {
     role?: string;
+    part?: string;
+    exportparts?: string;
     children?: Child;
     [attribute: `aria-${string}`]: string | number | boolean | undefined;
     [attribute: `data-${string}`]: string | number | boolean | undefined;
@@ -76,7 +78,7 @@ export interface CustomElement<Spec extends CustomElementSpec> {
    * Runs the statements when the element dispatches the event, with `detail`
    * standing for the event's `detail`. To handle several events on one
    * element, pass them in one object: spreading two results keeps only the
-   * later one.
+   * later one. A handler left `undefined` adds nothing.
    */
   on<Name extends keyof Spec["events"] & string>(
     event: Name,

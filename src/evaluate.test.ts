@@ -6,6 +6,7 @@ import {
   isBindableAttribute,
   isBindableCustomAttribute,
   isCustomElementName,
+  isCustomEventName,
   isExprNode,
   isStmtNode,
 } from "./protocol.js";
@@ -208,5 +209,14 @@ it("allows custom element attributes other than handlers, style and runtime attr
   }
   for (const name of ["onrate", "onclick", "style", "data-hs-x", "Value", ""]) {
     expect(isBindableCustomAttribute(name)).toBe(false);
+  }
+});
+
+it("recognizes custom event names", () => {
+  for (const name of ["rate", "hover:star", "a.b_c-d", "x1"]) {
+    expect(isCustomEventName(name)).toBe(true);
+  }
+  for (const name of ["Rate", "rAte", "1rate", ":rate", "rate!", ""]) {
+    expect(isCustomEventName(name)).toBe(false);
   }
 });
