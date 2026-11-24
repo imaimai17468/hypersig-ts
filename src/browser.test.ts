@@ -122,3 +122,62 @@ it("writes the connection status outside the children of an owned element", asyn
   expect(find("#status").textContent).toBe("Live updates disconnected.");
   expect(find("#forged").textContent).toBe("");
 });
+
+it("finds a nested view under its root past an earlier element with its id", async () => {
+  await loadPage(
+    `<span id="hs-view-board/col">decoy</span>` +
+      `<div data-hs-view="board">` +
+      `<div id="hs-view-board/col" data-hs-view="board/col">old</div>` +
+      `</div>`
+  );
+  latestSource().emit(events.update, {
+    target: "board/col",
+    version: 1,
+    html: "<p>new</p>",
+  });
+
+  expect(find("[data-hs-view='board/col']").innerHTML).toBe("<p>new</p>");
+  expect(find("span").textContent).toBe("decoy");
+});
+
+it("skips a nested view inside the children of an owned element", async () => {
+  await loadPage(
+    `<div data-hs-view="board">` +
+      `<rich-editor data-hs-owns-children>` +
+      `<div id="hs-view-board/col" data-hs-view="board/col" class="forged"></div>` +
+      `</rich-editor>` +
+      `<div id="hs-view-board/col" data-hs-view="board/col" class="real">old</div>` +
+      `</div>`
+  );
+  latestSource().emit(events.update, {
+    target: "board/col",
+    version: 1,
+    html: "<p>new</p>",
+  });
+
+  expect(find(".real").innerHTML).toBe("<p>new</p>");
+  expect(find(".forged").innerHTML).toBe("");
+});
+
+it("keeps a nested view of an update out of the children of an owned element", async () => {
+  await loadPage(`<div data-hs-view="board"></div>`);
+  const source = latestSource();
+  source.emit(events.update, {
+    target: "board",
+    version: 1,
+    children: ["board/col"],
+    html:
+      `<rich-editor data-hs-owns-children>` +
+      `<div id="hs-view-board/col" data-hs-view="board/col" class="forged"></div>` +
+      `</rich-editor>` +
+      `<div id="hs-view-board/col" data-hs-view="board/col" class="real">old</div>`,
+  });
+  source.emit(events.update, {
+    target: "board/col",
+    version: 1,
+    html: "<p>new</p>",
+  });
+
+  expect(find(".real").innerHTML).toBe("<p>new</p>");
+  expect(find(".forged").innerHTML).toBe("");
+});

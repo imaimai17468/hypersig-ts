@@ -120,17 +120,23 @@ function updateViews(
     source.addEventListener("open", () => {
       if (source === connection) versions = new WeakMap();
     });
+    /**
+     * Searches only the root view, so an element elsewhere with a nested
+     * view's id does not hide it.
+     */
     function findView(target: string) {
       const root = views.get(target.split("/", 1)[0] ?? "");
-      const node = target.includes("/")
-        ? document.getElementById(`hs-view-${target}`)
-        : root;
-      if (
-        node?.isConnected &&
-        root?.contains(node) &&
-        node.dataset.hsView === target
-      )
-        return node;
+      if (!root?.isConnected) return;
+      if (!target.includes("/"))
+        return root.dataset.hsView === target ? root : undefined;
+      for (const node of root.querySelectorAll<HTMLElement>("[data-hs-view]")) {
+        if (
+          node.dataset.hsView === target &&
+          node.id === `hs-view-${target}` &&
+          !isOwnedChild(node)
+        )
+          return node;
+      }
     }
     source.addEventListener(events.update, (event) => {
       if (source !== connection) return;
@@ -150,6 +156,7 @@ function updateViews(
           target.slice(update.target.length + 1).includes("/") ||
           child.tagName !== "DIV" ||
           child.id !== `hs-view-${target}` ||
+          isOwnedChild(child) ||
           !childTargets.delete(target)
         ) {
           child.removeAttribute("data-hs-view");
