@@ -536,24 +536,40 @@ export const on = {
  * A row template for optimistic list inserts. `item` holds the fields of the
  * row the browser inserts; the template's own bind methods render them with
  * the `initial` values on the server and with the inserted values in the
- * browser.
+ * browser. `item` is meant only for those bind methods inside the template.
+ * Used anywhere else, nothing reports it: another scope's bind methods render
+ * it as `false` on the server, and in the browser it has no value outside a
+ * preview row.
  */
 export interface InsertTemplate<Values extends SignalValues> {
   readonly id: string;
   readonly item: { readonly [K in keyof Values]: Expr<Values[K]> };
   /** Marks the `<template>` element that holds the row's markup. */
   template(): { [signalAttributes.template]: string };
-  /** Marks the element the browser inserts rows into. */
+  /**
+   * Marks the element the browser inserts rows into. Put it inside the Live
+   * View that renders the confirmed rows; a row in a slot outside a Live View
+   * is never confirmed and stays until its Action fails or the page reloads.
+   */
   slot(): { [signalAttributes.insert]: string };
   /**
-   * Inserts a pending row built from this template, keyed by `key`. The row
-   * stays until an element carrying `confirms(key)` appears in the slot.
+   * Inserts a pending row built from this template into every slot, keyed by
+   * `key`. The row stays until an element carrying `confirms(key)` appears
+   * anywhere in the same Live View as the slot (not in a nested Live View),
+   * or until its Action fails, which removes it.
+   *
+   * TypeScript rejects field names the template does not have. A caller
+   * without type checking gets no error: the row ignores an unknown field,
+   * and a field left out has no value in it.
    */
   insert(
     values: { [K in keyof Values]: Values[K] | Expr<Values[K]> },
     key: string | Expr<string>
   ): StmtNode;
-  /** Marks the confirmed row that replaces the pending row for `key`. */
+  /**
+   * Marks the confirmed row that replaces the pending row for `key`. It counts
+   * anywhere in the Live View that holds the slot, not in a nested Live View.
+   */
   confirms(key: string): { [signalAttributes.confirms]: string };
   bindText: SignalScope<Values>["bindText"];
   bindShow: SignalScope<Values>["bindShow"];

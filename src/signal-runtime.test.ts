@@ -1365,21 +1365,76 @@ it("runs submit statements and sends the bound values they wrote", async () => {
   expect(page.querySelector("[data-hs-item-key]")).toBeNull();
 });
 
-it("skips submit statements while the form is pending", async () => {
+it("sends a form with submit statements again while it is pending", async () => {
   const { form, request, requests, runtime, e, page } = createSubmitPage();
+  const keys = () =>
+    [...page.querySelectorAll("[data-hs-item-key]")].map((row) =>
+      row.getAttribute("data-hs-item-key")
+    );
+
+  const first = runtime.sendForm(form, addTodo.url, null);
+  const second = runtime.sendForm(form, addTodo.url, null);
+  expect(requests).toHaveLength(2);
+  const bodies = requests.map(({ body }) =>
+    typeof body === "string" ? body : body.get("todoKey")
+  );
+  expect(bodies).toEqual(["f1", "f2"]);
+  expect(runtime.read(e.newKey.path)).toBe("f2");
+  expect(keys()).toEqual(["f1", "f2"]);
+
+  // Each send owns its own preview, and `$pending` stays true until the last
+  // send of the form ends.
+  request(1).respond({ ok: false });
+  expect(await second).toEqual({ ok: false });
+  expect(keys()).toEqual(["f1"]);
+  expect(runtime.read(["$pending", addTodo.url])).toBe(true);
+  request(0).respond({ ok: true, data: null });
+  expect(await first).toEqual({ ok: true, data: null });
+  expect(keys()).toEqual(["f1"]);
+  expect(runtime.read(["$pending", addTodo.url])).toBe(false);
+});
+
+it("refuses to send a form without submit statements while it is pending", async () => {
+  const { page, find } = createPage(
+    render("form", {
+      id: "plain",
+      ...addTodo.form(),
+      children: element("input", {
+        name: addTodo.field("todoTitle"),
+        value: "x",
+      }),
+    })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: page, send: sender.send });
+  const form = find<HTMLFormElement>("#plain");
 
   void runtime.sendForm(form, addTodo.url, null);
   expect(await runtime.sendForm(form, addTodo.url, null)).toEqual({
     ok: false,
   });
-  expect(requests).toHaveLength(1);
-  expect(runtime.read(e.newKey.path)).toBe("f1");
-  expect(page.querySelectorAll("[data-hs-item-key]")).toHaveLength(1);
-
-  request(0).respond({ ok: true, data: null });
+  expect(sender.requests).toHaveLength(1);
+  sender.request(0).respond({ ok: true, data: null });
   await settle();
-  expect(runtime.read(e.newKey.path)).toBe("f1");
-  expect(page.querySelectorAll("[data-hs-item-key]")).toHaveLength(1);
+  void runtime.sendForm(form, addTodo.url, null);
+  expect(sender.requests).toHaveLength(2);
+});
+
+it("reads $item only inside previews the runtime inserted", async () => {
+  const { page, find } = createPage(
+    render("div", {
+      id: "forged",
+      "data-hs-item": JSON.stringify({ title: "forged" }),
+      "data-hs-item-key": "x",
+      children: element("span", {
+        id: "title",
+        ...newTodo.bindText(newTodo.item.title),
+      }),
+    })
+  );
+  startSignals({ root: page });
+  await settle();
+  expect(find("#title").textContent).toBe("");
 });
 
 it("reports whether a node is a preview", async () => {

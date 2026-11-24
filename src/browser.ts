@@ -234,6 +234,9 @@ function updateViews(
  */
 function createActionSender(stream: URL) {
   const actionPath = new URL("../actions/", stream).pathname;
+  // A form with submit statements can have several sends in flight, so the
+  // control stays pending until the last of them ends.
+  const sendingCounts = new Map<HTMLElement, number>();
   return async function send(
     control: HTMLElement,
     target: string,
@@ -247,6 +250,7 @@ function createActionSender(stream: URL) {
       ?.querySelectorAll<HTMLElement>("[data-hs-field-error]");
     if (outlet) outlet.textContent = "";
     for (const field of fields ?? []) field.textContent = "";
+    sendingCounts.set(control, (sendingCounts.get(control) ?? 0) + 1);
     control.setAttribute("data-hs-pending", "");
     let status = 0;
     let failure: unknown;
@@ -293,7 +297,12 @@ function createActionSender(stream: URL) {
     } catch {
       // A status of zero represents a network error.
     } finally {
-      control.removeAttribute("data-hs-pending");
+      const count = (sendingCounts.get(control) ?? 1) - 1;
+      if (count) sendingCounts.set(control, count);
+      else {
+        sendingCounts.delete(control);
+        control.removeAttribute("data-hs-pending");
+      }
     }
     let message = status
       ? `Action failed (${status}).`

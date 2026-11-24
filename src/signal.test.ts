@@ -298,13 +298,13 @@ it("serializes insert statements", () => {
   const s = signals({ title: "", key: "" }, { name: "insert-source" });
   expect(t.insert({ title: s.title }, s.key)).toEqual([
     "insert",
-    "new-todo-2",
+    t.id,
     { title: ["sig", s.title.path] },
     ["sig", s.key.path],
   ]);
   expect(t.insert({ title: "x" }, "k")).toEqual([
     "insert",
-    "new-todo-2",
+    t.id,
     { title: ["lit", "x"] },
     ["lit", "k"],
   ]);

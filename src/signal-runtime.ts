@@ -87,8 +87,13 @@ export interface SignalRuntime {
    * like a click handler, renders bindings synchronously so a bound hidden
    * input carries a value they wrote, then sends `new FormData(form,
    * submitter)` as `send` does. The send owns the writes and preview rows of
-   * those statements made after their last `call`. A form with a request in
-   * flight runs no statements and gets `{ ok: false }`.
+   * those statements made after their last `call`.
+   *
+   * A form with `data-hs-on-submit` statements is sent again while an earlier
+   * send is in flight; each send owns its own writes and previews, and
+   * `["$pending", url]` stays `true` until the last of them ends. A form
+   * without them that has a request in flight is not sent and gets
+   * `{ ok: false }`.
    */
   sendForm(
     form: HTMLFormElement,
@@ -123,6 +128,8 @@ interface OptimisticWrite {
 interface Preview {
   templateId: string;
   key: string;
+  /** The values the row was inserted with, which `["$item", field]` reads. */
+  values: Readonly<Record<string, JsonValue>>;
 }
 
 /**
@@ -241,18 +248,6 @@ function readConfirmation(element: Element): string | undefined {
     : undefined;
 }
 
-/** Reads `field` of the values of the closest `data-hs-item` element. */
-function readItemField(element: Element, field: string): JsonValue | undefined {
-  const item = element.closest(`[${signalAttributes.item}]`);
-  const values = item && parseAttribute(item, signalAttributes.item);
-  if (typeof values !== "object" || values === null || Array.isArray(values))
-    return undefined;
-  const value: unknown = Object.hasOwn(values, field)
-    ? Reflect.get(values, field)
-    : undefined;
-  return isJsonValue(value) ? value : undefined;
-}
-
 function readSnapshot(element: Element): SnapshotEntry[] {
   const value = parseAttribute(element, signalAttributes.signals);
   return Array.isArray(value) ? value.filter(isSnapshotEntry) : [];
@@ -326,17 +321,23 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   }
 
   /**
-   * Resolves `["$item", field]` from the closest `data-hs-item` of `element`,
-   * so bindings in a preview row read the values it was inserted with.
+   * Resolves `["$item", field]` from the preview row that holds `element`, so
+   * bindings in it read the values it was inserted with. Outside a preview the
+   * runtime inserted, such as under a `data-hs-item` written in the HTML,
+   * `$item` has no value.
    */
   function contextFor(element: Element): EvaluationContext {
-    if (!element.closest(`[${signalAttributes.item}]`)) return context;
+    const preview = findPreview(element);
+    if (!preview) return context;
+    const { values } = preview;
     return {
       ...context,
-      read: (path) =>
-        path[0] === itemRoot && path.length === 2 && path[1] !== undefined
-          ? readItemField(element, path[1])
-          : read(path),
+      read: (path) => {
+        const [root, field] = path;
+        if (root !== itemRoot || path.length !== 2 || field === undefined)
+          return read(path);
+        return Object.hasOwn(values, field) ? values[field] : undefined;
+      },
     };
   }
 
@@ -512,17 +513,18 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     return result;
   }
 
-  /** Reports an element inside a preview row, or the row itself. */
-  function isInPreview(element: Element): boolean {
+  /** Finds the preview row that holds `element`, or is `element`. */
+  function findPreview(element: Element): Preview | undefined {
     const selector = `[${signalAttributes.itemKey}]`;
     for (
       let item = element.closest(selector);
       item;
       item = item.parentElement?.closest(selector) ?? null
     ) {
-      if (previews.has(item)) return true;
+      const preview = previews.get(item);
+      if (preview) return preview;
     }
-    return false;
+    return undefined;
   }
 
   function removePreview(element: Element) {
@@ -581,7 +583,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       clone.setAttribute(signalAttributes.itemKey, key);
       clone.setAttribute(signalAttributes.pendingItem, "");
       slot.append(clone);
-      previews.set(clone, { templateId, key });
+      previews.set(clone, { templateId, key, values });
       inserted.push(clone);
     }
     if (inserted.length) scheduleRender();
@@ -705,7 +707,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       for (const element of view.querySelectorAll(
         `[${signalAttributes.signals}]`
       )) {
-        if (element.closest(viewSelector) === view && !isInPreview(element)) {
+        if (element.closest(viewSelector) === view && !findPreview(element)) {
           loadSnapshot(element, editingKey);
         }
       }
@@ -728,7 +730,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       );
     },
     sendForm(form, url, submitter) {
-      if (isSending(form)) return Promise.resolve({ ok: false });
+      if (isSending(form) && !form.hasAttribute(signalAttributes.onSubmit))
+        return Promise.resolve({ ok: false });
       const owned = run(readStmts(form, signalAttributes.onSubmit), form);
       render();
       return sendAction(
