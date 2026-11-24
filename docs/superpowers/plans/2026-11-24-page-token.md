@@ -34,6 +34,7 @@
 ### Task 1: View 名を一意な ID にし、定義をランタイムに登録する
 
 **Files:**
+
 - Modify: `src/render.ts`（`ViewRegistry`、`renderContext`）
 - Modify: `src/live-runtime.ts`（`registry`、`live`、`liveShared`）
 - Modify: `src/live.ts`（`name` を必須に、単体の `live()` を削除）
@@ -42,38 +43,40 @@
 - Test: `src/core.test.ts`、`src/index.test.ts`、`browser-tests/*.spec.ts`（キーの文字列 `xxx-1` を `xxx` に）
 
 **Interfaces:**
+
 - Produces: `ViewRegistry` に `register(definition): void`（名前の検査と重複検査、重複は `Duplicate Live View name: <name>`）、`identify(definition): string`（登録済みなら `name`、未登録は `Unregistered Live View: <name>` を投げる）、`resolve(name): LiveView | SharedLiveView | undefined` を持たせる。
 - Produces: `LiveViewDefinition.name: string`（必須）。`NamedView<Name>` は `name: string extends Name ? string : Identifier<Name>` に。
 
 - [ ] **Step 1: テストを書き換える**
-  `src/core.test.ts` の「keys each Live View definition apart from every other definition」を次に置き換える。
+      `src/core.test.ts` の「keys each Live View definition apart from every other definition」を次に置き換える。
   - `panel` と `item` を登録し、描画結果が `<div data-target="panel">first</div>`、`item.a`、`item.b` になる。
   - 同じ名前で 2 回 `runtime.live` すると `Duplicate Live View name: panel` を投げる。
   - `runtime.live` を通さないオブジェクト（`{ ...base, name: "loose", render }`）を `page.view` に渡すと `Unregistered Live View: loose` で reject する。
   - `name` を省いた定義は型エラー（`// @ts-expect-error name is required`）。
-  最初のテストの「A different definition is a different view, even with the same name」は、`replacement` を `name: "replacement"` で登録し、キー `parent/replacement` を期待する形に直す。ほかのテストのキー文字列から `-1` などを外す。
+    最初のテストの「A different definition is a different view, even with the same name」は、`replacement` を `name: "replacement"` で登録し、キー `parent/replacement` を期待する形に直す。ほかのテストのキー文字列から `-1` などを外す。
 
 - [ ] **Step 2: 失敗を確かめる**
-  Run: `bun run test src/core.test.ts`
-  Expected: 名前のキーと重複・未登録の例外のテストが FAIL
+      Run: `bun run test src/core.test.ts`
+      Expected: 名前のキーと重複・未登録の例外のテストが FAIL
 
 - [ ] **Step 3: 実装する**
-  `registry` は `Map<string, definition>` と `WeakSet<definition>` を持つ。`live` / `liveShared` が `register` を呼んでから定義を返す。`renderContext.view` は `registry.identify(definition)` を使う（今の連番の `counts` は消す）。`src/live.ts` の単体 `live` と `name` の既定値 `view` の説明を消す。サンプル 3 つを `hypersig.live` に直す。
+      `registry` は `Map<string, definition>` と `WeakSet<definition>` を持つ。`live` / `liveShared` が `register` を呼んでから定義を返す。`renderContext.view` は `registry.identify(definition)` を使う（今の連番の `counts` は消す）。`src/live.ts` の単体 `live` と `name` の既定値 `view` の説明を消す。サンプル 3 つを `hypersig.live` に直す。
 
 - [ ] **Step 4: テストを通す**
-  Run: `bun run test && bun run check`
-  Expected: PASS（`index.test.ts` とブラウザテストのキー文字列も直してあること）
+      Run: `bun run test && bun run check`
+      Expected: PASS（`index.test.ts` とブラウザテストのキー文字列も直してあること）
 
 - [ ] **Step 5: ブラウザテスト**
-  Run: `bun run test:browser`
-  Expected: PASS
+      Run: `bun run test:browser`
+      Expected: PASS
 
 - [ ] **Step 6: Commit**
-  `git commit -m "Key Live Views by their registered name"`
+      `git commit -m "Key Live Views by their registered name"`
 
 ### Task 2: トークンでページ登録を作り、組み立て直す
 
 **Files:**
+
 - Create: `src/page-token.ts`（鍵の読み込み、`sealPage`、`openPageToken`、`PageClaims` の検査）
 - Modify: `src/render.ts`（`ViewInstance` の生成を `createViewInstance` に切り出す）
 - Modify: `src/live-runtime.ts`（`pages` を消す。`renderPage`、`openPage`、二重接続の対応表）
@@ -83,6 +86,7 @@
 - Test: `src/core.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1 の `registry.resolve(name)`、`registry.identify(definition)`
 - Produces:
   - `LiveRuntimeOptions` に `pageKeys?: readonly string[]`（base64 または base64url で 32 バイト）、`pageLifetimeMs?: number`（既定 `12 * 60 * 60_000`）
@@ -109,36 +113,38 @@
   - `rejects page keys that are not 32 bytes`（Review Focus 5）：`pageKeys: ["short"]` と `pageKeys: []` で `createLiveRuntime` が `RangeError`。
   - `places the real token wherever the runtime script is written`：`render` の中で View より前に `token` を文字列に入れ、結果の文書に仮の文字列が残らず、その値で `openPage` が `open`。
   - 型テスト：`page.view(v, { at: new Date() })` は型エラー（`// @ts-expect-error Date is not JSON`）、子の `context.view(v, { at: new Date() })` は通る。
-  既存のテストは `openPage(token, keys, user)` を `await openPage(token, { views: keys, pristine: [] }, user)` に直す。
+    既存のテストは `openPage(token, keys, user)` を `await openPage(token, { views: keys, pristine: [] }, user)` に直す。
 
 - [ ] **Step 2: 失敗を確かめる**
-  Run: `bun run test src/core.test.ts`
-  Expected: 新しいテストが FAIL
+      Run: `bun run test src/core.test.ts`
+      Expected: 新しいテストが FAIL
 
 - [ ] **Step 3: `src/page-token.ts` を実装する**
-  トークンは `base64url(iv(12 バイト) || 暗号文)`。平文は `JSON.stringify(claims)`。`open` は全鍵で復号を試し、JSON と `PageClaims` の形を検査し、`expiresAt <= now` なら `expired`。鍵を省いたら `crypto.getRandomValues` の 32 バイトから作る。鍵の取り込みは非同期なので Promise を保持する。
+      トークンは `base64url(iv(12 バイト) || 暗号文)`。平文は `JSON.stringify(claims)`。`open` は全鍵で復号を試し、JSON と `PageClaims` の形を検査し、`expiresAt <= now` なら `expired`。鍵を省いたら `crypto.getRandomValues` の 32 バイトから作る。鍵の取り込みは非同期なので Promise を保持する。
 
 - [ ] **Step 4: `live-runtime.ts` を実装する**
-  `renderPage`：仮の文字列 `crypto.randomUUID()` を `render` に渡し、直列化後に `split/join` で本物のトークンに置き換える。claims の `views` はトップレベルで描画した View（`renderContext` が集めた `views` の定義と、その `params` を `JSON.parse(JSON.stringify(params))` したもの）。ページ数の上限と寿命の掃除は消す。
-  `openPage`：`sealer.open(token, Date.now())`、セッション照合、各 View を `registry.resolve` と `createViewInstance` で組み立て、キーを照合。
-  二重接続：`Map<string, () => void>` をトークンのキーで持ち、接続の終わりに自分の `close` のときだけ消す。version は接続ごとのローカル変数で 1 から数える。`refresh` はセッションの照合だけにする。
+      `renderPage`：仮の文字列 `crypto.randomUUID()` を `render` に渡し、直列化後に `split/join` で本物のトークンに置き換える。claims の `views` はトップレベルで描画した View（`renderContext` が集めた `views` の定義と、その `params` を `JSON.parse(JSON.stringify(params))` したもの）。ページ数の上限と寿命の掃除は消す。
+      `openPage`：`sealer.open(token, Date.now())`、セッション照合、各 View を `registry.resolve` と `createViewInstance` で組み立て、キーを照合。
+      二重接続：`Map<string, () => void>` をトークンのキーで持ち、接続の終わりに自分の `close` のときだけ消す。version は接続ごとのローカル変数で 1 から数える。`refresh` はセッションの照合だけにする。
 
 - [ ] **Step 5: テストを通す**
-  Run: `bun run test && bun run check`
-  Expected: PASS
+      Run: `bun run test && bun run check`
+      Expected: PASS
 
 - [ ] **Step 6: Commit**
-  `git commit -m "Seal page registrations into an encrypted token"`
+      `git commit -m "Seal page registrations into an encrypted token"`
 
 ### Task 3: SSR のスナップショットをダイジェストと `pristine` で扱う
 
 **Files:**
+
 - Modify: `src/render.ts`（`LeafSnapshot` を `{ revision; digest }` に）
 - Modify: `src/stream.ts`（`lastUpdate.html` を `digest` に、近道の条件）
 - Modify: `src/live-runtime.ts`（claims の `snapshots`、`pristine` の受け渡し）
 - Test: `src/core.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 2 の `openPage(token, { views, pristine }, user)`、`PageClaims.snapshots`
 - Produces: `digestHtml(html: string): Promise<string>`（SHA-256 の base64url、`src/page-token.ts`）
 
@@ -148,28 +154,30 @@
   - `skips an unchanged topic update after the initial sync`：初回スキップのあと、同じ HTML になる Topic 更新を送らない（ダイジェストでの比較）。
 
 - [ ] **Step 2: 失敗を確かめる**
-  Run: `bun run test src/core.test.ts`
-  Expected: FAIL
+      Run: `bun run test src/core.test.ts`
+      Expected: FAIL
 
 - [ ] **Step 3: 実装する**
-  `renderPage` は SSR の `initialSnapshot` を `{ revision, digest }` にして claims の `snapshots[target]` に入れる。`openPage` は `pristine` にあり `snapshots` にもある View だけ `initialSnapshots` に入れる。`stream.ts` は描画のたびに `digestHtml(fragment.html)` を求めて `lastUpdate.digest` で比べる。
+      `renderPage` は SSR の `initialSnapshot` を `{ revision, digest }` にして claims の `snapshots[target]` に入れる。`openPage` は `pristine` にあり `snapshots` にもある View だけ `initialSnapshots` に入れる。`stream.ts` は描画のたびに `digestHtml(fragment.html)` を求めて `lastUpdate.digest` で比べる。
 
 - [ ] **Step 4: テストを通す**
-  Run: `bun run test && bun run check`
-  Expected: PASS
+      Run: `bun run test && bun run check`
+      Expected: PASS
 
 - [ ] **Step 5: Commit**
-  `git commit -m "Trust the SSR snapshot only for views the browser left untouched"`
+      `git commit -m "Trust the SSR snapshot only for views the browser left untouched"`
 
 ### Task 4: Hono アダプターとブラウザのランタイム
 
 **Files:**
+
 - Modify: `src/protocol.ts`（`streamParams = { view: "view", pristine: "pristine" } as const`）
 - Modify: `src/hono.ts`（`/stream/:token` で `pristine` を読み、`await runtime.openPage`）
 - Modify: `src/browser.ts`（`pristine` の管理、`open` で `versions` を作り直す、`pristine` が減った接続の開き直し）
 - Test: `src/index.test.ts`、`browser-tests/counter.spec.ts`
 
 **Interfaces:**
+
 - Consumes: Task 2・3 の `openPage`、`streamParams`
 
 - [ ] **Step 1: テストを書く**
@@ -180,41 +188,42 @@
     - 認可を失った View が空になったあと、ネットワークを切って（`context.setOffline`）戻すと、認可を戻した View が描画し直される（Review Focus 4）。
 
 - [ ] **Step 2: 失敗を確かめる**
-  Run: `bun run test src/index.test.ts && bun run test:browser`
-  Expected: FAIL
+      Run: `bun run test src/index.test.ts && bun run test:browser`
+      Expected: FAIL
 
 - [ ] **Step 3: 実装する**
-  `browser.ts`：接続を作るとき、まだ書き換えていないトップレベルのキーを `pristine` に付ける（最初の接続では全キー）。更新を適用したら、その更新の対象のルートキーを外す。`clearViews()` で全部外す。`source` の `open` で `versions` を新しい `WeakMap` にする。`error` で `readyState` が `CONNECTING` で、開いたときより `pristine` が減っていたら、`source.close()` し、1 秒後に `synchronize()` で開き直す（その間に別の接続ができていれば何もしない）。
-  `hono.ts`：`openPage(token, { views: getAll(streamParams.view), pristine: getAll(streamParams.pristine) }, user)`。
+      `browser.ts`：接続を作るとき、まだ書き換えていないトップレベルのキーを `pristine` に付ける（最初の接続では全キー）。更新を適用したら、その更新の対象のルートキーを外す。`clearViews()` で全部外す。`source` の `open` で `versions` を新しい `WeakMap` にする。`error` で `readyState` が `CONNECTING` で、開いたときより `pristine` が減っていたら、`source.close()` し、1 秒後に `synchronize()` で開き直す（その間に別の接続ができていれば何もしない）。
+      `hono.ts`：`openPage(token, { views: getAll(streamParams.view), pristine: getAll(streamParams.pristine) }, user)`。
 
 - [ ] **Step 4: テストを通す**
-  Run: `bun run test && bun run check && bun run build && bun run test:browser`
-  Expected: PASS
+      Run: `bun run test && bun run check && bun run build && bun run test:browser`
+      Expected: PASS
 
 - [ ] **Step 5: Commit**
-  `git commit -m "Reconnect pages across processes from the browser runtime"`
+      `git commit -m "Reconnect pages across processes from the browser runtime"`
 
 ### Task 5: Workers のサンプルとドキュメント
 
 **Files:**
+
 - Modify: `examples/void/app.tsx`、`examples/void/worker/index.ts`、`examples/void/worker/wrangler.toml` または `.dev.vars` の扱い（鍵の受け渡しは実装で決める）
 - Modify: `examples/void/worker/worker.test.ts`（再起動後は `reset` ではなく更新が続くことを確かめる）
 - Modify: `examples/void/worker/README.md`、`docs/architecture.md`（「状態とライフサイクル」「Workers の共有状態」「レンダラーと配信の境界」の該当段落）
 - Modify: `site/content/{ja,en}/deploy.html`（`#instances`）、`site/content/{ja,en}/limits.html`（複数台の記述）、`site/content/{ja,en}/reference.html`（`pageKeys`、`pageLifetimeMs`、`name` 必須、単体 `live` の削除）
 
 - [ ] **Step 1: Worker のテストを書き換える**
-  `worker.test.ts` の再起動の場面で、古いストリームに `reset` ではなく `ready` と現在値の更新が届き、別の入口の Increment が届くことを確かめる。
+      `worker.test.ts` の再起動の場面で、古いストリームに `reset` ではなく `ready` と現在値の更新が届き、別の入口の Increment が届くことを確かめる。
 
 - [ ] **Step 2: 失敗を確かめる**
-  Run: `cd examples/void && bun run test:worker`
-  Expected: FAIL
+      Run: `cd examples/void && bun run test:worker`
+      Expected: FAIL
 
 - [ ] **Step 3: サンプルとドキュメントを直す**
-  `createCounterApp` に `pageKeys` を渡せるようにし、Worker はシークレットから渡す。ドキュメントの「ページ登録はプロセスのメモリ」「1,024」「30 分」「接続先を固定」の記述を、トークン方式、鍵の共有、12 時間の期限、鍵の入れ替え手順に書き換える。英語版と日本語版で同じ内容にする。
+      `createCounterApp` に `pageKeys` を渡せるようにし、Worker はシークレットから渡す。ドキュメントの「ページ登録はプロセスのメモリ」「1,024」「30 分」「接続先を固定」の記述を、トークン方式、鍵の共有、12 時間の期限、鍵の入れ替え手順に書き換える。英語版と日本語版で同じ内容にする。
 
 - [ ] **Step 4: 確かめる**
-  Run: `cd examples/void && bun run test:worker && bun run test`、ルートで `bun run format:fix && bun run check && bun run test && bun run build`
-  Expected: PASS
+      Run: `cd examples/void && bun run test:worker && bun run test`、ルートで `bun run format:fix && bun run check && bun run test && bun run build`
+      Expected: PASS
 
 - [ ] **Step 5: Commit**
-  `git commit -m "Document page tokens and continue Workers pages across restarts"`
+      `git commit -m "Document page tokens and continue Workers pages across restarts"`
