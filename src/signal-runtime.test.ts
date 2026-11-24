@@ -1144,6 +1144,27 @@ it("refuses to send a form while it is pending, without running its submit state
   expect(runtime.read(e.newKey.path)).toBe("f2");
 });
 
+it("sends a call input field named __proto__ as an ordinary key", () => {
+  const rename = hypersig.action("rename-proto", {
+    input: v.object({ ["__proto__"]: v.string() }),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  const { page, click } = createPage(
+    render("button", {
+      id: "rename",
+      ...on.click(rename.call({ ["__proto__"]: "x" })),
+    })
+  );
+  const { requests, request, send } = createSend();
+  startSignals({ root: page, send });
+
+  click("#rename");
+  expect(requests).toHaveLength(1);
+  expect(request(0).body).toBe('{"__proto__":"x"}');
+});
+
 it("keeps data-hs-pending on a control until its last send ends", async () => {
   const { page, find, click } = createPage(
     render("button", {

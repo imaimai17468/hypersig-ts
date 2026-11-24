@@ -102,11 +102,12 @@ function nodesOfCallInput<Wire>(
 function nodesOfCallInput(
   input: Readonly<Record<string, Parameters<typeof nodeOf>[0] | undefined>>
 ) {
-  const nodes: Record<string, ExprNode> = {};
-  for (const [field, value] of Object.entries(input)) {
-    if (value !== undefined) nodes[field] = nodeOf(value);
-  }
-  return nodes;
+  // Defining each entry keeps a field named `__proto__` as a key.
+  return Object.fromEntries(
+    Object.entries(input).flatMap(([field, value]) =>
+      value === undefined ? [] : [[field, nodeOf(value)]]
+    )
+  );
 }
 
 type FormValue = FormDataEntryValue | FormDataEntryValue[];

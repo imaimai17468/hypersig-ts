@@ -630,10 +630,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         case "call": {
           if (!control) break;
           const [, url, input, onSuccess, onError] = stmt;
-          const body: Record<string, JsonValue> = {};
-          for (const [field, node] of Object.entries(input)) {
-            body[field] = evaluate(node, runContext);
-          }
+          // Defining each entry keeps a field named `__proto__` as a key.
+          const body = Object.fromEntries(
+            Object.entries(input).map(([field, node]) => [
+              field,
+              evaluate(node, runContext),
+            ])
+          );
           void sendAction(
             control,
             url,
