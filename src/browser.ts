@@ -323,7 +323,11 @@ function createActionSender(stream: URL) {
   };
 }
 
-/** Sends native-looking forms and `bind` buttons through the signal runtime. */
+/**
+ * Sends native-looking forms and `bind` buttons through the signal runtime.
+ * The runtime sends nothing for one inside the children of an owned element,
+ * and the default action stays prevented, so such a form does not post either.
+ */
 function handleActions(runtime: SignalRuntime) {
   async function sendForm(
     form: HTMLFormElement,

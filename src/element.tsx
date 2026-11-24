@@ -10,6 +10,7 @@ import {
   customElementAttributes,
   isCustomElementName,
   isCustomEventName,
+  rendersBooleanAsText,
 } from "./protocol.js";
 import type { Expr } from "./signal.js";
 import { exprOf, listStmts } from "./signal.js";
@@ -117,21 +118,6 @@ type CheckedTagName<Spec extends CustomElementSpec> = [
     ? CustomTagName
     : `Event "${InvalidEventName<Spec>}" needs a lowercase letter followed by lowercase letters, digits, -, ., : or _, and cannot be click, input, change or submit`
   : `Attribute "${InvalidAttributeName<Spec>}" needs a lowercase name that is not on*, style, id or data-hs-*`;
-
-/** Attributes whose values `"true"` and `"false"` mean different things. */
-const textBooleanAttributes: ReadonlySet<string> = new Set([
-  "draggable",
-  "spellcheck",
-  "contenteditable",
-]);
-
-function rendersBooleanAsText(name: string): boolean {
-  return (
-    name.startsWith("aria-") ||
-    name.startsWith("data-") ||
-    textBooleanAttributes.has(name)
-  );
-}
 
 /**
  * Hono renders `true` as `"true"` for attribute names outside its own list,

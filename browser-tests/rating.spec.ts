@@ -113,3 +113,49 @@ test("keeps the local rating when a peer's save updates the Live View", async ({
     await context.close();
   }
 });
+
+test("sends no Action from a forged button or form inside the element", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator(ready)).toHaveCount(1);
+  const actions: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/_hypersig/actions/")) {
+      actions.push(request.url());
+    }
+  });
+  await page.evaluate(() => {
+    const rating = document.querySelector("#rating");
+    if (!rating) throw new Error("Missing rating");
+    const forge = (id: string) => {
+      const button = document.createElement("button");
+      button.id = id;
+      button.textContent = id;
+      button.dataset.hsAction = "/_hypersig/actions/save-rating";
+      button.dataset.hsInput = JSON.stringify({ score: 5 });
+      return button;
+    };
+    const form = document.createElement("form");
+    form.id = "forged-form";
+    form.method = "post";
+    form.action = "/_hypersig/actions/save-rating";
+    form.dataset.hsForm = "";
+    form.innerHTML = '<input name="score" value="5">';
+    rating.append(forge("forged-inside"), form);
+    // Outside the Live View, so a morph does not remove it.
+    document.body.append(forge("forged-outside"));
+  });
+
+  await page.locator("#forged-inside").click();
+  await page
+    .locator("#forged-form")
+    .evaluate((form: HTMLFormElement) => form.requestSubmit());
+  // The outside button proves the delegation runs; its request comes last.
+  await Promise.all([
+    page.waitForRequest("**/_hypersig/actions/save-rating"),
+    page.locator("#forged-outside").click(),
+  ]);
+  expect(actions).toHaveLength(1);
+  await expect(page).toHaveURL("/");
+});

@@ -170,6 +170,27 @@ export function isCustomEventName(name: string): boolean {
 
 const customAttributeNamePattern = /^[a-z][a-z0-9._-]*$/;
 
+/** Attributes whose values `"true"` and `"false"` mean different things. */
+const textBooleanAttributes: ReadonlySet<string> = new Set([
+  "draggable",
+  "spellcheck",
+  "contenteditable",
+]);
+
+/**
+ * Reports a custom element attribute whose boolean value is written as
+ * `"true"` or `"false"` text: `data-*`, `aria-*` and the attributes whose two
+ * values mean different things. Other booleans are present and empty when
+ * `true` and absent when `false`. The server and the runtime both follow it.
+ */
+export function rendersBooleanAsText(name: string): boolean {
+  return (
+    name.startsWith("aria-") ||
+    name.startsWith("data-") ||
+    textBooleanAttributes.has(name)
+  );
+}
+
 /**
  * Accepts the lowercase attribute names a custom element may have bound,
  * except event handlers (`on*`), `style`, `id`, and the runtime's

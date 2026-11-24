@@ -20,6 +20,7 @@ import {
   isJsonValue,
   isSignalPath,
   isStmtList,
+  rendersBooleanAsText,
   signalAttributes,
 } from "./protocol.js";
 
@@ -66,7 +67,9 @@ export interface SignalRuntime {
    * `send`, `sendForm`, or a `call` statement in its handler. A success sets `["$restored", url]` to
    * `false`. The control's `data-hs-on-success` statements run with the
    * output, or its `data-hs-on-error` statements run on failure. A control
-   * with a request in flight is not sent again and gets `{ ok: false }`.
+   * with a request in flight is not sent again and gets `{ ok: false }`, and
+   * so does a control inside the children of a `data-hs-owns-children`
+   * element, which sends nothing.
    */
   send(
     control: HTMLElement,
@@ -78,8 +81,9 @@ export interface SignalRuntime {
    * like a click handler, renders bindings synchronously so a bound hidden
    * input carries a value they wrote, then sends `new FormData(form,
    * submitter)` as `send` does. Writes the statements made stay when the
-   * request fails. A form with a request in flight is not sent again: its
-   * statements do not run and it gets `{ ok: false }`.
+   * request fails. A form with a request in flight, or inside the children
+   * of a `data-hs-owns-children` element, is not sent: its statements do not
+   * run and it gets `{ ok: false }`.
    */
   sendForm(
     form: HTMLFormElement,
@@ -254,6 +258,19 @@ function findHandled<E extends Element = Element>(
   );
 }
 
+/**
+ * Finds the nearest element from `target` up matching `selector` that the
+ * runtime handles, so a handler inside owned children passes the event to
+ * the owner or an ancestor.
+ */
+function findHandler(target: Element, selector: string): HTMLElement | null {
+  let handler = target.closest<HTMLElement>(selector);
+  while (handler && isOwnedChild(handler)) {
+    handler = handler.parentElement?.closest<HTMLElement>(selector) ?? null;
+  }
+  return handler;
+}
+
 function readSnapshot(element: Element): SnapshotEntry[] {
   const value = parseAttribute(element, signalAttributes.signals);
   return Array.isArray(value) ? value.filter(isSnapshotEntry) : [];
@@ -393,8 +410,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     for (const [name, node] of bindings ?? []) {
       if (!isBindableCustomAttribute(name)) continue;
       const value = evaluate(node, context);
-      if (typeof value === "boolean") element.toggleAttribute(name, value);
-      else writeAttribute(element, name, formatText(value));
+      if (typeof value === "boolean" && !rendersBooleanAsText(name)) {
+        element.toggleAttribute(name, value);
+      } else writeAttribute(element, name, formatText(value));
     }
   }
 
@@ -587,14 +605,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       if (type !== "click" && isField(target) && !isOwnedChild(target)) {
         writeField(target);
       }
-      const handler = target.closest<HTMLElement>(`[${attribute}]`);
+      const handler = findHandler(target, `[${attribute}]`);
       // A click on a control whose Action is in flight runs none of its
       // statements, so its writes and calls are not repeated.
-      if (
-        handler &&
-        !isOwnedChild(handler) &&
-        !(type === "click" && isSending(handler))
-      ) {
+      if (handler && !(type === "click" && isSending(handler))) {
         run(readStmts(handler, attribute), handler);
       }
     });
@@ -628,7 +642,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       scheduleRender();
     },
     send(control, url, body) {
-      if (isSending(control)) return Promise.resolve({ ok: false });
+      if (isOwnedChild(control) || isSending(control)) {
+        return Promise.resolve({ ok: false });
+      }
       return sendAction(
         control,
         url,
@@ -638,7 +654,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       );
     },
     sendForm(form, url, submitter) {
-      if (isSending(form)) return Promise.resolve({ ok: false });
+      if (isOwnedChild(form) || isSending(form)) {
+        return Promise.resolve({ ok: false });
+      }
       run(readStmts(form, signalAttributes.onSubmit), form);
       render();
       return sendAction(

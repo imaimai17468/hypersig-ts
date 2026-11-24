@@ -18,6 +18,7 @@ import {
   eventAttributes,
   isBindableAttribute,
   isBindableCustomAttribute,
+  rendersBooleanAsText,
   signalAttributes,
 } from "./protocol.js";
 
@@ -482,9 +483,9 @@ function bindElementAttributes(
     const node = nodeOf(input);
     nodes[name] = node;
     const value = valueOf(new ExprHandle(node));
-    // Hono renders `true` as "true" for names outside its boolean list.
-    if (typeof value !== "boolean") rendered[name] = formatText(value);
-    else if (value) rendered[name] = "";
+    if (typeof value !== "boolean" || rendersBooleanAsText(name)) {
+      rendered[name] = formatText(value);
+    } else if (value) rendered[name] = "";
   }
   rendered[customElementAttributes.elementAttr] = JSON.stringify(nodes);
   return rendered;

@@ -1624,6 +1624,140 @@ it("ignores hypersig attributes inside the children of an owned element", async 
   expect(find("#inner-text").textContent).toBe("server");
 });
 
+it("sends no Action or form from the children of an owned element", async () => {
+  const s = signals({ submitted: 0 }, { name: "owned-actions" }).with({});
+  const forged = (prefix: string) => [
+    element("button", {
+      id: `${prefix}-button`,
+      "data-hs-action": "/_hypersig/actions/forged",
+      "data-hs-input": "{}",
+    }),
+    element("form", {
+      id: `${prefix}-form`,
+      "data-hs-form": "",
+      action: "/_hypersig/actions/forged",
+      // Forged markup carries hand-written statements, as a click handler's.
+      "data-hs-on-submit": on.click(s.submitted.set(s.submitted.add(1)))[
+        "data-hs-on-click"
+      ],
+    }),
+  ];
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      children: [
+        element("star-rating", {
+          "data-hs-owns-children": "",
+          children: forged("inner"),
+        }),
+        ...forged("outer"),
+      ],
+    })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: page, send: sender.send });
+
+  expect(
+    await runtime.send(find("#inner-button"), "/_hypersig/actions/forged", "{}")
+  ).toEqual({ ok: false });
+  expect(
+    await runtime.sendForm(
+      find<HTMLFormElement>("#inner-form"),
+      "/_hypersig/actions/forged",
+      null
+    )
+  ).toEqual({ ok: false });
+  expect(sender.requests).toHaveLength(0);
+  expect(runtime.read(s.submitted.path)).toBe(0);
+  expect(find("#inner-button").hasAttribute("data-hs-pending")).toBe(false);
+
+  void runtime.send(find("#outer-button"), "/_hypersig/actions/forged", "{}");
+  void runtime.sendForm(
+    find<HTMLFormElement>("#outer-form"),
+    "/_hypersig/actions/forged",
+    null
+  );
+  expect(sender.requests.map((request) => request.control.id)).toEqual([
+    "outer-button",
+    "outer-form",
+  ]);
+  expect(runtime.read(s.submitted.path)).toBe(1);
+});
+
+it("runs the nearest handler outside owned children for a click inside them", async () => {
+  const s = signals({ owner: 0, outer: 0 }, { name: "owned-handlers" }).with(
+    {}
+  );
+  const forgedClick = (id: string) =>
+    element("button", { id, ...on.click(s.owner.set(100)) });
+  const { page, click } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.click(s.outer.set(s.outer.add(1))),
+      children: [
+        element("star-rating", {
+          id: "with-handler",
+          "data-hs-owns-children": "",
+          ...on.click(s.owner.set(s.owner.add(1))),
+          children: element("span", { children: forgedClick("in-handler") }),
+        }),
+        element("star-rating", {
+          id: "without-handler",
+          "data-hs-owns-children": "",
+          children: forgedClick("in-plain"),
+        }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  click("#in-handler");
+  await settle();
+  expect(runtime.read(s.owner.path)).toBe(1);
+  expect(runtime.read(s.outer.path)).toBe(0);
+
+  click("#in-plain");
+  await settle();
+  expect(runtime.read(s.owner.path)).toBe(1);
+  expect(runtime.read(s.outer.path)).toBe(1);
+});
+
+it("renders a bound data-* or aria-* boolean as true or false text", async () => {
+  const flagged = customElement<{
+    attributes: {
+      "data-open": boolean;
+      "aria-checked": boolean;
+      open: boolean;
+    };
+    events: Record<never, never>;
+  }>("flag-box");
+  const s = signals({ on: true }, { name: "runtime-flag-text" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      children: element("flag-box", {
+        id: "flag",
+        ...s.bindElement(flagged, {
+          "data-open": s.on,
+          "aria-checked": s.on,
+          open: s.on,
+        }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  await settle();
+  expect(find("#flag").getAttribute("data-open")).toBe("true");
+  expect(find("#flag").getAttribute("aria-checked")).toBe("true");
+  expect(find("#flag").getAttribute("open")).toBe("");
+
+  runtime.write(s.on.path, false);
+  await settle();
+  expect(find("#flag").getAttribute("data-open")).toBe("false");
+  expect(find("#flag").getAttribute("aria-checked")).toBe("false");
+  expect(find("#flag").hasAttribute("open")).toBe(false);
+});
+
 it("ignores hand-written delegated event names and id bindings on a custom element", async () => {
   const s = signals({ count: 0 }, { name: "custom-reserved" }).with({});
   const { page, find, click } = createPage(

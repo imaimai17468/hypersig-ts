@@ -214,3 +214,40 @@ it("does not bind id through bindElement", () => {
     scope.bindElement(withId, { id: scope.name, size: 1 })
   ).toThrow("id");
 });
+
+const flagged = customElement<{
+  attributes: { "data-open": boolean; "aria-checked": boolean; open: boolean };
+  events: Record<never, never>;
+}>("flag-box");
+
+it("renders a data-* or aria-* boolean as true or false text on every path", async () => {
+  expect(
+    String(
+      await flagged.Element({
+        "data-open": true,
+        "aria-checked": false,
+        open: false,
+      })
+    )
+  ).toBe('<flag-box data-open="true" aria-checked="false"></flag-box>');
+
+  const flags = signals(
+    { open: true, checked: false },
+    { name: "flag-text" }
+  ).with({});
+  expect(
+    flags.bindElement(flagged, {
+      "data-open": flags.open,
+      "aria-checked": flags.checked,
+      open: flags.checked,
+    })
+  ).toEqual({
+    "data-open": "true",
+    "aria-checked": "false",
+    "data-hs-element-attr": JSON.stringify({
+      "data-open": ["sig", ["flag-text-1", "open"]],
+      "aria-checked": ["sig", ["flag-text-1", "checked"]],
+      open: ["sig", ["flag-text-1", "checked"]],
+    }),
+  });
+});
