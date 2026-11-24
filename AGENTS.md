@@ -4,7 +4,7 @@ hypersig.ts is a TypeScript web framework that keeps the page in step with data 
 
 ## Thesis
 
-These strings come from a typed value, never from a string literal in application code:
+Each of these strings is written once, where it is defined, and everywhere else comes from that typed value. Application code never repeats it as a literal:
 
 - Action names, URLs, and inputs
 - Form field names, including the fields that `data-hs-field-error` and `data-hs-draft` refer to
@@ -12,6 +12,7 @@ These strings come from a typed value, never from a string literal in applicatio
 - Live View keys
 - Signal names and expressions, built with `signals()`, `signalFamily()`, and the `Expr` methods
 - Links to the application's pages, built with Hono's `hc<typeof app>(...).$path()`
+- Names of the attributes the browser runtime reads, including the outlets it fills (`errorOutlet()`, `connectionStatusOutlet()`, `action.fieldError()`)
 
 A change that lets an application write one of these by hand again, or that turns a type error into a runtime failure, needs the user's own words. Where TypeScript cannot hold a restriction, the API documentation names what goes unchecked and what happens when it is broken.
 

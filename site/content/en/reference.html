@@ -97,6 +97,16 @@ const href = links.counters[":counterKey"].$path({
     validates submitted values when it receives the form.
   </p>
   <p>
+    The runtime writes messages into elements you mark.
+    <code>action.fieldError(name)</code> marks the element in the form that
+    shows the schema's message for one field after a failed submission.
+    <code>errorOutlet()</code> marks where an Action's failure message goes,
+    using the one inside the submitting form first, and
+    <code>connectionStatusOutlet()</code> marks where the page says that live
+    updates disconnected. Spread each on the element, as in
+    <code>&lt;p role="alert" {...errorOutlet()} /&gt;</code>.
+  </p>
+  <p>
     <code>action.control(name)</code> returns the field name together with
     constraint attributes read from the input schema: <code>required</code>,
     <code>minLength</code>, <code>maxLength</code>, <code>pattern</code>,

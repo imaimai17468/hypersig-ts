@@ -103,6 +103,22 @@ const href = links.counters[":counterKey"].$path({
     は、送信する名前が入力スキーマの最上位の項目にあるかを型で確認し、その名前を返します。入力値の検証は送信時にサーバーで行います。
   </p>
   <p>
+    ランタイムは、印を付けた要素にメッセージを書き込みます。<code
+      >action.fieldError(name)</code
+    >
+    は、送信が失敗したときに、その項目へのスキーマのメッセージを表示するフォーム内の要素に印を付けます。<code
+      >errorOutlet()</code
+    >
+    は Action
+    の失敗メッセージを表示する場所で、送信したフォームの中にあるものを優先します。<code
+      >connectionStatusOutlet()</code
+    >
+    は、ライブ更新が切れたことを伝える場所です。<code
+      >&lt;p role="alert" {...errorOutlet()} /&gt;</code
+    >
+    のように要素に展開します。
+  </p>
+  <p>
     <code>action.control(name)</code>
     は、項目名と、入力スキーマから読み取った制約属性（<code>required</code>、<code>minLength</code>、<code>maxLength</code>、<code>pattern</code>、<code>min</code>、<code>max</code>）を返します。<code
       >&lt;input {...add.control("title")} /&gt;</code
