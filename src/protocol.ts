@@ -76,7 +76,8 @@ export type StmtNode =
   | ["focus-key", refId: string, key: ExprNode]
   | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]]
   | ["after", timerId: string, ms: number, stmts: StmtNode[]]
-  | ["cancel", timerId: string];
+  | ["cancel", timerId: string]
+  | ["when", condition: ExprNode, then: StmtNode[], otherwise: StmtNode[]];
 
 /** Marks a `data-hs-signals` entry as a default rather than an owned value. */
 export const defaultMark = 0;
@@ -375,6 +376,13 @@ function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
       );
     case "cancel":
       return value.length === 2 && typeof first === "string";
+    case "when":
+      return (
+        value.length === 4 &&
+        isExprNodeAt(first, depth + 1) &&
+        isStmtListAt(second, depth + 1) &&
+        isStmtListAt(third, depth + 1)
+      );
     default:
       return false;
   }

@@ -543,8 +543,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
   }
 
-  /** Focuses the first element whose `data-hs-ref` is exactly `value`. */
+  /**
+   * Focuses the first element whose `data-hs-ref` is exactly `value`. A queued
+   * render runs first, so an element that an earlier write reveals is no
+   * longer `hidden` and can take focus.
+   */
   function focusRef(value: string) {
+    if (isRenderQueued) render();
     for (const element of findHandled<HTMLElement>(
       root,
       `[${signalAttributes.ref}]`
@@ -657,6 +662,14 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
           clearTimeout(reservations.get(stmt[1]));
           reservations.delete(stmt[1]);
           break;
+        case "when": {
+          const [, condition, then, otherwise] = stmt;
+          const branch = isTruthy(evaluate(condition, runContext))
+            ? then
+            : otherwise;
+          run(branch, control, output, detail);
+          break;
+        }
       }
     }
   }

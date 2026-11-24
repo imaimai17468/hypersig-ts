@@ -88,6 +88,7 @@ tabRefs.focus(s.keys.at(s.active)); // 文
 
 - `attr(key)` は今の `data-hs-ref` に `ID` と `key` を合わせた値を書く。`focus(keyExpr)` は式を評価して、その要素にフォーカスする。見つからなければ何もしない。
 - ID の振り方は今の `ref()` と同じ（`assignId`）。
+- `focus()` と `focus(key)` は、予約済みの描き直しを先に済ませてからフォーカスする。同じ文の一覧で前の `set` が `hidden` を外した要素にもフォーカスできる。
 
 ### 文字列と数と配列の式
 
@@ -104,6 +105,26 @@ tabRefs.focus(s.keys.at(s.active)); // 文
 
 - どの式もサーバーとブラウザの両方の `evaluate`（`src/evaluate.ts`）で同じ結果になる。
 - 型が合わない値（文字列の式に数が届くなど、ストアの値が想定と違うとき）は、今の式と同じ規則で扱う（`evaluate.ts` の既存の変換の方針に合わせ、例外にしない）。
+
+### 条件付きの文：`when`
+
+```ts
+const openOrPick = when(
+  s.open,
+  [
+    s.selected.set(s.active),
+    s.open.set(false),
+    save.call({ fruit: keys.at(s.active, "apple") }),
+  ],
+  [s.active.set(s.selected), s.open.set(true)]
+);
+on.keydown({ Enter: openOrPick, " ": openOrPick });
+```
+
+- 選択式のコンボボックスでは、Enter と Space が、閉じた一覧では開き、開いた一覧では選んで閉じる。フォーカスはコンボボックスに残るので、1 つの対応表が状態で動きを変える必要がある。`set` は `choose` で値を選べるが、`call` は文なので、選ぶときだけ保存を送ることを書けなかった（サンプルを書いて分かった）。
+- `when(条件, 文, それ以外の文?)` は文。条件を評価し、真なら最初の文を、偽なら `otherwise`（省略すると何もしない）を実行する。真偽の判定は式の `if`（`choose`）と同じ規則。
+- 形は `["when", 式, 文の一覧, 文の一覧]`。ランタイムは形が正しくなければ、ほかの文と同じくハンドラーごと無視する。入れ子の深さはほかの文と同じ上限で数える。
+- 文を書ける場所（`on.*`、キーの対応表、`after`、`onSuccess` / `onError`）ならどこでも使える。分岐の中の `call` は、`when` を実行した要素から送る。
 
 ### タイマー：`timer()`
 

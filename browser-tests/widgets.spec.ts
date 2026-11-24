@@ -3,7 +3,8 @@ import type { Locator, Page } from "@playwright/test";
 
 const ready = "html[data-hs-connection=ready]";
 const draftAction = "/_hypersig/actions/save-draft";
-const fruitAction = "**/_hypersig/actions/save-fruit";
+const fruitPath = "/_hypersig/actions/save-fruit";
+const fruitAction = `**${fruitPath}`;
 
 // Each test gets its own browser context, so its own session and saved values.
 test.beforeEach(async ({ page }) => {
@@ -76,7 +77,9 @@ test.describe("select-only combobox", () => {
     await box.press("ArrowDown");
     await expectActive(page, "Cherry");
 
-    await box.press("Enter");
+    // Enter and Space wait for the pick's save, so a second Enter cannot
+    // send it again.
+    await Promise.all([page.waitForResponse(fruitAction), box.press("Enter")]);
     await expect(listbox).toBeHidden();
     await expect(box).toHaveText("Cherry");
     await expect(box).toHaveAttribute("aria-expanded", "false");
@@ -100,21 +103,62 @@ test.describe("select-only combobox", () => {
     await expect(listbox).toBeHidden();
   });
 
-  // Enter and Space open a closed list and pick from an open one, but a
-  // statement list cannot send the save only in the open state, so the pick
-  // stays in this page. Opening the list must not send a save either.
-  test.fixme("saves the option picked with the keyboard", async ({ page }) => {
+  test("saves only the option picked with the keyboard, not the opening", async ({
+    page,
+  }) => {
     await open(page);
     const other = await page.context().newPage();
     await open(other);
+    const saves: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === fruitPath) {
+        saves.push(request.postData() ?? "");
+      }
+    });
     const box = combobox(page);
+    const listbox = page.getByRole("listbox", { name: "Favorite fruit" });
     await box.focus();
     await box.press("Enter");
+    await expect(listbox).toBeVisible();
+    await box.press("Escape");
+    await box.press(" ");
+    await expect(listbox).toBeVisible();
     await box.press("ArrowDown");
     await expectActive(page, "Banana");
-    await Promise.all([page.waitForResponse(fruitAction), box.press("Enter")]);
+    expect(saves).toEqual([]);
+
+    const saved = page.waitForResponse(fruitAction);
+    await box.press("Enter");
+    await expect(listbox).toBeHidden();
+    await expect(box).toHaveText("Banana");
+    // The save stays in flight for 300 ms; the arrow keys still open and move.
+    await expect(page.locator(".combobox-field[data-hs-pending]")).toHaveCount(
+      1
+    );
+    await box.press("ArrowDown");
+    await expect(listbox).toBeVisible();
+    await expectActive(page, "Banana");
+    await box.press("ArrowDown");
+    await expectActive(page, "Cherry");
+    await expect(page.locator(".combobox-field[data-hs-pending]")).toHaveCount(
+      1
+    );
+    await box.press("Escape");
+    await saved;
+    expect(saves).toEqual([JSON.stringify({ fruit: "banana" })]);
     await expect(page.locator("#saved-fruit")).toHaveText("Banana");
     await expect(other.locator("#saved-fruit")).toHaveText("Banana");
+
+    // Tab picks the active option of an open list as focus moves on.
+    await box.press("Enter");
+    await box.press("End");
+    await expectActive(page, "Orange");
+    await Promise.all([page.waitForResponse(fruitAction), box.press("Tab")]);
+    await expect(box).not.toBeFocused();
+    await expect(listbox).toBeHidden();
+    await expect(box).toHaveText("Orange");
+    await expect(other.locator("#saved-fruit")).toHaveText("Orange");
+    expect(saves).toHaveLength(2);
   });
 
   test("picks with the mouse, saves it and reaches another tab", async ({

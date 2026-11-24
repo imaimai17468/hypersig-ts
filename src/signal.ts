@@ -713,6 +713,20 @@ export function timer(options?: { name?: string }): SignalTimer {
   };
 }
 
+/**
+ * Runs `then` when the condition is truthy in the browser, and `otherwise`
+ * when it is not. It lets one key or event do different things by state, such
+ * as Enter opening a closed list and picking from an open one, including a
+ * `call` that only one branch sends.
+ */
+export function when(
+  condition: boolean | Expr<boolean>,
+  then: Statements,
+  otherwise: Statements = []
+): StmtNode {
+  return ["when", nodeOf(condition), listStmts(then), listStmts(otherwise)];
+}
+
 function isStmtNodeValue(
   stmts: StmtNode | readonly StmtNode[]
 ): stmts is StmtNode {

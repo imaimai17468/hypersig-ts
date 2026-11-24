@@ -14,6 +14,7 @@ import {
   signals,
   timer,
   uuid,
+  when,
 } from "./index.js";
 import type { SendResult } from "./signal-runtime.js";
 import { startSignals } from "./signal-runtime.js";
@@ -1872,6 +1873,115 @@ it("focuses the keyed ref whose key an expression computes", async () => {
   click("#go-number");
   expect(page.activeElement).toBe(find("#empty"));
   await settle();
+});
+
+it("focuses an element that a write earlier in the same statements reveals", async () => {
+  const s = signals({ open: false }, { name: "runtime-reveal" });
+  const field = ref({ name: "revealed-field" });
+  const rows = refs({ name: "revealed-row" });
+  const r = s.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...r.init(),
+      ...r.bindShow(r.open),
+      children: [
+        element("input", { id: "field", ...field.attr() }),
+        element("button", { id: "row", ...rows.attr("a") }),
+      ],
+    }) +
+      render("button", {
+        id: "open",
+        ...on.click([r.open.set(true), field.focus()]),
+      }) +
+      render("button", {
+        id: "open-row",
+        ...on.click([r.open.set(true), rows.focus("a")]),
+      }) +
+      render("button", { id: "close", ...on.click(r.open.set(false)) })
+  );
+  startSignals({ root: page });
+  const hiddenAtFocus: boolean[] = [];
+  for (const id of ["#field", "#row"]) {
+    find(id).addEventListener("focus", () => {
+      hiddenAtFocus.push(find(id).closest("[hidden]") !== null);
+    });
+  }
+
+  click("#open");
+  expect(page.activeElement).toBe(find("#field"));
+  click("#close");
+  await settle();
+  click("#open-row");
+  expect(page.activeElement).toBe(find("#row"));
+  expect(hiddenAtFocus).toEqual([false, false]);
+  await settle();
+});
+
+it("runs the branch the condition picks, including a call", async () => {
+  const s = signals(
+    { open: false, active: "b", opened: 0 },
+    { name: "runtime-when" }
+  );
+  const w = s.with({});
+  const pick = when(
+    w.open,
+    [w.open.set(false), saveMemo.call({ title: w.active })],
+    [w.opened.set(w.opened.add(1)), w.open.set(true)]
+  );
+  const { page, find, click } = createPage(
+    render("div", {
+      ...w.init(),
+      children: [
+        element("span", { id: "open", ...w.bindText(w.open) }),
+        element("span", { id: "opened", ...w.bindText(w.opened) }),
+        element("button", { id: "pick", ...on.click(pick) }),
+        element("button", { id: "key", ...on.keydown({ Enter: pick }) }),
+        element("button", {
+          id: "bad",
+          [Object.keys(on.click([]))[0] ?? ""]: JSON.stringify([
+            ["when", ["lit", true], [["bad"]], []],
+            ["set", ["runtime-when-1", "opened"], ["lit", 99]],
+          ]),
+        }),
+      ],
+    })
+  );
+  const { requests, request, send } = createSend();
+  startSignals({ root: page, send });
+
+  click("#pick");
+  await settle();
+  expect(find("#open").textContent).toBe("true");
+  expect(find("#opened").textContent).toBe("1");
+  expect(requests).toHaveLength(0);
+
+  click("#pick");
+  await settle();
+  expect(find("#open").textContent).toBe("false");
+  expect(find("#opened").textContent).toBe("1");
+  expect(requests).toHaveLength(1);
+  expect(request(0).body).toBe(JSON.stringify({ title: "b" }));
+  expect(request(0).control).toBe(find("#pick"));
+  request(0).respond({ ok: true, data: { revision: 1 } });
+
+  const view = page.defaultView;
+  if (!view) throw new Error("The frame has no window");
+  const press = () =>
+    find("#key").dispatchEvent(
+      new view.KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+    );
+  press();
+  await settle();
+  expect(find("#opened").textContent).toBe("2");
+  expect(requests).toHaveLength(1);
+  press();
+  await settle();
+  expect(requests).toHaveLength(2);
+
+  // A malformed branch makes the whole handler ignored.
+  click("#bad");
+  await settle();
+  expect(find("#opened").textContent).toBe("2");
 });
 
 it("binds roving focus attributes in the browser", async () => {

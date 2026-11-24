@@ -16,6 +16,7 @@ import {
   signals,
   timer,
   topic,
+  when,
 } from "../../src/index.js";
 
 const port = Number(Bun.env.PORT ?? 3000);
@@ -23,6 +24,9 @@ const origin = `http://127.0.0.1:${port}`;
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 const stylesheet = Bun.file(new URL("./style.css", import.meta.url));
 const cookie = "widgets-session";
+// The browser tests slow the fruit save down to see keys pressed while it is
+// in flight.
+const fruitSaveDelayMs = Number(Bun.env.FRUIT_SAVE_DELAY_MS ?? 0);
 
 const fruits = [
   { key: "apple", label: "Apple" },
@@ -34,6 +38,7 @@ const fruits = [
 ] as const;
 type Fruit = (typeof fruits)[number]["key"];
 const fruitKeys = fruits.map(({ key }) => key);
+const fruitKeyList = lit(fruitKeys);
 const fruitLabels = lit(fruits.map(({ label }) => label));
 // Option `id`s are the application's own strings, as TodoMVC's editor ids are.
 const optionId = (fruit: Fruit) => `fruit-option-${fruit}`;
@@ -86,6 +91,7 @@ const saveFruit = hypersig.action("save-fruit", {
   output: v.literal(true),
   authorize: () => true,
   async execute({ fruit }, { sessionId, session }) {
+    await Bun.sleep(fruitSaveDelayMs);
     if (session.fruit !== fruit) {
       session.fruit = fruit;
       await hypersig.publish(fruitChanged(sessionId));
@@ -179,10 +185,16 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
     c.open.set(true),
   ];
   const pick = [
-    c.selected.set(c.open.choose(c.active, c.selected)),
-    c.active.set(c.selected),
-    c.open.toggle(),
+    c.selected.set(c.active),
+    c.open.set(false),
+    saveFruit.call({ fruit: fruitKeyList.at(c.active, "apple") }),
   ];
+  // Enter and Space open a closed list and pick from an open one; only the
+  // pick saves.
+  const openOrPick = when(c.open, pick, [
+    c.active.set(c.selected),
+    c.open.set(true),
+  ]);
   return (
     <section aria-labelledby="fruit-heading" class="widget">
       <h2 id="fruit-heading">Select-only combobox</h2>
@@ -194,61 +206,72 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
         <span id="fruit-label" class="label">
           Favorite fruit
         </span>
+        {/* The keys that save sit on this element, so the save in flight
+            skips only them: the arrow keys on the combobox keep working, and
+            closing on focus leaving still runs on the element outside. */}
         <div
-          role="combobox"
-          tabindex={0}
-          aria-haspopup="listbox"
-          aria-labelledby="fruit-label"
-          aria-controls="fruit-listbox"
-          class="combobox-button"
-          {...comboRef.attr()}
-          {...c.bindAttr({
-            "aria-expanded": c.open,
-            "aria-activedescendant": c.open.choose(
-              optionIds.at(c.active, ""),
-              ""
-            ),
-          })}
-          {...on.click([c.active.set(c.selected), c.open.toggle()])}
+          class="combobox-field"
           {...on.keydown({
-            ArrowDown: move(c.active.add(1).clamp(0, lastFruit)),
-            ArrowUp: move(c.active.sub(1).clamp(0, lastFruit)),
-            Home: move(0),
-            End: move(lastFruit),
-            Enter: pick,
-            " ": pick,
-            Escape: [c.open.set(false)],
+            Enter: openOrPick,
+            " ": openOrPick,
+            // Tab moves focus on; an open list picks its active option first.
+            Tab: when(c.open, pick),
           })}
         >
-          <span {...c.bindText(fruitLabels.at(c.selected, ""))} />
-        </div>
-        <div
-          id="fruit-listbox"
-          role="listbox"
-          aria-labelledby="fruit-label"
-          class="listbox"
-          {...c.bindShow(c.open)}
-        >
-          {fruits.map(({ key, label }, i) => (
-            // `tabindex="-1"` lets a click focus the option, so focus stays
-            // inside the combobox instead of leaving for the page body.
-            <div
-              id={optionId(key)}
-              role="option"
-              tabindex={-1}
-              class="option"
-              {...c.bindAttr({ "aria-selected": c.active.eq(i) })}
-              {...on.click([
-                c.selected.set(i),
-                c.active.set(i),
-                c.open.set(false),
-                saveFruit.call({ fruit: key }),
-                comboRef.focus(),
-              ])}
-            >
-              {label}
-            </div>
-          ))}
+          <div
+            role="combobox"
+            tabindex={0}
+            aria-haspopup="listbox"
+            aria-labelledby="fruit-label"
+            aria-controls="fruit-listbox"
+            class="combobox-button"
+            {...comboRef.attr()}
+            {...c.bindAttr({
+              "aria-expanded": c.open,
+              "aria-activedescendant": c.open.choose(
+                optionIds.at(c.active, ""),
+                ""
+              ),
+            })}
+            {...on.click([c.active.set(c.selected), c.open.toggle()])}
+            {...on.keydown({
+              ArrowDown: move(c.active.add(1).clamp(0, lastFruit)),
+              ArrowUp: move(c.active.sub(1).clamp(0, lastFruit)),
+              Home: move(0),
+              End: move(lastFruit),
+              Escape: [c.open.set(false)],
+            })}
+          >
+            <span {...c.bindText(fruitLabels.at(c.selected, ""))} />
+          </div>
+          <div
+            id="fruit-listbox"
+            role="listbox"
+            aria-labelledby="fruit-label"
+            class="listbox"
+            {...c.bindShow(c.open)}
+          >
+            {fruits.map(({ key, label }, i) => (
+              // `tabindex="-1"` lets a click focus the option, so focus stays
+              // inside the combobox instead of leaving for the page body.
+              <div
+                id={optionId(key)}
+                role="option"
+                tabindex={-1}
+                class="option"
+                {...c.bindAttr({ "aria-selected": c.active.eq(i) })}
+                {...on.click([
+                  c.selected.set(i),
+                  c.active.set(i),
+                  c.open.set(false),
+                  saveFruit.call({ fruit: key }),
+                  comboRef.focus(),
+                ])}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

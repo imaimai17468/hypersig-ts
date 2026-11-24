@@ -124,6 +124,21 @@ it("validates nodes from untrusted attributes", () => {
   expect(isStmtNode(["cancel", "t-1"])).toBe(true);
   expect(isStmtNode(["cancel", 1])).toBe(false);
   expect(isStmtNode(["cancel", "t-1", 0])).toBe(false);
+  expect(isStmtNode(["when", ["lit", true], [], []])).toBe(true);
+  expect(
+    isStmtNode([
+      "when",
+      ["sig", ["a"]],
+      [["toggle", ["a"]]],
+      [["when", ["lit", false], [], [["cancel", "t-1"]]]],
+    ])
+  ).toBe(true);
+  expect(isStmtNode(["when", ["lit", true], []])).toBe(false);
+  expect(isStmtNode(["when", ["lit", true], [], [], []])).toBe(false);
+  expect(isStmtNode(["when", ["bad"], [], []])).toBe(false);
+  expect(isStmtNode(["when", ["lit", true], [["bad"]], []])).toBe(false);
+  expect(isStmtNode(["when", ["lit", true], [], [["bad"]]])).toBe(false);
+  expect(isStmtNode(["when", ["lit", true], {}, []])).toBe(false);
   expect(
     isStmtNode([
       "call",

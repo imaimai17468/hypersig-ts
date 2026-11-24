@@ -49,6 +49,7 @@ export {
   signals,
   timer,
   uuid,
+  when,
 } from "./signal.js";
 export type {
   Expr,

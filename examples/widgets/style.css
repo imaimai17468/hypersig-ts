@@ -38,10 +38,13 @@ main {
 }
 
 .combobox {
-  position: relative;
   display: grid;
   gap: 0.25rem;
   max-width: 16rem;
+}
+
+.combobox-field {
+  position: relative;
 }
 
 .combobox-button {

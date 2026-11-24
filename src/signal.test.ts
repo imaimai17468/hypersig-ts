@@ -11,6 +11,7 @@ import {
   signals,
   timer,
   uuid,
+  when,
 } from "./index.js";
 import { exprOf } from "./signal.js";
 
@@ -485,4 +486,34 @@ it("rejects a delay that is not a non-negative integer when after is called", ()
     2_147_483_647,
     [],
   ]);
+});
+
+it("writes a condition with the statements of each branch", () => {
+  const s = signals({ open: false, count: 0 }, { name: "when-branches" });
+  const open = ["sig", ["when-branches-1", "open"]];
+  expect(when(s.open, s.count.set(1))).toEqual([
+    "when",
+    open,
+    [["set", ["when-branches-1", "count"], ["lit", 1]]],
+    [],
+  ]);
+  const hide = timer({ name: "when-hide" });
+  expect(
+    when(
+      s.count.gt(2),
+      [s.open.set(false), hide.cancel()],
+      [when(s.open, hide.after(5, s.open.toggle()))]
+    )
+  ).toEqual([
+    "when",
+    ["gt", ["sig", ["when-branches-1", "count"]], ["lit", 2]],
+    [
+      ["set", ["when-branches-1", "open"], ["lit", false]],
+      ["cancel", "when-hide-1"],
+    ],
+    [["when", open, [["after", "when-hide-1", 5, [s.open.toggle()]]], []]],
+  ]);
+  expect(when(true, [])).toEqual(["when", ["lit", true], [], []]);
+  // @ts-expect-error The condition must be a boolean expression.
+  when(s.count, []);
 });
