@@ -249,13 +249,16 @@ function readCustomEventHandlers(element: Element): NamedHandler[] {
 
 /**
  * Writes the pressed key the way a key map names it, with the modifiers in
- * the order Control, Alt, Shift, Meta.
+ * the order Control, Alt, Shift, Meta. Shift is left out for a character key
+ * other than Space, since which characters need it depends on the layout.
  */
 function formatKeyCombination(event: KeyboardEvent): string {
   return (
     (event.ctrlKey ? "Control+" : "") +
     (event.altKey ? "Alt+" : "") +
-    (event.shiftKey ? "Shift+" : "") +
+    (event.shiftKey && (event.key.length !== 1 || event.key === " ")
+      ? "Shift+"
+      : "") +
     (event.metaKey ? "Meta+" : "") +
     event.key
   );
@@ -671,7 +674,11 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   const keySelector = `[${eventAttributes.keydown}]`;
   root.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (event.isComposing || !isElement(target)) return;
+    // Safari ends composition before the Enter that commits it, which still
+    // has keyCode 229.
+    if (event.isComposing || event.keyCode === 229 || !isElement(target)) {
+      return;
+    }
     const key = formatKeyCombination(event);
     for (
       let handler = findHandler(target, keySelector);
@@ -716,9 +723,14 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   root.addEventListener("focusin", (event) => {
     const target = event.target;
     if (!isElement(target)) return;
-    const from = isElement(event.relatedTarget)
-      ? event.relatedTarget
-      : lastFocused;
+    const related = event.relatedTarget;
+    let from = lastFocused;
+    if (isElement(related)) from = related;
+    else if (from?.isConnected) {
+      // The leave skipped when the page lost focus happens now, when focus
+      // comes back somewhere else.
+      runFocusHandlers(eventAttributes.focusLeave, from, target);
+    }
     lastFocused = target;
     runFocusHandlers(eventAttributes.focusEnter, target, from);
   });

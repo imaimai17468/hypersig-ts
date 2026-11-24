@@ -371,20 +371,24 @@ it("writes key maps and focus handlers as statements per key", () => {
     on.keydown({
       ArrowDown: down,
       "Shift+Tab": [s.open.set(false)],
-      "Control+Alt+Shift+Meta+k": [],
+      "Control+Alt+Shift+Meta+Home": [],
       a: [],
-      "Shift++": [],
+      "+": [],
       " ": [],
+      "Shift+ ": [],
+      1: [],
       あ: [],
     })
   ).toEqual({
     "data-hs-on-keydown": JSON.stringify([
+      ["1", []],
       ["ArrowDown", [down]],
       ["Shift+Tab", [s.open.set(false)]],
-      ["Control+Alt+Shift+Meta+k", []],
+      ["Control+Alt+Shift+Meta+Home", []],
       ["a", []],
-      ["Shift++", []],
+      ["+", []],
       [" ", []],
+      ["Shift+ ", []],
       ["あ", []],
     ]),
   });
@@ -410,6 +414,14 @@ it("rejects key names outside the named keys, single characters and the modifier
   expect(() => on.keydown({ "Shift+": [] })).toThrow('"Shift+"');
   // @ts-expect-error A key name is not empty.
   expect(() => on.keydown({ "": [] })).toThrow('""');
+  // @ts-expect-error Shift is ignored for a character key, written as the character.
+  expect(() => on.keydown({ "Shift+?": [] })).toThrow('write "?" itself');
+  // @ts-expect-error Shift is ignored for a character key, also after other modifiers.
+  expect(() => on.keydown({ "Control+Shift+Meta+a": [] })).toThrow(
+    'write "a" itself'
+  );
+  // @ts-expect-error A number key is one digit.
+  expect(() => on.keydown({ 12: [] })).toThrow('"12"');
   const name: string = "Control";
   // A computed name is a string, which the types cannot check.
   expect(() => on.keydown({ ["Shift+" + name]: [] })).toThrow(
@@ -417,5 +429,9 @@ it("rejects key names outside the named keys, single characters and the modifier
   );
   expect(() => on.keydown({ ["Meta+Alt+" + name]: [] })).toThrow(
     '"Meta+Alt+Control"'
+  );
+  const character: string = "A";
+  expect(() => on.keydown({ ["Shift+" + character]: [] })).toThrow(
+    'write "A" itself'
   );
 });

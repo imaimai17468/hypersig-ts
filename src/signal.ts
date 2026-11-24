@@ -740,34 +740,57 @@ type WithoutModifiers<
     : WithoutModifiers<Text, Rest>
   : Text;
 
+/** Whether `Shift+` comes before a character key other than Space. */
+type ShiftsCharacter<Key extends string> =
+  Key extends `${"" | "Control+"}${"" | "Alt+"}Shift+${infer After}`
+    ? (
+        After extends `Meta+${infer Name}` ? Name : After
+      ) extends infer Name extends string
+      ? Name extends " "
+        ? false
+        : IsOneCharacter<Name>
+      : false
+    : false;
+
 /**
  * Accepts a key name after any of `Control+`, `Alt+`, `Shift+` and `Meta+`
  * in that order, such as `"Shift+Tab"`, and resolves to a message type
- * otherwise. A `string` that is not a literal passes, and `on.keydown`
- * checks it when called.
+ * otherwise. A character key other than Space takes no `Shift+`: the runtime
+ * ignores Shift for it, so `"?"` and `"A"` match however they are typed. A
+ * `string` that is not a literal passes, and `on.keydown` checks it when
+ * called.
  */
 export type KeyCombination<Key extends string> = string extends Key
   ? Key
   : [KeyName<WithoutModifiers<Key>>] extends [never]
     ? "Use a named key or one character, after modifiers in the order Control, Alt, Shift, Meta"
-    : Key;
+    : ShiftsCharacter<Key> extends true
+      ? 'Write a character key without Shift+, such as "?" or "A"'
+      : Key;
 
-type KeyMap = { readonly [key: string]: Statements };
+type KeyMap = { readonly [key: string | number]: Statements };
 
 type CheckedKeyMap<Keys extends KeyMap> = {
-  readonly [Key in keyof Keys]: Key extends string
-    ? KeyCombination<Key> extends Key
+  readonly [Key in keyof Keys]: Key extends string | number
+    ? KeyCombination<`${Key}`> extends `${Key}`
       ? Statements
-      : KeyCombination<Key>
+      : KeyCombination<`${Key}`>
     : never;
 };
 
 const keyCombinationPattern =
-  /^(?:Control\+)?(?:Alt\+)?(?:Shift\+)?(?:Meta\+)?(.+)$/s;
+  /^(?:Control\+)?(?:Alt\+)?(Shift\+)?(?:Meta\+)?(.+)$/s;
 
-function isKeyCombination(key: string): boolean {
-  const name = keyCombinationPattern.exec(key)?.[1];
-  return name !== undefined && (namedKeySet.has(name) || name.length === 1);
+/** Describes why `key` is not a key combination, or `undefined` when it is. */
+function findKeyCombinationError(key: string): string | undefined {
+  const [, shift, name] = keyCombinationPattern.exec(key) ?? [];
+  if (name === undefined || !(namedKeySet.has(name) || name.length === 1)) {
+    return `${JSON.stringify(key)} is not a key name after modifiers in the order Control, Alt, Shift, Meta`;
+  }
+  if (shift && name.length === 1 && name !== " ") {
+    return `${JSON.stringify(key)} has Shift+, which a character key ignores: write ${JSON.stringify(name)} itself`;
+  }
+  return undefined;
 }
 
 /** Runs statements in order when the element receives the event. */
@@ -783,9 +806,11 @@ export const on = {
   }),
   /**
    * Runs the statements of the pressed key, checked from the focused element
-   * outward through each enclosing key map until one has the key. The pressed
-   * modifiers must be exactly the ones the key names, and a key is the
-   * `KeyboardEvent.key` value, so Shift with `a` is `"Shift+A"`. A handled key
+   * outward through each enclosing key map until one has the key. A key is
+   * the `KeyboardEvent.key` value, and the pressed modifiers must be exactly
+   * the ones the key names, except that Shift is ignored for a character key
+   * other than Space: `"?"` and `"A"` match with or without Shift, since which
+   * characters need it depends on the keyboard layout. A handled key
    * does not do its default action, except `Tab` and `Shift+Tab`. Keys pressed
    * while an IME is composing, or while the element's Action is in flight,
    * run nothing. Throws for a name `KeyCombination` rejects, which a computed
@@ -793,11 +818,8 @@ export const on = {
    */
   keydown: <const Keys extends KeyMap>(map: Keys & CheckedKeyMap<Keys>) => {
     const entries = Object.entries(map).map(([key, stmts]) => {
-      if (!isKeyCombination(key)) {
-        throw new Error(
-          `${JSON.stringify(key)} is not a key name after modifiers in the order Control, Alt, Shift, Meta`
-        );
-      }
+      const error = findKeyCombinationError(key);
+      if (error) throw new Error(error);
       return [key, listStmts(stmts)];
     });
     return { [eventAttributes.keydown]: JSON.stringify(entries) };

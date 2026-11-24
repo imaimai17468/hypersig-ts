@@ -1928,6 +1928,7 @@ interface KeyPress {
   shiftKey?: boolean;
   metaKey?: boolean;
   isComposing?: boolean;
+  keyCode?: number;
 }
 
 /** Dispatches a `keydown` from the page's frame and reports whether it was prevented. */
@@ -1983,7 +1984,7 @@ it("matches a key only when the pressed modifiers are exactly the mapped ones", 
       ...on.keydown({
         Enter: s.enter.set(s.enter.add(1)),
         "Shift+Tab": s.back.set(s.back.add(1)),
-        "Control+Alt+Shift+Meta+K": s.all.set(s.all.add(1)),
+        "Control+Alt+Shift+Meta+End": s.all.set(s.all.add(1)),
       }),
       children: element("button", { id: "target" }),
     })
@@ -2006,9 +2007,48 @@ it("matches a key only when the pressed modifiers are exactly the mapped ones", 
   expect(runtime.read(s.back.path)).toBe(1);
 
   const allButMeta = { ctrlKey: true, altKey: true, shiftKey: true };
-  expect(press(target, { key: "K", ...allButMeta })).toBe(false);
-  expect(press(target, { key: "K", ...allButMeta, metaKey: true })).toBe(true);
+  expect(press(target, { key: "End", ...allButMeta })).toBe(false);
+  expect(press(target, { key: "End", ...allButMeta, metaKey: true })).toBe(
+    true
+  );
   expect(runtime.read(s.all.path)).toBe(1);
+});
+
+it("ignores Shift for a character key but not for a named key or Space", () => {
+  const s = signals(
+    { help: 0, upper: 0, saved: 0, space: 0, shiftSpace: 0, home: 0 },
+    { name: "character-keys" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({
+        "?": s.help.set(s.help.add(1)),
+        A: s.upper.set(s.upper.add(1)),
+        "Control+S": s.saved.set(s.saved.add(1)),
+        " ": s.space.set(s.space.add(1)),
+        "Shift+ ": s.shiftSpace.set(s.shiftSpace.add(1)),
+        Home: s.home.set(s.home.add(1)),
+      }),
+      children: element("button", { id: "target" }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const target = find("#target");
+
+  expect(press(target, { key: "?", shiftKey: true })).toBe(true);
+  expect(press(target, { key: "?" })).toBe(true);
+  expect(runtime.read(s.help.path)).toBe(2);
+  expect(press(target, { key: "A", shiftKey: true })).toBe(true);
+  expect(runtime.read(s.upper.path)).toBe(1);
+  expect(press(target, { key: "S", ctrlKey: true, shiftKey: true })).toBe(true);
+  expect(press(target, { key: "S", shiftKey: true })).toBe(false);
+  expect(runtime.read(s.saved.path)).toBe(1);
+  press(target, { key: " ", shiftKey: true });
+  expect(runtime.read(s.space.path)).toBe(0);
+  expect(runtime.read(s.shiftSpace.path)).toBe(1);
+  expect(press(target, { key: "Home", shiftKey: true })).toBe(false);
+  expect(runtime.read(s.home.path)).toBe(0);
 });
 
 it("passes a key the nearest map lacks to the next map outward", () => {
@@ -2072,6 +2112,8 @@ it("ignores keys pressed while an IME is composing and malformed key entries", (
   const target = find("#target");
 
   expect(press(target, { key: "Enter", isComposing: true })).toBe(false);
+  // Safari ends composition before the Enter that commits it, with keyCode 229.
+  expect(press(target, { key: "Enter", keyCode: 229 })).toBe(false);
   expect(runtime.read(s.count.path)).toBe(0);
   expect(press(target, { key: "Escape" })).toBe(false);
   expect(press(target, { key: "Home" })).toBe(true);
@@ -2171,11 +2213,23 @@ it("treats focus going nowhere as leaving only while the page has focus", () => 
   focus("#first");
   expect(counts()).toEqual([1, 0]);
 
+  // Coming back to another element leaves the menu that was not left.
+  hasFocus.mockReturnValue(false);
+  find("#first").blur();
+  hasFocus.mockReturnValue(true);
+  focus("#after");
+  expect(counts()).toEqual([1, 1]);
+  hasFocus.mockReturnValue(false);
+  find("#after").blur();
+  hasFocus.mockReturnValue(true);
+  focus("#first");
+  expect(counts()).toEqual([2, 1]);
+
   // A click on something that cannot take focus leaves focus on nothing.
   find("#first").blur();
-  expect(counts()).toEqual([1, 1]);
+  expect(counts()).toEqual([2, 2]);
   focus("#option");
-  expect(counts()).toEqual([2, 1]);
+  expect(counts()).toEqual([3, 2]);
 });
 
 it("runs no key or focus statements on an element while it is sending", async () => {
