@@ -3,8 +3,10 @@ import { Context, Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import * as v from "valibot";
 import {
+  connectionStatusOutlet,
   createHypersig,
   createMemoryPubSub,
+  errorOutlet,
   live,
   topic,
 } from "../../src/index.js";
@@ -226,8 +228,8 @@ app.on("GET", ["/", "/nested", "/order"], async (c) => {
               {page.view(counter, { id: "other" })}
             </>
           )}
-          <p role="status" data-hs-connection-status=""></p>
-          <p role="alert" data-hs-error=""></p>
+          <p role="status" {...connectionStatusOutlet()}></p>
+          <p role="alert" {...errorOutlet()}></p>
         </main>
       </body>
     </html>

@@ -6,8 +6,10 @@ import { getCookie, setCookie } from "hono/cookie";
 import { validator } from "hono/validator";
 import * as v from "valibot";
 import {
+  connectionStatusOutlet,
   createHypersig,
   createMemoryPubSub,
+  errorOutlet,
   live,
   topic,
 } from "../../src/index.js";
@@ -283,7 +285,7 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>hypersig TodoMVC</title>
         <link rel="stylesheet" href="/style.css" />
-        {page.runtime("/runtime.js")}
+        {page.runtime(links["runtime.js"].$path())}
       </head>
       <body>
         <main>
@@ -307,8 +309,8 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
           </nav>
           {page.view(list, { filter })}
           {page.view(counts, {})}
-          <p role="status" data-hs-connection-status=""></p>
-          <p role="alert" data-hs-error=""></p>
+          <p role="status" {...connectionStatusOutlet()}></p>
+          <p role="alert" {...errorOutlet()}></p>
         </main>
       </body>
     </html>

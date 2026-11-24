@@ -3,7 +3,13 @@ import type { Context } from "hono";
 import { hc } from "hono/client";
 import { validator } from "hono/validator";
 import * as v from "valibot";
-import { createHypersig, createMemoryPubSub, topic } from "../../src/index.js";
+import {
+  connectionStatusOutlet,
+  createHypersig,
+  createMemoryPubSub,
+  errorOutlet,
+  topic,
+} from "../../src/index.js";
 import { createCounterSessions } from "./session.js";
 import { counterKeys } from "./store.js";
 import type { CounterKey, CounterStore } from "./store.js";
@@ -127,8 +133,8 @@ export function createCounterApp({
             ) : (
               <a href={counterLink(key, "edit")}>Edit view</a>
             )}
-            <p role="status" data-hs-connection-status=""></p>
-            <p role="alert" data-hs-error=""></p>
+            <p role="status" {...connectionStatusOutlet()}></p>
+            <p role="alert" {...errorOutlet()}></p>
           </main>
         </body>
       </html>

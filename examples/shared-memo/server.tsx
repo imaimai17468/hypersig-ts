@@ -7,8 +7,10 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import * as v from "valibot";
 import {
   ActionError,
+  connectionStatusOutlet,
   createHypersig,
   createMemoryPubSub,
+  errorOutlet,
   on,
   ref,
   signals,
@@ -228,7 +230,7 @@ async function renderEditor(
         <title>共有メモ</title>
         <link rel="stylesheet" href="/style.css" />
         <link rel="prefetch" href={links.guide.$path()} />
-        {page.runtime("/runtime.js")}
+        {page.runtime(links["runtime.js"].$path())}
       </head>
       <body>
         <main>
@@ -281,7 +283,7 @@ async function renderEditor(
                 </textarea>
                 <p
                   id="memo-text-error"
-                  data-hs-field-error={save.field("memoText")}
+                  {...save.fieldError("memoText")}
                   aria-live="polite"
                 >
                   {fieldError}
@@ -318,7 +320,7 @@ async function renderEditor(
                     表示中の版から編集を続ける
                   </button>
                 </div>
-                <p data-hs-error="" role="alert">
+                <p {...errorOutlet()} role="alert">
                   {error}
                 </p>
                 <div class="controls">
@@ -336,7 +338,7 @@ async function renderEditor(
               </form>
             </section>
           </div>
-          <p data-hs-connection-status="" role="status"></p>
+          <p {...connectionStatusOutlet()} role="status"></p>
         </main>
       </body>
     </html>
