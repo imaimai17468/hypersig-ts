@@ -447,10 +447,10 @@ li:has(.row [data-hs-pending]) {
       meant to change waits for the runtime to render it again, within the same
       tick. The runtime ignores hypersig attributes inside those children, such
       as bindings, <code>on.click</code> handlers, snapshots, value bindings,
-      refs, custom event handlers, Action buttons, and
-      <code>action.form()</code> forms, because the element's JavaScript may
-      render user content there. Such a button or form sends nothing and a form
-      does not post natively either. An event inside the children runs the
+      refs, custom event handlers, Action buttons, <code>action.form()</code>
+      forms, error outlets, and draft fields, because the element's JavaScript
+      may render user content there. Such a button or form sends nothing and a
+      form does not post natively either. An event inside the children runs the
       nearest handler on the element itself or outside it. Put them on the
       element itself or outside it.
     </dd>

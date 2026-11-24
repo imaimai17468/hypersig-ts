@@ -216,7 +216,12 @@ it("does not bind id through bindElement", () => {
 });
 
 const flagged = customElement<{
-  attributes: { "data-open": boolean; "aria-checked": boolean; open: boolean };
+  attributes: {
+    "data-open": boolean;
+    "aria-checked": boolean;
+    open: boolean;
+    draggable: boolean;
+  };
   events: Record<never, never>;
 }>("flag-box");
 
@@ -240,14 +245,17 @@ it("renders a data-* or aria-* boolean as true or false text on every path", asy
       "data-open": flags.open,
       "aria-checked": flags.checked,
       open: flags.checked,
+      draggable: flags.checked,
     })
   ).toEqual({
     "data-open": "true",
     "aria-checked": "false",
+    draggable: "false",
     "data-hs-element-attr": JSON.stringify({
       "data-open": ["sig", ["flag-text-1", "open"]],
       "aria-checked": ["sig", ["flag-text-1", "checked"]],
       open: ["sig", ["flag-text-1", "checked"]],
+      draggable: ["sig", ["flag-text-1", "checked"]],
     }),
   });
 });

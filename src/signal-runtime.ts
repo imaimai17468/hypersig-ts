@@ -242,9 +242,9 @@ const ownerSelector = `[${customElementAttributes.ownsChildren}]`;
 /**
  * Reports an element inside the children of a `data-hs-owns-children`
  * element. Its JavaScript renders them, and they may carry user content, so
- * the runtime ignores their hypersig attributes.
+ * the runtime, the Action outlets and drafts ignore their hypersig attributes.
  */
-function isOwnedChild(element: Element): boolean {
+export function isOwnedChild(element: Element): boolean {
   return element.parentElement?.closest(ownerSelector) != null;
 }
 

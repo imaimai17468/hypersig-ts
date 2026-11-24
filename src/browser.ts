@@ -4,7 +4,7 @@ import { events, isJsonValue, outletAttributes } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
 import { sanitizeFragment } from "./sanitize.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
-import { startSignals } from "./signal-runtime.js";
+import { isOwnedChild, startSignals } from "./signal-runtime.js";
 
 function isUpdate(value: unknown): value is HtmlUpdate {
   return (
@@ -205,6 +205,14 @@ function updateViews(
   synchronize();
 }
 
+/** Finds the first outlet under `root` outside the children of an owned element. */
+function findHandledOutlet(root: ParentNode | null, selector: string) {
+  for (const outlet of root?.querySelectorAll(selector) ?? []) {
+    if (!isOwnedChild(outlet)) return outlet;
+  }
+  return null;
+}
+
 /**
  * Creates the `send` the signal runtime uses for every Action. It reports
  * failures in the error outlets; the runtime marks the control as pending.
@@ -216,12 +224,18 @@ function createActionSender(stream: URL) {
     target: string,
     body: string | FormData
   ): Promise<SendResult> {
+    const form = control.closest("form");
+    const errorSelector = `[${outletAttributes.error}]`;
     const outlet =
-      control.closest("form")?.querySelector(`[${outletAttributes.error}]`) ??
-      document.querySelector(`[${outletAttributes.error}]`);
-    const fields = control
-      .closest("form")
-      ?.querySelectorAll<HTMLElement>(`[${outletAttributes.fieldError}]`);
+      findHandledOutlet(form, errorSelector) ??
+      findHandledOutlet(document, errorSelector);
+    const fields = form
+      ? [
+          ...form.querySelectorAll<HTMLElement>(
+            `[${outletAttributes.fieldError}]`
+          ),
+        ].filter((field) => !isOwnedChild(field))
+      : undefined;
     if (outlet) outlet.textContent = "";
     for (const field of fields ?? []) field.textContent = "";
     let status = 0;

@@ -1,3 +1,5 @@
+import { isOwnedChild } from "./signal-runtime.js";
+
 const storageKey = "hypersig:reset-draft";
 
 type Field = HTMLInputElement | HTMLTextAreaElement;
@@ -18,14 +20,25 @@ function draftGroups() {
     "form[data-hs-draft-form]"
   )) {
     const id = form.dataset.hsDraftForm;
-    if (!id || groups.has(id) || form.closest("[data-hs-view]")) continue;
+    if (
+      !id ||
+      groups.has(id) ||
+      form.closest("[data-hs-view]") ||
+      isOwnedChild(form)
+    )
+      continue;
     const fields = new Map<string, Field>();
     for (const control of form.querySelectorAll<HTMLElement>(
       "[data-hs-draft]"
     )) {
       // The field name is the draft key, so it matches the Action's input field.
       const key = control.getAttribute("name");
-      if (!key || fields.has(key) || control.closest("[data-hs-view]"))
+      if (
+        !key ||
+        fields.has(key) ||
+        control.closest("[data-hs-view]") ||
+        isOwnedChild(control)
+      )
         continue;
       if (
         control instanceof HTMLTextAreaElement ||

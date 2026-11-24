@@ -159,3 +159,31 @@ test("sends no Action from a forged button or form inside the element", async ({
   expect(actions).toHaveLength(1);
   await expect(page).toHaveURL("/");
 });
+
+test("writes Action errors only to outlets outside the element", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator(ready)).toHaveCount(1);
+  await page.evaluate(() => {
+    const rating = document.querySelector("#rating");
+    if (!rating) throw new Error("Missing rating");
+    const outlet = document.createElement("p");
+    outlet.id = "forged-outlet";
+    outlet.setAttribute("data-hs-error", "");
+    // The Live View comes before the page's own outlet in document order.
+    rating.append(outlet);
+    const button = document.createElement("button");
+    button.id = "invalid-score";
+    button.dataset.hsAction = "/_hypersig/actions/save-rating";
+    button.dataset.hsInput = JSON.stringify({ score: 99 });
+    document.body.append(button);
+  });
+
+  await Promise.all([
+    page.waitForResponse("**/_hypersig/actions/save-rating"),
+    page.locator("#invalid-score").click(),
+  ]);
+  await expect(page.locator("p[role=alert]")).not.toHaveText("");
+  await expect(page.locator("#forged-outlet")).toHaveText("");
+});
