@@ -35,6 +35,20 @@
     <dd>
       Set the public origin, session authentication, and Pub/Sub implementation.
     </dd>
+    <dt><code>pageKeys</code></dt>
+    <dd>
+      Optional. An array of keys that encrypt page registrations, each a base64
+      (or base64url) string of 32 bytes. The first key encrypts and every key is
+      tried to decrypt. When omitted, the keys are random per process, so set it
+      to continue pages across restarts or to run multiple instances.
+    </dd>
+    <dt><code>pageLifetimeMs</code></dt>
+    <dd>
+      Optional. How long a page registration is valid in milliseconds, counted
+      from when the HTML is rendered. Defaults to 12 hours. A connected stream
+      continues past expiry, and only a connection made after expiry gets
+      <code>reset</code> and fetches the page again.
+    </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
       Mount the Action and SSE endpoints on the Hono application after
@@ -165,15 +179,16 @@ const href = links.counters[":counterKey"].$path({
   <dl>
     <dt><code>name</code></dt>
     <dd>
-      Optional. Starts the view's key in the page, such as
-      <code>counter-1</code>. The runtime numbers each definition, so two
-      definitions never share a key. A literal name with characters other than
-      letters, digits, <code>_</code>, or <code>-</code> is a type error.
+      Required. The view's key in the page, such as <code>counter</code>. It
+      must be unique in the runtime, and a duplicate throws when the view is
+      defined. A literal name with characters other than letters, digits,
+      <code>_</code>, or <code>-</code> is a type error. Define views with
+      <code>hypersig.live()</code>; there is no standalone <code>live()</code>.
     </dd>
     <dt><code>key</code></dt>
     <dd>
       Optional. Tells apart instances of the same definition under one parent,
-      such as <code>counter-1.main</code> and <code>counter-1.other</code>.
+      such as <code>counter.main</code> and <code>counter.other</code>.
     </dd>
     <dt><code>subscribe</code></dt>
     <dd>Returns the Topics that affect this view.</dd>
@@ -186,7 +201,8 @@ const href = links.counters[":counterKey"].$path({
   </dl>
   <p>
     Use <code>page.view(view, props)</code> to place the boundary in the
-    document.
+    document. The props of a top-level <code>page.view</code> must be JSON
+    values.
   </p>
 </section>
 

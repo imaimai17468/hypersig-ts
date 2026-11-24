@@ -498,21 +498,36 @@ async function startCounter(port: number) {
     stdio: "ignore",
   });
   const exited = once(server, "exit");
-  for (let attempt = 0; ; attempt++) {
-    try {
-      if ((await fetch(url + "/runtime.js")).ok) break;
-    } catch {
-      if (attempt > 200) throw new Error("Counter server did not start");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return {
-    url,
-    async stop() {
+  let stopped = false;
+  const stop = async () => {
+    if (!stopped) {
+      stopped = true;
       server.kill();
-      await exited;
-    },
+    }
+    await exited;
   };
+  const deadline = Date.now() + 15_000;
+  try {
+    for (;;) {
+      if (server.exitCode !== null || server.signalCode !== null)
+        throw new Error("Counter server exited before it was ready");
+      if (Date.now() > deadline)
+        throw new Error("Counter server did not start");
+      try {
+        const response = await fetch(url + "/runtime.js", {
+          signal: AbortSignal.timeout(1_000),
+        });
+        if (response.ok) break;
+      } catch {
+        // The server is not listening yet.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return { url, stop };
 }
 
 test("applies updates from a restarted server process that counts versions from 1 again", async ({

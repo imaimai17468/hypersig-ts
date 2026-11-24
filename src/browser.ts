@@ -29,8 +29,8 @@ function isUpdate(value: unknown): value is HtmlUpdate {
   );
 }
 
-/** Close to a native EventSource retry, so reopening never retries a down server faster. */
-const reopenDelayMs = 1_000;
+/** Matches Chromium's native EventSource retry of 3 s, so reopening never retries a down server faster. */
+const reopenDelayMs = 3_000;
 
 function readData(event: Event): unknown {
   if (!(event instanceof MessageEvent) || typeof event.data !== "string")

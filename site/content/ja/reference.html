@@ -37,6 +37,19 @@
       アプリの公開 URL
       のオリジン、ログイン状態を確認する関数、変更通知を購読先に配る仕組みを指定します。
     </dd>
+    <dt><code>pageKeys</code></dt>
+    <dd>
+      省略できます。ページの登録を暗号化する鍵の配列で、各要素は 32 バイトの鍵を
+      base64（または
+      base64url）にした文字列です。先頭の鍵で暗号化し、すべての鍵で復号を試します。省くと起動ごとの乱数になるので、再起動をまたいだり複数のインスタンスで動かしたりするときは指定します。
+    </dd>
+    <dt><code>pageLifetimeMs</code></dt>
+    <dd>
+      省略できます。ページの登録が有効な時間（ミリ秒）で、HTML
+      の生成から数えます。既定は 12
+      時間です。接続中のストリームは期限後も続き、期限後に接続し直したときだけ
+      <code>reset</code> でページを取得し直します。
+    </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
       操作を受け付ける URL と更新を配信する URL を、Hono
@@ -531,23 +544,25 @@ await hypersig.publish(changed(id));</code></pre>
   <p>
     関連するデータが変わったときに更新する画面の一部を
     <code>Live View</code> と呼びます。<code>page.view(view, props)</code>
-    でページ内に配置します。
+    でページ内に配置します。トップレベルの <code>page.view</code> の props は
+    JSON にできる値に限ります。
   </p>
   <dl>
     <dt><code>name</code></dt>
     <dd>
-      省略できます。ページ内のキーの先頭になり、<code>counter-1</code>
-      のようになります。ランタイムが定義ごとに番号を付けるので、別々の定義のキーが重なることはありません。英数字、<code>_</code>、<code
+      必須です。ページ内のキーになり、<code>counter</code>
+      のようになります。ランタイム内で一意にする必要があり、重なると定義の時点で例外になります。英数字、<code>_</code>、<code
         >-</code
       >
-      以外を含むリテラルは型エラーになります。
+      以外を含むリテラルは型エラーになります。<code>hypersig.live()</code>
+      で定義します。単体の <code>live()</code> はありません。
     </dd>
     <dt><code>key</code></dt>
     <dd>
       省略できます。同じ親の下に同じ定義を複数置くときに、<code
-        >counter-1.main</code
+        >counter.main</code
       >
-      と <code>counter-1.other</code> のように区別します。
+      と <code>counter.other</code> のように区別します。
     </dd>
     <dt><code>subscribe</code></dt>
     <dd>受け取る変更通知の対象を Topic で指定します。</dd>

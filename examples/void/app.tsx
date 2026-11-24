@@ -26,6 +26,7 @@ interface CounterAppOptions {
   title: string;
   sessionSecret: string;
   store: CounterStore;
+  pageKeys?: readonly string[];
   development?: boolean;
 }
 
@@ -34,11 +35,13 @@ export function createCounterApp({
   title,
   sessionSecret,
   store,
+  pageKeys,
   development = false,
 }: CounterAppOptions) {
   const sessions = createCounterSessions(sessionSecret, origin);
   const hypersig = createHypersig({
     origin,
+    ...(pageKeys ? { pageKeys } : {}),
     pubsub: createMemoryPubSub<ReturnType<typeof changed>>(),
     authenticate: (request) => sessions.authenticate(request),
   });

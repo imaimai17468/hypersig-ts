@@ -27,12 +27,26 @@
 </section>
 
 <section id="instances">
-  <h2>Route live connections</h2>
+  <h2>Run multiple instances</h2>
   <p>
-    Page registrations live in the server instance that created them. Route the
-    corresponding SSE requests there when deploying multiple instances. For
-    cross-instance changes, use a Pub/Sub adapter that delivers notifications to
-    the instances serving those views.
+    The registration of each page is an encrypted token in the URL of the first
+    HTML, and the server keeps no per-page registration, so multiple instances
+    need no sticky routing. Give every instance the same
+    <code>pageKeys</code> (base64 strings of 32 bytes). The first key encrypts
+    and every key is tried to decrypt. When omitted, the keys are random per
+    process, and a connection that arrives after a restart or at another
+    instance gets <code>reset</code> and fetches the page again.
+  </p>
+  <p>
+    A token expires 12 hours after the HTML was rendered (change it with
+    <code>pageLifetimeMs</code>). A connected page keeps receiving updates past
+    expiry, and only a connection made after expiry fetches the page again. To
+    rotate keys, add the new key first, keep the old key for the lifetime, then
+    remove it.
+  </p>
+  <p>
+    For cross-instance changes, use a Pub/Sub adapter that delivers
+    notifications to the instances serving those views.
   </p>
   <p>
     Check that your proxy forwards SSE without buffering and allows long-lived

@@ -8,6 +8,7 @@ interface Bindings {
   readonly ASSETS: Fetcher;
   readonly PUBLIC_ORIGIN: string;
   readonly SESSION_SECRET: string;
+  readonly PAGE_KEY: string;
 }
 
 function createSqliteCounterStore(storage: DurableObjectStorage): CounterStore {
@@ -49,6 +50,7 @@ export class CounterRoom extends DurableObject<Bindings> {
       origin: new URL(env.PUBLIC_ORIGIN).origin,
       title: "hypersig on Workers",
       sessionSecret: env.SESSION_SECRET,
+      pageKeys: [env.PAGE_KEY],
       store: createSqliteCounterStore(context.storage),
     });
   }

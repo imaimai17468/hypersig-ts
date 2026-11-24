@@ -16,6 +16,7 @@ type Frontend = (
 
 const origin = "http://counter.example";
 const secret = "local-integration-test-secret-for-counter";
+const pageKey = btoa("\t".repeat(32));
 const script = await readFile(
   new URL("../dist/worker/index.js", import.meta.url),
   "utf8"
@@ -74,7 +75,11 @@ function startWorkers(storage: string) {
         {
           ...modules,
           name: "counter-backend",
-          bindings: { PUBLIC_ORIGIN: origin, SESSION_SECRET: secret },
+          bindings: {
+            PUBLIC_ORIGIN: origin,
+            SESSION_SECRET: secret,
+            PAGE_KEY: pageKey,
+          },
           durableObjects: {
             COUNTERS: { className: "CounterRoom", useSQLite: true },
           },
@@ -253,12 +258,22 @@ await test(
       const restarted = getFrontend(runtime, "entry-b");
       const oldStream = await openStream(restarted, page.streamUrl, cookie);
       try {
-        assert.match(await oldStream.read(), /event: reset/);
+        assert.match(
+          await oldStream.read(),
+          /<output id=\\"counter-value\\">3<\/output>/
+        );
+        assert.match(await oldStream.read(), /event: ready/);
+        const crossEntry = await post(restartedEntry, peerCookie);
+        assert.equal(crossEntry.status, 200);
+        assert.match(
+          await oldStream.read(),
+          /<output id=\\"counter-value\\">4<\/output>/
+        );
       } finally {
         await oldStream.close();
       }
       const recovered = await readPage(restartedEntry, cookie);
-      assert.match(recovered.html, /<output id="counter-value">3<\/output>/);
+      assert.match(recovered.html, /<output id="counter-value">4<\/output>/);
       assert.match(
         (await readPage(restarted, peerCookie, "other")).html,
         /<output id="counter-value">0<\/output>/
@@ -271,14 +286,14 @@ await test(
       try {
         assert.match(
           await recoveredStream.read(),
-          /<output id=\\"counter-value\\">3<\/output>/
+          /<output id=\\"counter-value\\">4<\/output>/
         );
         assert.match(await recoveredStream.read(), /event: ready/);
         const update = await post(restartedEntry, peerCookie);
         assert.equal(update.status, 200);
         assert.match(
           await recoveredStream.read(),
-          /<output id=\\"counter-value\\">4<\/output>/
+          /<output id=\\"counter-value\\">5<\/output>/
         );
       } finally {
         await recoveredStream.close();

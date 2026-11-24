@@ -78,10 +78,12 @@
       values change when the confirmed update arrives.
     </li>
     <li>
-      Pages need a connection to the server. Committed data arrives over SSE,
-      and the server process keeps each page's registration, so a page does not
-      work offline. With several server instances, route a page's requests to
-      the process that registered it.
+      Pages need a connection to the server. Committed data arrives over SSE, so
+      a page does not work offline. The page's registration is an encrypted
+      token in the connection URL, so with several server instances give each
+      the same <code>pageKeys</code> and a Pub/Sub that delivers notifications
+      between them. Without the keys, a connection after a restart gets
+      <code>reset</code> and fetches the page again.
     </li>
     <li>
       A JavaScript library such as a map or a rich text editor runs inside a

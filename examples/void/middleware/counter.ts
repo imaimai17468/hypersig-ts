@@ -6,11 +6,13 @@ const development = import.meta.env.DEV;
 const port = process.env.PORT ?? (development ? "5173" : "3000");
 const origin = new URL(process.env.PUBLIC_ORIGIN ?? `http://127.0.0.1:${port}`)
   .origin;
+const pageKey = process.env.HYPERSIG_PAGE_KEY;
 const counter = createCounterApp({
   origin,
   title: "hypersig on Void",
   development,
   sessionSecret: process.env.SESSION_SECRET ?? crypto.randomUUID(),
+  ...(pageKey ? { pageKeys: [pageKey] } : {}),
   store: createMemoryCounterStore(),
 });
 
