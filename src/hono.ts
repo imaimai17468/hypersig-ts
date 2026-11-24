@@ -14,7 +14,7 @@ import type {
   PageRenderContext,
   Principal,
 } from "./live.js";
-import { events } from "./protocol.js";
+import { events, streamParams } from "./protocol.js";
 import type { LiveRenderer } from "./render.js";
 import type { LiveConnection } from "./stream.js";
 import type { Topic } from "./topic.js";
@@ -126,10 +126,13 @@ export function createHypersig<User extends Principal, Event extends Topic>(
       const user = await authenticate(request);
       if (!user) return c.text("Authentication required", 401);
       const token = c.req.param("token");
-      const keys = new URL(request.url).searchParams.getAll("view");
+      const { searchParams } = new URL(request.url);
       const page = await runtime.openPage(
         token,
-        { views: keys, pristine: [] },
+        {
+          views: searchParams.getAll(streamParams.view),
+          pristine: searchParams.getAll(streamParams.pristine),
+        },
         user
       );
       switch (page.status) {

@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { Context, Hono } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import * as v from "valibot";
 import {
   connectionStatusOutlet,
@@ -14,7 +14,11 @@ const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
 const app = new Hono();
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
-const sessions = new Set<string>();
+// A fixed secret keeps sessions valid after a restart; without one, they end with the process.
+const sessionSecret = Bun.env.COUNTER_SESSION_SECRET ?? crypto.randomUUID();
+const sessionCookie = "counter-session";
+/** Sessions that hid the shared counter, which then fails its authorization. */
+const hiddenSessions = new Set<string>();
 const counts = { main: 0, other: 0 };
 const renders = { main: 0, other: 0 };
 type CounterId = keyof typeof counts;
@@ -26,12 +30,20 @@ type CounterEvent =
   | ReturnType<typeof counterChanged>
   | ReturnType<typeof layoutChanged>
   | ReturnType<typeof orderChanged>;
+const pageKey = Bun.env.HYPERSIG_PAGE_KEY;
+
+function readSession(c: Context) {
+  return getSignedCookie(c, sessionSecret, sessionCookie);
+}
+
 const hypersig = createHypersig({
   origin,
   pubsub: createMemoryPubSub<CounterEvent>(),
-  authenticate(request) {
-    const sessionId = getCookie(new Context(request), "counter-session");
-    return sessionId && sessions.has(sessionId) ? { sessionId } : null;
+  // Processes that share this key can stream each other's pages.
+  ...(pageKey && { pageKeys: [pageKey] }),
+  async authenticate(request) {
+    const sessionId = await readSession(new Context(request));
+    return sessionId ? { sessionId } : null;
   },
 });
 
@@ -48,16 +60,30 @@ const increment = hypersig.action("increment", {
   },
 });
 
+const setMainVisible = hypersig.action("set-main-visible", {
+  input: v.object({ visible: v.boolean() }),
+  output: v.boolean(),
+  authorize: () => true,
+  async execute({ visible }, { sessionId }) {
+    if (visible) hiddenSessions.delete(sessionId);
+    else hiddenSessions.add(sessionId);
+    await hypersig.publish(counterChanged("main"));
+    return visible;
+  },
+});
+
 const counter = hypersig.live({
   name: "counter",
   key: ({ id }: { id: CounterId }) => id,
   revision: ({ id }) => id,
   subscribe: ({ id }) => [counterChanged(id)],
-  authorize: (_params, _user) => true,
+  authorize: ({ id }, { sessionId }) =>
+    id !== "main" || !hiddenSessions.has(sessionId),
   load({ id }) {
     renders[id]++;
     return counts[id];
   },
+  snapshotRevision: { read: ({ id }) => counts[id], from: (count) => count },
   render(count, { id }) {
     return (
       <section
@@ -189,15 +215,18 @@ const orderSummary = hypersig.live({
 
 app.route("/", hypersig.routes);
 app.on("GET", ["/", "/nested", "/order"], async (c) => {
-  const current = getCookie(c, "counter-session");
-  if (!current || !sessions.has(current)) {
-    const sessionId = crypto.randomUUID();
-    sessions.add(sessionId);
-    setCookie(c, "counter-session", sessionId, {
-      httpOnly: true,
-      sameSite: "Strict",
-      path: "/",
-    });
+  if (!(await readSession(c))) {
+    await setSignedCookie(
+      c,
+      sessionCookie,
+      crypto.randomUUID(),
+      sessionSecret,
+      {
+        httpOnly: true,
+        sameSite: "Strict",
+        path: "/",
+      }
+    );
     return c.redirect(new URL(c.req.url).pathname);
   }
   c.header(
@@ -225,6 +254,15 @@ app.on("GET", ["/", "/nested", "/order"], async (c) => {
             <>
               {page.view(counter, { id: "main" })}
               {page.view(counter, { id: "other" })}
+              <button
+                type="button"
+                {...setMainVisible.bind({ visible: false })}
+              >
+                Hide shared counter
+              </button>
+              <button type="button" {...setMainVisible.bind({ visible: true })}>
+                Show shared counter
+              </button>
             </>
           )}
           <p role="status" {...connectionStatusOutlet()}></p>

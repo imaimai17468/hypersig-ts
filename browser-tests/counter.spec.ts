@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
@@ -481,4 +483,102 @@ test("retains a moved child View's DOM and SSR snapshot until its own Topic chan
   );
   await page.getByRole("button", { name: "Hide counter" }).click();
   await expect(page.locator(main)).toHaveCount(0);
+});
+
+/** Starts a counter process of its own, which a test can stop and start again. */
+async function startCounter(port: number) {
+  const url = `http://127.0.0.1:${port}`;
+  const server = spawn("bun", ["examples/counter/server.tsx"], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HYPERSIG_PAGE_KEY: Buffer.alloc(32, 7).toString("base64"),
+      COUNTER_SESSION_SECRET: "restart-test-session-secret",
+    },
+    stdio: "ignore",
+  });
+  const exited = once(server, "exit");
+  for (let attempt = 0; ; attempt++) {
+    try {
+      if ((await fetch(url + "/runtime.js")).ok) break;
+    } catch {
+      if (attempt > 200) throw new Error("Counter server did not start");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return {
+    url,
+    async stop() {
+      server.kill();
+      await exited;
+    },
+  };
+}
+
+test("applies updates from a restarted server process that counts versions from 1 again", async ({
+  browser,
+}) => {
+  const port = 3223;
+  let server = await startCounter(port);
+  const context = await browser.newContext({ baseURL: server.url });
+  try {
+    const page = await context.newPage();
+    const peer = await context.newPage();
+    await page.goto("/");
+    await peer.goto("/");
+    await expect(page.locator(ready)).toHaveCount(1);
+    await expect(peer.locator(ready)).toHaveCount(1);
+    for (const count of [1, 2, 3]) {
+      await peer.getByRole("button", { name: "Increment main" }).click();
+      await expect(page.locator(main)).toHaveText(String(count));
+    }
+
+    const disconnected = "html[data-hs-connection=disconnected]";
+    await server.stop();
+    await expect(page.locator(disconnected)).toHaveCount(1);
+    await expect(peer.locator(disconnected)).toHaveCount(1);
+    server = await startCounter(port);
+    await expect(page.locator(ready)).toHaveCount(1, { timeout: 15_000 });
+    await expect(peer.locator(ready)).toHaveCount(1, { timeout: 15_000 });
+    // The new process lost the in-memory count and streams it at version 1.
+    await expect(page.locator(main)).toHaveText("0");
+    await peer.getByRole("button", { name: "Increment main" }).click();
+    await expect(page.locator(main)).toHaveText("1");
+    await expect(peer.locator(main)).toHaveText("1");
+  } finally {
+    await context.close();
+    await server.stop();
+  }
+});
+
+test("redraws a view whose access returned while the browser was offline", async ({
+  browser,
+}) => {
+  const port = 3224;
+  let server = await startCounter(port);
+  const context = await browser.newContext({ baseURL: server.url });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.locator(ready)).toHaveCount(1);
+    await page.getByRole("button", { name: "Hide shared counter" }).click();
+    await expect(page.locator(main)).toHaveCount(0);
+    await expect(page.locator('[data-count="other"]')).toHaveText("0");
+
+    // Offline emulation leaves an open stream alone, so the server ends it.
+    await context.setOffline(true);
+    await server.stop();
+    await expect(
+      page.locator("html[data-hs-connection=disconnected]")
+    ).toHaveCount(1);
+    // The new process forgets the hidden session, and the count still
+    // matches the SSR snapshot, so only a fresh render shows the counter.
+    server = await startCounter(port);
+    await context.setOffline(false);
+    await expect(page.locator(main)).toHaveText("0", { timeout: 15_000 });
+    await expect(page.locator(ready)).toHaveCount(1);
+  } finally {
+    await context.close();
+    await server.stop();
+  }
 });

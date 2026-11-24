@@ -18,6 +18,14 @@ export interface HtmlUpdate {
   children?: readonly string[];
 }
 
+/** Repeated query parameters of a page's stream URL. */
+export const streamParams = {
+  /** Every top-level view the browser shows. */
+  view: "view",
+  /** The top-level views the browser still shows as SSR left them. */
+  pristine: "pristine",
+} as const;
+
 export const events = {
   update: "html-update",
   ready: "ready",

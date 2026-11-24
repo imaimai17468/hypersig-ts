@@ -62,7 +62,11 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   pageLifetimeMs?: number;
 }
 
-/** The views a browser asks to stream, and those it still shows as SSR left them. */
+/**
+ * The views a browser asks to stream, and those it still shows as SSR left
+ * them. Either list longer than the Live View limit is `invalid-count`. A
+ * `pristine` key outside `views` is ignored.
+ */
 export interface OpenPageRequest {
   views: readonly string[];
   pristine: readonly string[];
@@ -258,7 +262,11 @@ export function createLiveRuntime<
       const { claims } = opened;
       if (claims.sessionId !== user.sessionId) return { status: "denied" };
       const keys = request.views;
-      if (keys.length === 0 || keys.length > maxViews)
+      if (
+        keys.length === 0 ||
+        keys.length > maxViews ||
+        request.pristine.length > maxViews
+      )
         return { status: "invalid-count" };
 
       const placed = rebuildViews(claims);

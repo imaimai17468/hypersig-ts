@@ -134,8 +134,16 @@ function setup(
   };
 }
 
-async function openStream(app: Hono, path: string, keys = ["counter.main"]) {
-  const query = new URLSearchParams(keys.map((key) => ["view", key]));
+async function openStream(
+  app: Hono,
+  path: string,
+  keys = ["counter.main"],
+  pristine: readonly string[] = []
+) {
+  const query = new URLSearchParams([
+    ...keys.map((key) => ["view", key]),
+    ...pristine.map((key) => ["pristine", key]),
+  ]);
   const response = await app.request(`${path}?${query}`, {
     headers: { "X-Session": "owner" },
   });
@@ -370,10 +378,9 @@ it("replaces a page connection while its old render is still pending", async () 
 it("requests a new SSR document when the page registration has expired", async () => {
   const { app, pageUrl } = setup();
   const { path } = await pageUrl();
-  const clock = vi
-    .spyOn(Date, "now")
-    .mockReturnValue(Date.now() + 12 * 60 * 60_000 + 1);
+  vi.useFakeTimers({ toFake: ["Date"] });
   try {
+    vi.setSystemTime(Date.now() + 12 * 60 * 60_000 + 1);
     const stream = await openStream(app, path);
     try {
       expect(await stream.read()).toContain("event: reset");
@@ -382,8 +389,90 @@ it("requests a new SSR document when the page registration has expired", async (
       await stream.close();
     }
   } finally {
-    clock.mockRestore();
+    vi.useRealTimers();
   }
+});
+
+it("opens a page rendered by another runtime with the same page key and trusts SSR only for pristine views", async () => {
+  const pageKeys = [
+    Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64"),
+  ];
+  let count = 0;
+  function serve() {
+    const hypersig = createHypersig({
+      origin,
+      pubsub: createMemoryPubSub<CounterEvent>(),
+      pageKeys,
+      authenticate(request) {
+        const sessionId = request.headers.get("X-Session");
+        return sessionId ? { sessionId } : null;
+      },
+    });
+    const counter = hypersig.live({
+      name: "counter",
+      subscribe: () => [changed("main")],
+      authorize: () => true,
+      load: () => count,
+      snapshotRevision: { read: () => count, from: (value) => value },
+      render: (value) => html`<output>${value}</output>`,
+    });
+    const app = new Hono();
+    app.route("/", hypersig.routes);
+    app.get("/", (c) =>
+      hypersig.page(
+        c.req.raw,
+        (page) =>
+          html`<html>
+            ${page.runtime("/runtime.js")}${page.view(counter, {})}
+          </html>`
+      )
+    );
+    return { app, publish: hypersig.publish };
+  }
+  const rendering = serve();
+  const streaming = serve();
+  const response = await rendering.app.request("/", {
+    headers: { "X-Session": "owner" },
+  });
+  const path = /data-hs-stream="([^"]+)"/.exec(await response.text())?.[1];
+  if (!path) throw new Error("Missing SSE URL");
+
+  const touched = await openStream(streaming.app, path, ["counter"]);
+  try {
+    expect(await touched.read()).toContain(
+      '"version":1,"html":"<output>0</output>"'
+    );
+    expect(await touched.read()).toContain("event: ready");
+  } finally {
+    await touched.close();
+  }
+
+  const pristine = await openStream(
+    streaming.app,
+    path,
+    ["counter"],
+    ["counter"]
+  );
+  try {
+    expect(await pristine.read()).toContain("event: ready");
+    count = 1;
+    await streaming.publish(changed("main"));
+    expect(await pristine.read()).toContain(
+      '"version":1,"html":"<output>1</output>"'
+    );
+  } finally {
+    await pristine.close();
+  }
+
+  const tooMany = Array.from({ length: 33 }, (_, index) => `view-${index}`);
+  const query = new URLSearchParams([
+    ["view", "counter"],
+    ...tooMany.map((key) => ["pristine", key]),
+  ]);
+  const rejected = await streaming.app.request(`${path}?${query}`, {
+    headers: { "X-Session": "owner" },
+  });
+  expect(rejected.status).toBe(400);
 });
 
 it("binds schema wire input and accepts only the application's topic types", () => {

@@ -1,6 +1,11 @@
 import { preserveDrafts, restoreDrafts } from "./drafts.js";
 import { morphView } from "./morph.js";
-import { events, isJsonValue, outletAttributes } from "./protocol.js";
+import {
+  events,
+  isJsonValue,
+  outletAttributes,
+  streamParams,
+} from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
 import { sanitizeFragment } from "./sanitize.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
@@ -24,6 +29,9 @@ function isUpdate(value: unknown): value is HtmlUpdate {
   );
 }
 
+/** Close to a native EventSource retry, so reopening never retries a down server faster. */
+const reopenDelayMs = 1_000;
+
 function readData(event: Event): unknown {
   if (!(event instanceof MessageEvent) || typeof event.data !== "string")
     return;
@@ -43,7 +51,14 @@ function updateViews(
   let active = true;
   let connection: EventSource | undefined;
   let views = new Map<string, HTMLElement>();
-  const versions = new WeakMap<HTMLElement, number>();
+  /** The highest version applied to each node on the current response. */
+  let versions = new WeakMap<HTMLElement, number>();
+  /**
+   * Top-level keys whose nodes still hold the SSR HTML. Filled from the views
+   * of the first connection, and only shrinks.
+   */
+  const pristine = new Set<string>();
+  let hasConnected = false;
 
   function setStatus(
     status: "connecting" | "ready" | "disconnected" | "reload-required"
@@ -85,10 +100,21 @@ function updateViews(
       return;
     }
     setStatus("connecting");
+    if (!hasConnected) for (const key of views.keys()) pristine.add(key);
+    hasConnected = true;
     const url = new URL(endpoint);
-    for (const key of views.keys()) url.searchParams.append("view", key);
+    for (const key of views.keys()) {
+      url.searchParams.append(streamParams.view, key);
+      if (pristine.has(key))
+        url.searchParams.append(streamParams.pristine, key);
+    }
+    const claimedPristine = url.searchParams.getAll(streamParams.pristine);
     const source = new EventSource(url);
     connection = source;
+    // Every response counts versions from 1, including one in another process.
+    source.addEventListener("open", () => {
+      if (source === connection) versions = new WeakMap();
+    });
     function findView(target: string) {
       const root = views.get(target.split("/", 1)[0] ?? "");
       const node = target.includes("/")
@@ -128,6 +154,7 @@ function updateViews(
       signalRuntime.applySnapshots(node);
       node.removeAttribute("data-hs-view-error");
       versions.set(node, update.version);
+      pristine.delete(update.target.split("/", 1)[0] ?? "");
     });
     source.addEventListener(events.viewError, (event) => {
       if (source !== connection) return;
@@ -135,6 +162,8 @@ function updateViews(
       if (typeof target !== "string") return;
       const node = findView(target);
       if (!node) return;
+      // Only a fresh render clears the marker, so the SSR HTML is no longer trusted.
+      pristine.delete(target.split("/", 1)[0] ?? "");
       node.setAttribute("data-hs-view-error", "");
       node.dispatchEvent(
         new CustomEvent("hypersig:view-error", {
@@ -147,6 +176,7 @@ function updateViews(
       if (source === connection) setStatus("ready");
     });
     function clearViews() {
+      pristine.clear();
       for (const node of views.values()) {
         node.removeAttribute("data-hs-view-error");
         node.replaceChildren();
@@ -155,8 +185,19 @@ function updateViews(
     }
     source.addEventListener("error", () => {
       if (source !== connection) return;
-      if (source.readyState === EventSource.CLOSED) clearViews();
-      else setStatus("disconnected");
+      if (source.readyState === EventSource.CLOSED) {
+        clearViews();
+        return;
+      }
+      setStatus("disconnected");
+      if (claimedPristine.every((key) => pristine.has(key))) return;
+      // A native retry would reuse the URL that still claims the rewritten
+      // views are pristine, and the server would skip their render.
+      source.close();
+      connection = undefined;
+      setTimeout(() => {
+        if (!connection) synchronize();
+      }, reopenDelayMs);
     });
     source.addEventListener(events.denied, () => {
       if (source !== connection) return;
