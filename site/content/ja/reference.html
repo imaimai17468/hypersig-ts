@@ -352,6 +352,124 @@ li:has(.row [data-hs-pending]) {
   </ul>
 </section>
 
+<section id="custom-elements">
+  <h2>カスタム要素</h2>
+  <p>
+    地図やエディタのような JavaScript
+    のライブラリは、自分で書いて読み込むカスタム要素で包みます。<code
+      >customElement</code
+    >
+    は要素の属性とイベントを型で宣言するので、ページは文字列リテラルなしで属性を設定し、イベントを処理できます。
+  </p>
+  <pre><code>const rating = customElement&lt;{
+  attributes: { value: number; max: number };
+  events: { rate: number };
+}&gt;("star-rating", { ownsChildren: true });
+
+&lt;rating.Element
+  id="rating"
+  {...e.bindElement(rating, { value: e.score, max: 5 })}
+  {...rating.on("rate", (detail) =&gt; [
+    e.score.set(detail),
+    save.call({ score: detail }),
+  ])}
+/&gt;</code></pre>
+  <dl>
+    <dt><code>customElement&lt;Spec&gt;(tag, options)</code></dt>
+    <dd>
+      <code>Spec</code>
+      には、要素が使う属性（<code>attributes</code>、値ごとの型）とイベント（<code>events</code>、<code
+        >detail</code
+      >
+      ごとの型）を書きます。タグ名は小文字で始め、<code>-</code>
+      を含み、小文字、数字、<code>-</code>、<code>.</code>、<code>_</code>
+      だけを使います。型で検査できる部分は型が検査し、それ以外の文字は
+      <code>customElement</code>
+      を呼んだときに検査するので、タグ名の打ち間違いは起動時のエラーになります。属性名は小文字で、<code
+        >on</code
+      >
+      で始まる名前（<code>open</code> も含みます）、<code>style</code>、<code
+        >data-hs-*</code
+      >
+      は使えません。イベント名は小文字で始め、小文字、数字、<code>-</code>、<code>.</code>、<code>:</code>、<code
+        >_</code
+      >
+      を使います。
+    </dd>
+    <dt><code>Element</code></dt>
+    <dd>
+      宣言したタグ名で要素を描画します。Hono JSX が名前を持つ HTML
+      属性、<code>role</code>、<code>part</code>、<code>exportparts</code>、<code>aria-*</code>、<code>data-*</code>、<code>children</code>、宣言した属性（固定値）を渡せます。要素には
+      <code>id</code> を付け、一覧では要素ごとに別の
+      <code>id</code> を付けてください。子を自分で描く要素は、タグと
+      <code>id</code>
+      が一致するときだけ Live View の更新で残り、そうでなければ作り直されます。
+    </dd>
+    <dt><code>scope.bindElement(element, values)</code></dt>
+    <dd>
+      宣言した属性を式に束縛します。サーバーが最初の値を描画し、以降はシグナルの変化に合わせてランタイムが書き込みます。属性は
+      <code>data-hs-element-attr</code>
+      に書かれ、独自の規則に従います。上の属性名の規則を満たす宣言済みの名前を受け付け、<code
+        >string</code
+      >
+      と <code>number</code> は文字列として、<code>boolean</code>
+      は属性の有無として書きます。<code>bindAttr</code>
+      は束縛の項で説明した名前の一覧と <code>data-hs-attr</code>
+      のままです。型は宣言したキーと値の型を検査しますが、余分なキーを持つ変数のオブジェクトを渡すと、そのキーも書かれます。実行時に検査するのは名前の規則だけです。
+    </dd>
+    <dt><code>element.on(event, handler)</code></dt>
+    <dd>
+      要素がそのイベントを発火したときに文を実行します。<code>detail</code>
+      はイベントの
+      <code>detail</code>
+      を宣言した型の式として表します。1つの要素で複数のイベントを処理するときは、<code
+        >element.on({ rate: ..., clear: ... })</code
+      >
+      のように1つのオブジェクトで渡します。2つの結果を展開すると、あとのものだけが残ります。同じ要素のリクエストが送信中でもこれらのイベントは実行するので、続けて起きたイベントは捨てませんが、呼び出しが重なることがあります。リスナーは要素が挿入されたあとの次の描画から付くので、<code
+        >connectedCallback</code
+      >
+      の中で同期的に発火したイベントは何も実行しません。
+    </dd>
+    <dt><code>ownsChildren</code></dt>
+    <dd>
+      要素の JavaScript が子を描くときに指定します。Live View
+      の更新は子を残し、要素の属性だけを更新します。<code>bindElement</code>
+      に書いた属性は、この更新ではランタイムに任せるので、要素が
+      <code>attributeChangedCallback</code>
+      でサーバーの一時的な値を見ることはありません。サーバーが変えるつもりだった束縛済みの属性は、ランタイムが同じ
+      tick のうちに描画し直すまで待ちます。
+    </dd>
+  </dl>
+  <p><strong>スクリプトの読み込み方</strong></p>
+  <p>
+    要素のスクリプトは自分のオリジンから配信し、<code
+      >&lt;script type="module" src=...&gt;</code
+    >
+    で読み込みます。<a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/rating/server.tsx"
+      >rating のサンプル</a
+    >がその例です。ページの <code>script-src 'self'</code>
+    は、ランタイムと同じようにこのスクリプトにも適用されます。
+  </p>
+  <p><strong>検査できないこと</strong></p>
+  <ul>
+    <li>
+      宣言と要素の JavaScript
+      を突き合わせる検査はありません。要素が読まない属性を設定しても何も変わらず、要素が発火しないイベントは何も実行せず、別の形の
+      <code>detail</code> はそのまま文に届きます（JSON でなければ
+      <code>null</code> です）。
+    </li>
+    <li>
+      変数から渡したオブジェクトにある、宣言していない <code>bindElement</code>
+      のキーは、型では検査できません。
+    </li>
+    <li>
+      Live View
+      の更新は、適用する前にサニタイズします。カスタム要素に残るのは上の名前の規則を満たす属性だけで、拡張した組み込み要素（<code>is</code>）は受け付けません。
+    </li>
+  </ul>
+</section>
+
 <section id="topics">
   <h2>データ変更の通知</h2>
   <p>

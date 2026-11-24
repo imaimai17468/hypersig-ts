@@ -84,8 +84,12 @@
       the process that registered it.
     </li>
     <li>
-      A JavaScript library such as a map or a rich text editor runs from your
-      own script, outside Live Views. There is no typed wrapper for it yet.
+      A JavaScript library such as a map or a rich text editor runs inside a
+      custom element that you write and load yourself. hypersig.ts types the
+      element's attributes and events, but it cannot check them against the
+      library's JavaScript, and a Live View update keeps an element's own
+      children only when its tag and <code>id</code> match.
+      <a href="../reference/#custom-elements">Custom elements</a>
     </li>
     <li>
       Following a link loads the next page from the server. There is no

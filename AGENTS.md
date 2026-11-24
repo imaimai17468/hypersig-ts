@@ -11,6 +11,7 @@ Each of these strings is written once, where it is defined, and everywhere else 
 - Topic names and keys
 - Live View keys
 - Signal names and expressions, built with `signals()`, `signalFamily()`, and the `Expr` methods
+- Custom element tag names, attribute names, and event names, built with `customElement()`, `bindElement()`, and `on()`
 - Links to the application's pages, built with Hono's `hc<typeof app>(...).$path()`
 - Names of the attributes the browser runtime reads, including the outlets it fills (`errorOutlet()`, `connectionStatusOutlet()`, `action.fieldError()`)
 

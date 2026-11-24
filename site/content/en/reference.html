@@ -346,6 +346,122 @@ li:has(.row [data-hs-pending]) {
   </ul>
 </section>
 
+<section id="custom-elements">
+  <h2>Custom elements</h2>
+  <p>
+    Wrap a JavaScript library, such as a map or an editor, in a custom element
+    that you write and load yourself. <code>customElement</code> describes the
+    element's attributes and events as types, so the page sets the attributes
+    and handles the events without string literals.
+  </p>
+  <pre><code>const rating = customElement&lt;{
+  attributes: { value: number; max: number };
+  events: { rate: number };
+}&gt;("star-rating", { ownsChildren: true });
+
+&lt;rating.Element
+  id="rating"
+  {...e.bindElement(rating, { value: e.score, max: 5 })}
+  {...rating.on("rate", (detail) =&gt; [
+    e.score.set(detail),
+    save.call({ score: detail }),
+  ])}
+/&gt;</code></pre>
+  <dl>
+    <dt><code>customElement&lt;Spec&gt;(tag, options)</code></dt>
+    <dd>
+      <code>Spec</code> lists the attributes (<code>attributes</code>, with the
+      type of each value) and the events (<code>events</code>, with the type of
+      each <code>detail</code>) the element uses. The tag name starts with a
+      lowercase letter, contains a <code>-</code>, and has only lowercase
+      letters, digits, <code>-</code>, <code>.</code>, and <code>_</code>. The
+      type checks what it can, and the other characters are checked when
+      <code>customElement</code> is called, so a typo in a tag name is an error
+      at startup. An attribute name must be lowercase and must not start with
+      <code>on</code> (this rejects <code>open</code> too), nor be
+      <code>style</code> or <code>data-hs-*</code>. An event name starts with a
+      lowercase letter and then has lowercase letters, digits, <code>-</code>,
+      <code>.</code>, <code>:</code>, or <code>_</code>.
+    </dd>
+    <dt><code>Element</code></dt>
+    <dd>
+      Renders the element with the declared tag name. It takes the HTML
+      attributes Hono JSX names, <code>role</code>, <code>part</code>,
+      <code>exportparts</code>, <code>aria-*</code>, <code>data-*</code>,
+      <code>children</code>, and the declared attributes as fixed values. Give
+      each element an <code>id</code>, and in a list give each one an
+      <code>id</code> of its own: a Live View update keeps an element that owns
+      its children only when the tag and the <code>id</code> match, and rebuilds
+      it otherwise.
+    </dd>
+    <dt><code>scope.bindElement(element, values)</code></dt>
+    <dd>
+      Binds the declared attributes to expressions. The server renders the first
+      value, and the runtime writes later ones as the signals change. It writes
+      <code>data-hs-element-attr</code> and keeps its own rule: it takes any
+      declared name that passes the attribute rules above, and writes a
+      <code>string</code> or <code>number</code> as text and a
+      <code>boolean</code> as a present or absent attribute.
+      <code>bindAttr</code> keeps the name list and
+      <code>data-hs-attr</code> described under Bindings. The type checks the
+      declared keys and their value types, but an object from a variable that
+      has extra keys still writes them, and the runtime checks only the name
+      rules at run time.
+    </dd>
+    <dt><code>element.on(event, handler)</code></dt>
+    <dd>
+      Runs statements when the element dispatches the event, with
+      <code>detail</code> standing for the event's <code>detail</code> as an
+      expression of the declared type. To handle several events on one element,
+      pass one object, <code>element.on({ rate: ..., clear: ... })</code>;
+      spreading two results keeps only the later one. The runtime runs these
+      events even while a request from the same element is in flight, so rapid
+      events are not dropped and can send overlapping calls. It starts listening
+      on the next render after the element is inserted, so an event dispatched
+      synchronously in <code>connectedCallback</code> runs nothing.
+    </dd>
+    <dt><code>ownsChildren</code></dt>
+    <dd>
+      Set it when the element's JavaScript renders its children. A Live View
+      update then keeps the children and updates only the element's attributes.
+      Attributes named in <code>bindElement</code> are left to the runtime
+      during that update, so the element does not see a transient server value
+      in <code>attributeChangedCallback</code>; a bound attribute the server
+      meant to change waits for the runtime to render it again, within the same
+      tick.
+    </dd>
+  </dl>
+  <p><strong>Loading the script</strong></p>
+  <p>
+    Serve the element's script from your own origin and load it with
+    <code>&lt;script type="module" src=...&gt;</code>, as the
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/rating/server.tsx"
+      >rating example</a
+    >
+    does. The page's <code>script-src 'self'</code> policy applies to it as it
+    does to the runtime.
+  </p>
+  <p><strong>What goes unchecked</strong></p>
+  <ul>
+    <li>
+      Nothing compares the declaration with the element's JavaScript. An
+      attribute the element does not read changes nothing, an event it never
+      dispatches runs nothing, and a <code>detail</code> of another shape
+      reaches the statements as it is (<code>null</code> when it is not JSON).
+    </li>
+    <li>
+      The type does not check a key of <code>bindElement</code> that is not
+      declared when the object comes from a variable.
+    </li>
+    <li>
+      A Live View update is sanitized before it is applied. A custom element
+      keeps only attributes that pass the name rules above, and customized
+      built-in elements (<code>is</code>) are not admitted.
+    </li>
+  </ul>
+</section>
+
 <section id="topics">
   <h2>Topics</h2>
   <pre><code>const changed = topic("counter", (id: string) =&gt; id);

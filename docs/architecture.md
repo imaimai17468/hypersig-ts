@@ -148,6 +148,17 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 
 一時期、テンプレートから複製した仮の行で一覧への追加を先に表示していたが、確定していないデータが確定したデータと並び、アプリのサーバーがブラウザの作った key を受け入れる必要があったため取り除いた。
 
+### カスタム要素
+
+地図やエディタのような JavaScript のライブラリは、アプリが読み込むカスタム要素で包む。`customElement<Spec>(tag, { ownsChildren })`（`src/element.tsx`）が属性とイベントを型で宣言し、`Element`、`on`、`scope.bindElement` から属性を作る。ランタイムはこの属性の仕様を解釈するだけで、要素の JavaScript は読まない。
+
+- タグ名は型（`CustomTagName`）で検査できる範囲を検査し、残りの文字は `customElement()` を呼んだときに実行時に検査する。呼び出し側が `Spec` を明示するとタグのリテラルを推論できないため、重複した Action 名と同じく打ち間違いは起動時の例外になる。
+- `bindElement` は `data-hs-element-attr` に書く。`bindAttr` の `data-hs-attr` は名前の一覧で受け付けるので、サーバーとブラウザが同じ規則を使えるよう属性を分けた。`data-hs-element-attr` は宣言済みの名前を値の型で書き分ける（`string` と `number` は文字列、`boolean` は属性の有無）。`on` で始まる名前（`open` を含む）、`style`、`data-hs-*` は型と実行時の両方で拒否する。型は宣言していないキーを検査できないので、変数から渡したオブジェクトでは余分なキーも書かれる。
+- イベントは `data-hs-on-custom` にイベント名と文の組で書き、ランタイムがリスナーを付ける。ボタンのような送信中のスキップはせず、送信中でもイベントを実行する（エディタやピッカーは頻繁にイベントを出し、捨てると入力を失うため）。リスナーは要素が挿入されたあとの次の描画で付くので、`connectedCallback` の中の同期的なイベントは取りこぼす。
+- 更新の HTML は DOMPurify が検査する。カスタム要素は `isCustomElementName` を満たすタグと `isBindableCustomAttribute` を満たす属性だけを残し、`is` による拡張した組み込み要素は受け付けない。
+- `ownsChildren` の要素は、morph（`src/morph.ts` の `morphView`）がタグと `id` が一致するときだけ子を残し、一致しなければ Idiomorph の終了後に作り直す。一覧では要素ごとに `id` を付ける。残した要素では、`data-hs-element-attr` に書かれた属性をサーバーの HTML から写さず、ランタイムに任せる。要素の `attributeChangedCallback` がサーバーの一時的な値を見ないためで、サーバーが変えるつもりだった束縛済みの属性は、ランタイムが同じ tick のうちに描画し直すまで待つ。
+- 宣言と要素の JavaScript の突き合わせはしない。要素が読まない属性や発火しないイベントは何も起こさず、別の形の `detail` はそのまま文に届く（JSON でなければ `null`）。
+
 ### ランタイムの大きさ
 
 `dist/runtime.js` を `bun build src/browser.ts --target=browser --minify` で作り、設計の計画を書いたコミット（dd55741）と Signal の実装後で比べた。
@@ -193,3 +204,11 @@ gzip での増分は目安の 4 KB 以下に収まった。
 `liveShared(definition, { shareLoad(params, user) { ... } })` を明示した View は、認可後に `{ scope, revision, load }` を選べる。`scope` はリソースと可視範囲の両方を区別する。たとえばテナント ID、注文 ID、閲覧できる項目の範囲を含める。`revision` は読み取る確定済みの版で、`load()` は選んだ版のデータを取得する。個別に取得する場合は `shareLoad` が `undefined` を返すと通常の `load(params, user)` が実行される。
 
 ライブラリは同じ View 定義の同じスコープ・版について、進行中の Promise を共有する。成功・失敗の両方で登録を取り除く。View の配信前にも接続ごとに認可を確認する。データの版を選ぶ処理は各接続で実行されるため、選択時にも DB を読むアプリではそのコストが残る。読み取りの削減量は取得が重なる度合いで変わる。[読み取り共有の計測](../bench/README.md#接続間での読み取り共有)
+
+カスタム要素の実装後に、計画を書いたコミット（9c3ccf7）と現在を同じ方法で比べた（Bun 1.3.1、gzip -9）。増分はカスタム属性の束縛、カスタムイベントのリスナー、サニタイズの設定、子を残す morph である。
+
+| 時点                        | minify 後 | gzip -9  |
+| --------------------------- | --------- | -------- |
+| 9c3ccf7（カスタム要素の前） | 58,002 B  | 21,174 B |
+| カスタム要素の実装後        | 60,580 B  | 22,248 B |
+| 増分                        | 2,578 B   | 1,074 B  |
