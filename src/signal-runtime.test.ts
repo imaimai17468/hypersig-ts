@@ -1984,6 +1984,50 @@ it("runs the branch the condition picks, including a call", async () => {
   expect(find("#opened").textContent).toBe("2");
 });
 
+it("passes the Action output into a when branch inside onSuccess", async () => {
+  const s = signals({ revision: 0, note: "" }, { name: "runtime-when-output" });
+  const w = s.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...w.init(),
+      children: [
+        element("span", { id: "revision", ...w.bindText(w.revision) }),
+        element("span", { id: "note", ...w.bindText(w.note) }),
+        element("button", {
+          id: "save",
+          ...on.click(
+            saveMemo.call(
+              { title: "x" },
+              {
+                onSuccess: (output) =>
+                  when(
+                    output.get("revision").gt(w.revision),
+                    [w.revision.set(output.get("revision")), w.note.set("")],
+                    w.note.set("stale")
+                  ),
+              }
+            )
+          ),
+        }),
+      ],
+    })
+  );
+  const { request, send } = createSend();
+  startSignals({ root: page, send });
+
+  click("#save");
+  request(0).respond({ ok: true, data: { revision: 2 } });
+  await settle();
+  expect(find("#revision").textContent).toBe("2");
+  expect(find("#note").textContent).toBe("");
+
+  click("#save");
+  request(1).respond({ ok: true, data: { revision: 1 } });
+  await settle();
+  expect(find("#revision").textContent).toBe("2");
+  expect(find("#note").textContent).toBe("stale");
+});
+
 it("binds roving focus attributes in the browser", async () => {
   const s = signals(
     { closed: true, selected: false, id: "x", index: -1 },

@@ -27,6 +27,11 @@ async function open(page: Page) {
   await expect(page.locator(ready)).toHaveCount(1);
 }
 
+/** Waits until no fruit save is in flight, when Enter and Space run again. */
+async function waitForSaved(page: Page) {
+  await expect(page.locator(".combobox-field[data-hs-pending]")).toHaveCount(0);
+}
+
 function combobox(page: Page): Locator {
   return page.getByRole("combobox", { name: "Favorite fruit" });
 }
@@ -85,6 +90,7 @@ test.describe("select-only combobox", () => {
     await expect(box).toHaveAttribute("aria-expanded", "false");
     await expect(box).toHaveAttribute("aria-activedescendant", "");
     await expect(box).toBeFocused();
+    await waitForSaved(page);
 
     // Opening starts from the chosen option, wherever the last visit left off.
     await box.press(" ");
@@ -127,25 +133,33 @@ test.describe("select-only combobox", () => {
     await expectActive(page, "Banana");
     expect(saves).toEqual([]);
 
-    const saved = page.waitForResponse(fruitAction);
+    // Hold the save so the keys below are pressed while it is in flight.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(fruitAction, async (route) => {
+      await held;
+      await route.continue();
+    });
     await box.press("Enter");
     await expect(listbox).toBeHidden();
     await expect(box).toHaveText("Banana");
-    // The save stays in flight for 300 ms; the arrow keys still open and move.
-    await expect(page.locator(".combobox-field[data-hs-pending]")).toHaveCount(
-      1
-    );
+    const pending = page.locator(".combobox-field[data-hs-pending]");
+    await expect(pending).toHaveCount(1);
+    // The arrow keys still open and move the list while the save is held.
     await box.press("ArrowDown");
     await expect(listbox).toBeVisible();
     await expectActive(page, "Banana");
     await box.press("ArrowDown");
     await expectActive(page, "Cherry");
-    await expect(page.locator(".combobox-field[data-hs-pending]")).toHaveCount(
-      1
-    );
     await box.press("Escape");
-    await saved;
+    await expect(listbox).toBeHidden();
+    await expect(pending).toHaveCount(1);
     expect(saves).toEqual([JSON.stringify({ fruit: "banana" })]);
+    release();
+    await waitForSaved(page);
+    await page.unroute(fruitAction);
     await expect(page.locator("#saved-fruit")).toHaveText("Banana");
     await expect(other.locator("#saved-fruit")).toHaveText("Banana");
 
@@ -153,12 +167,30 @@ test.describe("select-only combobox", () => {
     await box.press("Enter");
     await box.press("End");
     await expectActive(page, "Orange");
-    await Promise.all([page.waitForResponse(fruitAction), box.press("Tab")]);
+    await box.press("Tab");
     await expect(box).not.toBeFocused();
     await expect(listbox).toBeHidden();
     await expect(box).toHaveText("Orange");
     await expect(other.locator("#saved-fruit")).toHaveText("Orange");
+    await waitForSaved(page);
     expect(saves).toHaveLength(2);
+
+    // So does Shift+Tab, as focus moves back.
+    await box.focus();
+    await box.press("Enter");
+    await box.press("Home");
+    await expectActive(page, "Apple");
+    await box.press("Shift+Tab");
+    await expect(box).not.toBeFocused();
+    await expect(listbox).toBeHidden();
+    await expect(box).toHaveText("Apple");
+    await expect(other.locator("#saved-fruit")).toHaveText("Apple");
+    await waitForSaved(page);
+    expect(saves).toEqual([
+      JSON.stringify({ fruit: "banana" }),
+      JSON.stringify({ fruit: "orange" }),
+      JSON.stringify({ fruit: "apple" }),
+    ]);
   });
 
   test("picks with the mouse, saves it and reaches another tab", async ({

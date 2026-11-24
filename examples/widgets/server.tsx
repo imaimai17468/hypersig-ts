@@ -24,9 +24,6 @@ const origin = `http://127.0.0.1:${port}`;
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 const stylesheet = Bun.file(new URL("./style.css", import.meta.url));
 const cookie = "widgets-session";
-// The browser tests slow the fruit save down to see keys pressed while it is
-// in flight.
-const fruitSaveDelayMs = Number(Bun.env.FRUIT_SAVE_DELAY_MS ?? 0);
 
 const fruits = [
   { key: "apple", label: "Apple" },
@@ -91,7 +88,6 @@ const saveFruit = hypersig.action("save-fruit", {
   output: v.literal(true),
   authorize: () => true,
   async execute({ fruit }, { sessionId, session }) {
-    await Bun.sleep(fruitSaveDelayMs);
     if (session.fruit !== fruit) {
       session.fruit = fruit;
       await hypersig.publish(fruitChanged(sessionId));
@@ -214,8 +210,10 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
           {...on.keydown({
             Enter: openOrPick,
             " ": openOrPick,
-            // Tab moves focus on; an open list picks its active option first.
+            // Tab and Shift+Tab move focus on; an open list picks its active
+            // option first.
             Tab: when(c.open, pick),
+            "Shift+Tab": when(c.open, pick),
           })}
         >
           <div

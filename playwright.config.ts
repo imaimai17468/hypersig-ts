@@ -69,7 +69,7 @@ export default defineConfig({
     },
     {
       command: "bun examples/widgets/server.tsx",
-      env: { PORT: String(widgetsPort), FRUIT_SAVE_DELAY_MS: "300" },
+      env: { PORT: String(widgetsPort) },
       url: widgets + "/health",
     },
   ],
