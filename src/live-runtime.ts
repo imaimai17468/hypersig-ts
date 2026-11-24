@@ -69,6 +69,14 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    */
   maxStreamMs?: number;
   /**
+   * How many streams one session can hold open in this runtime (default 16).
+   * Opening one more closes the session's oldest stream, ending it as
+   * `maxStreamMs` does. The count is per process, not across instances, so
+   * applications and infrastructure should still rate-limit page renders and
+   * `/_hypersig/stream/*` requests.
+   */
+  maxStreamsPerSession?: number;
+  /**
    * Keys that seal page tokens, each 32 bytes in base64 or base64url. The first
    * key seals new tokens and every key opens them, so rotate by adding the new
    * key in front and removing the old one after a page lifetime. Without keys,
@@ -112,6 +120,7 @@ export function createLiveRuntime<
   reconcileIntervalMs,
   sendTimeoutMs = 30_000,
   maxStreamMs = 30 * 60_000,
+  maxStreamsPerSession = 16,
   pageKeys,
   pageContext = "",
   pageLifetimeMs = 12 * 60 * 60_000,
@@ -122,11 +131,12 @@ export function createLiveRuntime<
     throw new RangeError("Invalid Live View send timeout");
   if (!isTimerDelay(maxStreamMs))
     throw new RangeError("Invalid Live View stream duration");
+  if (!Number.isSafeInteger(maxStreamsPerSession) || maxStreamsPerSession < 1)
+    throw new RangeError("Invalid Live View stream limit per session");
   if (!Number.isSafeInteger(pageLifetimeMs) || pageLifetimeMs < 1)
     throw new RangeError("Invalid Live View page lifetime");
   const sealer = createPageSealer(pageKeys, pageContext);
-  // Closes the connection streaming each token, so a page has one stream per process.
-  const connections = new Map<string, () => void>();
+  const streams = createStreamRegistry(maxStreamsPerSession);
   const definitions = new Map<string, RegisteredView<User, Event, Markup>>();
   const registered = new WeakSet<object>();
   const registry: ViewRegistry<User, Event, Markup> = {
@@ -316,10 +326,16 @@ export function createLiveRuntime<
         status: "open",
         async connect(connection, refreshUser) {
           if (connection.signal.aborted) return;
-          connections.get(token)?.();
-          const close = () => connection.close();
-          connections.set(token, close);
-          const deadline = setTimeout(close, maxStreamMs);
+          const stream: OpenStream = {
+            token,
+            sessionId: claims.sessionId,
+            close: () => connection.close(),
+          };
+          for (const displaced of streams.add(stream)) {
+            streams.remove(displaced);
+            displaced.close();
+          }
+          const deadline = setTimeout(stream.close, maxStreamMs);
           let version = 0;
           try {
             await streamPage(
@@ -339,7 +355,7 @@ export function createLiveRuntime<
             );
           } finally {
             clearTimeout(deadline);
-            if (connections.get(token) === close) connections.delete(token);
+            streams.remove(stream);
           }
         },
       };
@@ -366,6 +382,49 @@ export function createLiveRuntime<
     }
     return { status: "rebuilt", views };
   }
+}
+
+interface OpenStream {
+  token: string;
+  sessionId: string;
+  close(this: void): void;
+}
+
+/**
+ * Tracks the open streams by page token, so a page has one stream per
+ * process, and by session, in the order they opened.
+ */
+function createStreamRegistry(maxStreamsPerSession: number) {
+  const byToken = new Map<string, OpenStream>();
+  const bySession = new Map<string, Set<OpenStream>>();
+  return {
+    /** Adds a stream and returns the streams it displaces, which the caller closes. */
+    add(stream: OpenStream): OpenStream[] {
+      const displaced: OpenStream[] = [];
+      const replaced = byToken.get(stream.token);
+      if (replaced) displaced.push(replaced);
+      byToken.set(stream.token, stream);
+      const session = bySession.get(stream.sessionId) ?? new Set();
+      bySession.set(stream.sessionId, session);
+      session.add(stream);
+      const remaining = [...session].filter(
+        (open) => !displaced.includes(open)
+      );
+      return [
+        ...displaced,
+        ...remaining.slice(
+          0,
+          Math.max(0, remaining.length - maxStreamsPerSession)
+        ),
+      ];
+    },
+    remove(stream: OpenStream) {
+      if (byToken.get(stream.token) === stream) byToken.delete(stream.token);
+      const session = bySession.get(stream.sessionId);
+      session?.delete(stream);
+      if (session?.size === 0) bySession.delete(stream.sessionId);
+    },
+  };
 }
 
 /** A whole number of milliseconds that `setTimeout` waits for without overflowing. */

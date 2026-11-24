@@ -1519,6 +1519,71 @@ it("ends a stream after maxStreamMs without a reset so the browser reconnects", 
     expect(() => counterRuntime(store, { maxStreamMs })).toThrow(RangeError);
 });
 
+it("closes a session's oldest stream beyond maxStreamsPerSession", async () => {
+  const store = { count: 0 };
+  const counter = counterRuntime(store);
+  const other = { sessionId: "other" };
+  async function connect(user: Principal, token?: string) {
+    const pageToken =
+      token ??
+      readToken(
+        await counter.runtime.renderPage(
+          user,
+          async (page, key) =>
+            streamToken(key) + (await page.view(counter.view, {}))
+        )
+      );
+    const page = await counter.runtime.openPage(pageToken, counterKeys, user);
+    if (page.status !== "open") throw new Error("Expected an open page");
+    const connection = recordingConnection();
+    const live = page.connect(connection, () => user);
+    return { token: pageToken, connection, live };
+  }
+  const isOpen = (stream: { connection: { signal: AbortSignal } }) =>
+    !stream.connection.signal.aborted;
+
+  const streams = [];
+  for (let index = 0; index < 16; index++) streams.push(await connect(viewer));
+  const foreign = await connect(other);
+  // Reconnecting a page replaces its stream instead of taking another slot.
+  const [oldest, second, third, fourth] = streams;
+  if (!oldest || !second || !third || !fourth)
+    throw new Error("Expected open streams");
+  const replacement = await connect(viewer, fourth.token);
+  await fourth.live;
+  expect(streams.filter(isOpen)).toHaveLength(15);
+  expect(isOpen(oldest)).toBe(true);
+
+  const seventeenth = await connect(viewer);
+  await expect(settlesWithin(oldest.live, 1_000)).resolves.toBe(true);
+  expect(oldest.connection.messages).not.toContain("reset");
+  expect(oldest.connection.messages).not.toContain("access-denied");
+  expect(isOpen(second)).toBe(true);
+  expect(isOpen(foreign)).toBe(true);
+
+  // A closed stream frees its slot.
+  second.connection.close();
+  await second.live;
+  const eighteenth = await connect(viewer);
+  expect(isOpen(third)).toBe(true);
+  expect(isOpen(eighteenth)).toBe(true);
+
+  for (const stream of [
+    ...streams,
+    foreign,
+    replacement,
+    seventeenth,
+    eighteenth,
+  ]) {
+    stream.connection.close();
+    await stream.live;
+  }
+  for (const maxStreamsPerSession of [0, 1.5])
+    expect(() => counterRuntime(store, { maxStreamsPerSession })).toThrow(
+      RangeError
+    );
+});
+
 it("opens a token only in the page context that sealed it", async () => {
   const store = { count: 0 };
   const diagnostics: LiveDiagnostic<CounterEvent>[] = [];
