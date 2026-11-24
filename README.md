@@ -31,12 +31,13 @@ mise exec -- bun run example:counter
 
 `http://127.0.0.1:3000` を2つのタブで開き、片方で **Increment main** を押すと、両方のカウンターが更新されます。[Counter の実装](examples/counter/server.tsx)
 
-| サンプル                                    | 起動コマンド                            | 見どころ                                                            |
-| ------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
-| [TodoMVC](examples/todomvc/server.tsx)      | `mise exec -- bun run example:todomvc`  | 押した操作がすぐ処理中として表示され、値は確定してから変わる        |
-| [共有メモ](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`     | 編集元の版と下書きの復元を、手書きの JavaScript なしで書く          |
-| [星評価](examples/rating/server.tsx)        | `mise exec -- bun run example:rating`   | カスタム要素の属性とイベントを型で書き、Live View の更新で子を残す  |
-| [並べ替え](examples/sortable/server.tsx)    | `mise exec -- bun run example:sortable` | React と dnd-kit の部品をカスタム要素として載せ、並べ替えを保存する |
+| サンプル                                    | 起動コマンド                            | 見どころ                                                                             |
+| ------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------ |
+| [TodoMVC](examples/todomvc/server.tsx)      | `mise exec -- bun run example:todomvc`  | 押した操作がすぐ処理中として表示され、値は確定してから変わる                         |
+| [共有メモ](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`     | 編集元の版と下書きの復元を、手書きの JavaScript なしで書く                           |
+| [星評価](examples/rating/server.tsx)        | `mise exec -- bun run example:rating`   | カスタム要素の属性とイベントを型で書き、Live View の更新で子を残す                   |
+| [並べ替え](examples/sortable/server.tsx)    | `mise exec -- bun run example:sortable` | React と dnd-kit の部品をカスタム要素として載せ、並べ替えを保存する                  |
+| [部品](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`  | コンボボックス、タブ、開閉パネル、文字数カウンター、トーストを Signal の文だけで書く |
 
 Counter と同時に起動する場合は、どちらかに `PORT=3001` を設定します。[Void での起動手順](examples/void/README.md) · [Workers への配備例](examples/void/worker/README.md)
 

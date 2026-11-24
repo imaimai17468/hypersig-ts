@@ -674,7 +674,8 @@ export interface SignalTimer {
    * Cancels the timer's reservation and reserves the statements to run `ms`
    * milliseconds later, so running it again counts from the last run. The
    * statements see the Action output and event detail of the statements that
-   * ran `after`. Throws a `RangeError` unless `ms` is a non-negative integer.
+   * ran `after`. Throws a `RangeError` unless `ms` is an integer from 0 to
+   * 2147483647 (2^31 - 1), the longest delay `setTimeout` keeps.
    */
   after(ms: number, stmts: Statements): StmtNode;
   /** Cancels the timer's reservation. Does nothing when there is none. */
@@ -699,8 +700,11 @@ export function timer(options?: { name?: string }): SignalTimer {
   return {
     after: (ms, stmts) => {
       if (!isDelay(ms)) {
+        // The guard narrows `ms` to `never` here, but a caller can still pass
+        // any number.
+        const delay: number = ms;
         throw new RangeError(
-          `Timer delay ${ms} must be a non-negative integer of milliseconds`
+          `Timer delay ${delay} must be an integer of milliseconds from 0 to 2147483647`
         );
       }
       return ["after", id, ms, listStmts(stmts)];

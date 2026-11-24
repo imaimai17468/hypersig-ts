@@ -115,6 +115,8 @@ it("validates nodes from untrusted attributes", () => {
   expect(isStmtNode(["after", "t-1", 500, [["toggle", ["a"]]]])).toBe(true);
   expect(isStmtNode(["after", "t-1", -1, []])).toBe(false);
   expect(isStmtNode(["after", "t-1", 1.5, []])).toBe(false);
+  expect(isStmtNode(["after", "t-1", 2_147_483_647, []])).toBe(true);
+  expect(isStmtNode(["after", "t-1", 2_147_483_648, []])).toBe(false);
   expect(isStmtNode(["after", "t-1", "500", []])).toBe(false);
   expect(isStmtNode(["after", 1, 500, []])).toBe(false);
   expect(isStmtNode(["after", "t-1", 500, [["bad"]]])).toBe(false);

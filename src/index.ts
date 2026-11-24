@@ -58,6 +58,7 @@ export type {
   Signal,
   SignalGroup,
   SignalRef,
+  SignalRefs,
   SignalScope,
   SignalTimer,
 } from "./signal.js";

@@ -1,7 +1,7 @@
 // The automatic JSX runtime that `<span {...props} />` compiles to.
 import { jsx } from "hono/jsx/jsx-runtime";
 import { expect, it } from "vite-plus/test";
-import type { Expr, Signal } from "./index.js";
+import type { Expr, Signal, SignalRefs } from "./index.js";
 import {
   lit,
   on,
@@ -352,7 +352,7 @@ it("renders roving focus attributes on the server", () => {
 });
 
 it("builds keyed refs that tell a key containing separators apart", () => {
-  const tabs = refs({ name: "tab" });
+  const tabs: SignalRefs = refs({ name: "tab" });
   const s = signals({ key: "b" }, { name: "keyed-focus" });
   expect(tabs.attr('a"b. c')).toEqual({
     "data-hs-ref": JSON.stringify(["tab-1", 'a"b. c']),
@@ -477,4 +477,12 @@ it("rejects a delay that is not a non-negative integer when after is called", ()
   expect(() => t.after(1.5, [])).toThrow(RangeError);
   expect(() => t.after(Number.NaN, [])).toThrow(RangeError);
   expect(() => t.after(Number.POSITIVE_INFINITY, [])).toThrow(RangeError);
+  // Browsers fire a setTimeout delay above 2^31 - 1 almost at once.
+  expect(() => t.after(2_147_483_648, [])).toThrow(RangeError);
+  expect(t.after(2_147_483_647, [])).toEqual([
+    "after",
+    "delay-1",
+    2_147_483_647,
+    [],
+  ]);
 });

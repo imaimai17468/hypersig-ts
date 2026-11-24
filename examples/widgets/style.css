@@ -1,0 +1,129 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+/* Widgets show and hide with the `hidden` attribute, which a `display` rule
+   below would otherwise override. */
+[hidden] {
+  display: none !important;
+}
+
+.widget {
+  margin-block: 1.5rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.5rem;
+}
+
+.widget h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+
+.combobox {
+  position: relative;
+  display: grid;
+  gap: 0.25rem;
+  max-width: 16rem;
+}
+
+.combobox-button {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  cursor: default;
+}
+
+.combobox-button::after {
+  content: " ▾";
+  float: right;
+}
+
+.listbox {
+  position: absolute;
+  top: 100%;
+  inset-inline: 0;
+  z-index: 1;
+  margin-top: 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  background: Canvas;
+}
+
+.option {
+  padding: 0.3rem 0.6rem;
+  cursor: default;
+}
+
+.option[aria-selected="true"] {
+  background: Highlight;
+  color: HighlightText;
+}
+
+.tablist {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid currentColor;
+}
+
+[role="tab"] {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+[role="tab"][aria-selected="true"] {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.tabpanel {
+  padding: 0.75rem 0;
+}
+
+.panel {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+#message-remaining {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.toast {
+  display: inline-block;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.25rem;
+  background: CanvasText;
+  color: Canvas;
+}
+
+textarea,
+input:not([type="checkbox"]) {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}

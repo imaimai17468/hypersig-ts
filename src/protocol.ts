@@ -380,9 +380,17 @@ function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
   }
 }
 
-/** Accepts the milliseconds a timer waits: a non-negative integer. */
-export function isDelay(value: unknown): boolean {
-  return Number.isInteger(value) && Number(value) >= 0;
+/** The longest delay `setTimeout` keeps; browsers fire a longer one at once. */
+const maxDelay = 2_147_483_647;
+
+/** Accepts the milliseconds a timer waits: an integer from 0 to 2^31 - 1. */
+export function isDelay(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= maxDelay
+  );
 }
 
 function isExprRecord(

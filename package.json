@@ -43,6 +43,7 @@
     "example:rating:browser": "bun build examples/rating/rating.ts --target=browser --outfile=examples/rating/dist/rating.js",
     "example:sortable": "bun run build && bun run example:sortable:browser && bun examples/sortable/server.tsx",
     "example:sortable:browser": "bun build examples/sortable/list.tsx --target=browser --production --outfile=examples/sortable/dist/list.js",
+    "example:widgets": "bun run build && bun examples/widgets/server.tsx",
     "test:browser": "bun run build && playwright test",
     "bench:phase4": "bun run build >&2 && node bench/run.ts"
   },
