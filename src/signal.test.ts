@@ -2,7 +2,7 @@
 import { jsx } from "hono/jsx/jsx-runtime";
 import { expect, it } from "vite-plus/test";
 import type { Expr, Signal } from "./index.js";
-import { lit, on, ref, signalFamily, signals, uuid } from "./index.js";
+import { lit, on, ref, refs, signalFamily, signals, uuid } from "./index.js";
 import { exprOf } from "./signal.js";
 
 it("renders evaluated values for the request", () => {
@@ -315,4 +315,51 @@ it("evaluates array and string expressions on signal values", () => {
   expect(p.bindText(p.index.clamp(0, 2)).children).toBe("2");
   const item: Signal<string> = signals({ s: "x" }, { name: "item" }).s;
   expect(p.items.at(0, item).node[0]).toBe("at");
+});
+
+it("renders roving focus attributes on the server", () => {
+  const s = signals(
+    { closed: false, open: true, id: "tab-b", index: 2 },
+    { name: "roving-attrs" }
+  );
+  const c = s.with({});
+  const shown = c.bindAttr({
+    hidden: s.closed,
+    "aria-selected": s.open,
+    "aria-activedescendant": s.id,
+    "aria-controls": s.id,
+    "aria-label": s.id,
+    tabindex: s.index,
+  });
+  expect(shown.hidden).toBeUndefined();
+  expect(shown["aria-selected"]).toBe("true");
+  expect(shown["aria-activedescendant"]).toBe("tab-b");
+  expect(shown["aria-controls"]).toBe("tab-b");
+  expect(shown["aria-label"]).toBe("tab-b");
+  expect(shown.tabindex).toBe("2");
+  expect(s.with({ closed: true }).bindAttr({ hidden: s.closed }).hidden).toBe(
+    true
+  );
+});
+
+it("builds keyed refs that tell a key containing separators apart", () => {
+  const tabs = refs({ name: "tab" });
+  const s = signals({ key: "b" }, { name: "keyed-focus" });
+  expect(tabs.attr('a"b. c')).toEqual({
+    "data-hs-ref": JSON.stringify(["tab-1", 'a"b. c']),
+  });
+  expect(tabs.attr("")).toEqual({
+    "data-hs-ref": JSON.stringify(["tab-1", ""]),
+  });
+  expect(tabs.focus("b")).toEqual(["focus-key", "tab-1", ["lit", "b"]]);
+  expect(tabs.focus(s.key)).toEqual([
+    "focus-key",
+    "tab-1",
+    ["sig", ["keyed-focus-1", "key"]],
+  ]);
+  // @ts-expect-error A refs name must be an identifier.
+  expect(() => refs({ name: "bad name" })).toThrow("Ref name");
+  const runtimeName: string = "also bad";
+  expect(() => refs({ name: runtimeName })).toThrow("Ref name");
+  expect(refs().attr("x")["data-hs-ref"]).toBe(JSON.stringify(["refs-1", "x"]));
 });

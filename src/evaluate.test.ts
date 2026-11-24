@@ -107,6 +107,10 @@ it("validates nodes from untrusted attributes", () => {
   expect(isStmtNode(["set", ["a"], ["lit", 1]])).toBe(true);
   expect(isStmtNode(["toggle", ["a"]])).toBe(true);
   expect(isStmtNode(["focus", "ref-1"])).toBe(true);
+  expect(isStmtNode(["focus-key", "ref-1", ["lit", "a"]])).toBe(true);
+  expect(isStmtNode(["focus-key", "ref-1"])).toBe(false);
+  expect(isStmtNode(["focus-key", 1, ["lit", "a"]])).toBe(false);
+  expect(isStmtNode(["focus-key", "ref-1", ["eval"]])).toBe(false);
   expect(
     isStmtNode([
       "call",

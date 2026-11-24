@@ -10,6 +10,7 @@ import {
   json,
   on,
   ref,
+  refs,
   signals,
   uuid,
 } from "./index.js";
@@ -1829,4 +1830,93 @@ it("writes the bound JSON attributes as JSON and leaves an unchanged one alone",
   expect(find("#list").getAttribute("items")).toBe('["a","b"]');
   expect(find("#list").getAttribute("label")).toBe('""');
   expect(changes).toEqual(["items", "label"]);
+});
+
+it("focuses the keyed ref whose key an expression computes", async () => {
+  const tabs = refs({ name: "runtime-tab" });
+  const s = signals({ key: "b" }, { name: "runtime-roving" });
+  const odd = 'a.b "c"';
+  const { page, find, click } = createPage(
+    render("button", { id: "a", ...tabs.attr("a") }) +
+      render("button", { id: "b", ...tabs.attr("b") }) +
+      render("button", { id: "odd", ...tabs.attr(odd) }) +
+      render("button", { id: "empty", ...tabs.attr("") }) +
+      render("button", {
+        id: "other",
+        ...refs({ name: "other-tab" }).attr("b"),
+      }) +
+      render("div", { ...s.with({}).init() }) +
+      render("button", { id: "go", ...on.click(tabs.focus(s.key)) }) +
+      render("button", {
+        id: "go-odd",
+        ...on.click(tabs.focus(odd)),
+      }) +
+      render("button", { id: "go-empty", ...on.click(tabs.focus("")) }) +
+      render("button", { id: "go-missing", ...on.click(tabs.focus("zzz")) }) +
+      render("button", {
+        id: "go-number",
+        ...on.click(tabs.focus(s.key.length())),
+      })
+  );
+  startSignals({ root: page });
+
+  click("#go");
+  expect(page.activeElement).toBe(find("#b"));
+  click("#go-odd");
+  expect(page.activeElement).toBe(find("#odd"));
+  click("#go-empty");
+  expect(page.activeElement).toBe(find("#empty"));
+  click("#go-missing");
+  expect(page.activeElement).toBe(find("#empty"));
+  click("#go-number");
+  expect(page.activeElement).toBe(find("#empty"));
+  await settle();
+});
+
+it("binds roving focus attributes in the browser", async () => {
+  const s = signals(
+    { closed: true, selected: false, id: "x", index: -1 },
+    { name: "runtime-attrs" }
+  );
+  const c = s.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...c.init(),
+      children: [
+        element("p", {
+          id: "p",
+          ...c.bindAttr({
+            hidden: s.closed,
+            "aria-selected": s.selected,
+            "aria-activedescendant": s.id,
+            "aria-controls": s.id,
+            "aria-label": s.id,
+            tabindex: s.index,
+          }),
+        }),
+        element("button", {
+          id: "flip",
+          ...on.click([
+            s.closed.set(false),
+            s.selected.set(true),
+            s.id.set("y"),
+            s.index.set(0),
+          ]),
+        }),
+      ],
+    })
+  );
+  startSignals({ root: page });
+  const p = find("#p");
+  expect(p.hasAttribute("hidden")).toBe(true);
+  expect(p.getAttribute("aria-selected")).toBe("false");
+  expect(p.getAttribute("tabindex")).toBe("-1");
+  click("#flip");
+  await settle();
+  expect(p.hasAttribute("hidden")).toBe(false);
+  expect(p.getAttribute("aria-selected")).toBe("true");
+  expect(p.getAttribute("aria-activedescendant")).toBe("y");
+  expect(p.getAttribute("aria-controls")).toBe("y");
+  expect(p.getAttribute("aria-label")).toBe("y");
+  expect(p.getAttribute("tabindex")).toBe("0");
 });

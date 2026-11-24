@@ -73,6 +73,7 @@ export type StmtNode =
   | ["set", SignalPath, ExprNode]
   | ["toggle", SignalPath]
   | ["focus", string]
+  | ["focus-key", refId: string, key: ExprNode]
   | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]];
 
 /** Marks a `data-hs-signals` entry as a default rather than an owned value. */
@@ -139,9 +140,15 @@ export const bindableAttributes = [
   "aria-hidden",
   "aria-invalid",
   "aria-busy",
+  "aria-activedescendant",
+  "aria-selected",
+  "aria-controls",
+  "aria-label",
+  "tabindex",
+  "hidden",
 ] as const;
 
-export const booleanAttributes = ["disabled", "checked"] as const;
+export const booleanAttributes = ["disabled", "checked", "hidden"] as const;
 
 const bindableAttributeNames: ReadonlySet<string> = new Set(bindableAttributes);
 
@@ -339,6 +346,12 @@ function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
       return value.length === 2 && isSignalPath(first);
     case "focus":
       return value.length === 2 && typeof first === "string";
+    case "focus-key":
+      return (
+        value.length === 3 &&
+        typeof first === "string" &&
+        isExprNodeAt(second, depth + 1)
+      );
     case "call":
       return (
         value.length === 5 &&

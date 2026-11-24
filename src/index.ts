@@ -40,7 +40,7 @@ export type {
   SharedValue,
   SnapshotRevision,
 } from "./live.js";
-export { lit, on, ref, signalFamily, signals, uuid } from "./signal.js";
+export { lit, on, ref, refs, signalFamily, signals, uuid } from "./signal.js";
 export type {
   Expr,
   Signal,

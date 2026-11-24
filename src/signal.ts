@@ -646,6 +646,28 @@ export function ref(options?: { name?: string }): SignalRef {
   };
 }
 
+export interface SignalRefs {
+  /** Marks an element as the one `focus(key)` reaches for this key. */
+  attr(key: string): { [signalAttributes.ref]: string };
+  /**
+   * Moves focus to the element marked with the key the expression evaluates to.
+   * Does nothing when no element has the key or the value is not a string.
+   */
+  focus(key: string | AnyExpr): StmtNode;
+}
+
+/** Names a family of elements that `focus(key)` picks among by a computed key. */
+export function refs<const Name extends string = never>(
+  options?: NameOption<Name>
+): SignalRefs;
+export function refs(options?: { name?: string }): SignalRefs {
+  const id = assignId("Ref", options?.name ?? "refs");
+  return {
+    attr: (key) => ({ [signalAttributes.ref]: JSON.stringify([id, key]) }),
+    focus: (key) => ["focus-key", id, nodeOf(key)],
+  };
+}
+
 function isStmtNodeValue(
   stmts: StmtNode | readonly StmtNode[]
 ): stmts is StmtNode {

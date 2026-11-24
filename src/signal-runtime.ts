@@ -507,12 +507,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
   }
 
-  function focusRef(id: string) {
+  /** Focuses the first element whose `data-hs-ref` is exactly `value`. */
+  function focusRef(value: string) {
     for (const element of findHandled<HTMLElement>(
       root,
       `[${signalAttributes.ref}]`
     )) {
-      if (element.getAttribute(signalAttributes.ref) === id) {
+      if (element.getAttribute(signalAttributes.ref) === value) {
         element.focus();
         return;
       }
@@ -577,6 +578,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         case "focus":
           focusRef(stmt[1]);
           break;
+        case "focus-key": {
+          const key = evaluate(stmt[2], runContext);
+          if (typeof key === "string") {
+            focusRef(JSON.stringify([stmt[1], key]));
+          }
+          break;
+        }
         case "call": {
           const [, url, input, onSuccess, onError] = stmt;
           const body: Record<string, JsonValue> = {};
