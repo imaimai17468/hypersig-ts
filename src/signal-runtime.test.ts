@@ -1199,8 +1199,11 @@ it("binds declared attributes on custom elements only", async () => {
             open: stars.open,
           }),
         }),
-        element("star-rating", { id: "hand", "data-hs-attr": handBound }),
-        element("div", { id: "plain", "data-hs-attr": handBound }),
+        element("star-rating", {
+          id: "hand",
+          "data-hs-element-attr": handBound,
+        }),
+        element("div", { id: "plain", "data-hs-element-attr": handBound }),
       ],
     })
   );
@@ -1388,4 +1391,28 @@ it("keeps children only for matching owned elements", () => {
   expect(runtime.keepsChildren(owned, find(".unowned"))).toBe(false);
   expect(runtime.keepsChildren(find(".unowned"), owned)).toBe(false);
   expect(runtime.keepsChildren(owned, find("other-rating"))).toBe(false);
+});
+
+it("renders bindAttr by name and bindElement by value type on one custom element", async () => {
+  const stars = signals(
+    { pressed: true, open: true },
+    { name: "custom-both" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("star-rating", {
+        id: "rating",
+        ...stars.bindAttr({ "aria-pressed": stars.pressed }),
+        ...stars.bindElement(rating, { open: stars.open }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  runtime.write(stars.pressed.path, false);
+  runtime.write(stars.open.path, false);
+  await settle();
+  expect(find("#rating").getAttribute("aria-pressed")).toBe("false");
+  expect(find("#rating").hasAttribute("open")).toBe(false);
 });

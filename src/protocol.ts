@@ -102,6 +102,8 @@ export const eventAttributes = {
 export const customElementAttributes = {
   onCustom: "data-hs-on-custom",
   ownsChildren: "data-hs-owns-children",
+  /** The declared attributes `bindElement` binds, rendered by value type. */
+  elementAttr: "data-hs-element-attr",
 } as const;
 
 export const bindableAttributes = [

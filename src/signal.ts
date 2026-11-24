@@ -13,6 +13,7 @@ import type {
 import type { bindableAttributes } from "./protocol.js";
 import {
   booleanAttributes,
+  customElementAttributes,
   defaultMark,
   eventAttributes,
   isBindableAttribute,
@@ -144,7 +145,9 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
   bindElement<Spec extends CustomElementSpec>(
     element: CustomElement<Spec>,
     values: ElementBindings<Spec["attributes"]>
-  ): Record<string, string | true> & { [signalAttributes.attr]: string };
+  ): Record<string, string | true> & {
+    [customElementAttributes.elementAttr]: string;
+  };
   bindValue(signal: Signal<string> | Signal<number> | Signal<boolean>): {
     [signalAttributes.bind]: string;
     value?: string;
@@ -479,7 +482,7 @@ function bindElementAttributes(
     if (typeof value !== "boolean") rendered[name] = formatText(value);
     else if (value) rendered[name] = true;
   }
-  rendered[signalAttributes.attr] = JSON.stringify(nodes);
+  rendered[customElementAttributes.elementAttr] = JSON.stringify(nodes);
   return rendered;
 }
 

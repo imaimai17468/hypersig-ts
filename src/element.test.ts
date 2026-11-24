@@ -54,7 +54,7 @@ it("binds declared attributes from a scope", () => {
   expect(e.bindElement(rating, { value: e.score, max: 5 })).toEqual({
     value: "3",
     max: "5",
-    "data-hs-attr": JSON.stringify({
+    "data-hs-element-attr": JSON.stringify({
       value: ["sig", ["rating-score-1", "score"]],
       max: ["lit", 5],
     }),
@@ -69,7 +69,7 @@ it("binds declared attributes from a scope", () => {
   ).toEqual({
     readonly: true,
     label: "good",
-    "data-hs-attr": JSON.stringify({
+    "data-hs-element-attr": JSON.stringify({
       readonly: ["sig", ["rating-score-1", "locked"]],
       label: [
         "if",
@@ -80,7 +80,7 @@ it("binds declared attributes from a scope", () => {
     }),
   });
   expect(e.bindElement(rating, { readonly: e.locked })).toEqual({
-    "data-hs-attr": JSON.stringify({
+    "data-hs-element-attr": JSON.stringify({
       readonly: ["sig", ["rating-score-1", "locked"]],
     }),
   });

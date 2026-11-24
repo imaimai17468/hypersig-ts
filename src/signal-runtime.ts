@@ -316,27 +316,26 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (value !== undefined) writeFromApp(binding.path, value);
   }
 
-  function renderAttributes(element: Element) {
-    const bindings = parseAttribute(element, signalAttributes.attr);
+  /** Reads a JSON object of expressions, or `undefined` when malformed. */
+  function readBindings(element: Element, name: string) {
+    const bindings = parseAttribute(element, name);
     if (
       typeof bindings !== "object" ||
       bindings === null ||
       Array.isArray(bindings)
     )
-      return;
-    const isCustom = isCustomElement(element);
-    for (const name of Object.keys(bindings)) {
-      const node: unknown = Reflect.get(bindings, name);
-      if (!isExprNode(node)) continue;
-      if (isCustom) {
-        if (!isBindableCustomAttribute(name)) continue;
-        // The same rule as `bindElement` on the server, so a `false` never
-        // becomes `="false"`.
-        const value = evaluate(node, context);
-        if (typeof value === "boolean") element.toggleAttribute(name, value);
-        else element.setAttribute(name, formatText(value));
-        continue;
-      }
+      return undefined;
+    const nodes: [string, ExprNode][] = [];
+    for (const key of Object.keys(bindings)) {
+      const node: unknown = Reflect.get(bindings, key);
+      if (isExprNode(node)) nodes.push([key, node]);
+    }
+    return nodes;
+  }
+
+  function renderAttributes(element: Element) {
+    for (const [name, node] of readBindings(element, signalAttributes.attr) ??
+      []) {
       if (!isBindableAttribute(name)) continue;
       const value = evaluate(node, context);
       if (booleanAttributeNames.has(name)) {
@@ -348,6 +347,18 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       } else {
         element.setAttribute(name, formatText(value));
       }
+    }
+  }
+
+  /** Renders `bindElement` attributes by value type, as the server does. */
+  function renderElementAttributes(element: Element) {
+    if (!isCustomElement(element)) return;
+    const bindings = readBindings(element, customElementAttributes.elementAttr);
+    for (const [name, node] of bindings ?? []) {
+      if (!isBindableCustomAttribute(name)) continue;
+      const value = evaluate(node, context);
+      if (typeof value === "boolean") element.toggleAttribute(name, value);
+      else element.setAttribute(name, formatText(value));
     }
   }
 
@@ -378,6 +389,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     for (const [event] of readCustomEventHandlers(element)) {
       if (events.has(event)) continue;
       events.add(event);
+      // Unlike a click, a custom event runs while the element's request is in
+      // flight: editors and pickers fire often, and skipping would lose input.
       element.addEventListener(event, (fired) => {
         const detail: unknown = "detail" in fired ? fired.detail : null;
         for (const [name, stmts] of readCustomEventHandlers(element)) {
@@ -410,6 +423,11 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
     for (const element of root.querySelectorAll(`[${signalAttributes.attr}]`)) {
       renderAttributes(element);
+    }
+    for (const element of root.querySelectorAll(
+      `[${customElementAttributes.elementAttr}]`
+    )) {
+      renderElementAttributes(element);
     }
     for (const element of root.querySelectorAll(`[${signalAttributes.bind}]`)) {
       renderValue(element);
