@@ -385,21 +385,38 @@ li:has(.row [data-hs-pending]) {
       を含み、小文字、数字、<code>-</code>、<code>.</code>、<code>_</code>
       だけを使います。型で検査できる部分は型が検査し、それ以外の文字は
       <code>customElement</code>
-      を呼んだときに検査するので、タグ名の打ち間違いは起動時のエラーになります。属性名は小文字で、<code
+      を呼んだときに検査するので、タグ名の打ち間違いは起動時のエラーになります。<code
+        >font-face</code
+      >
+      や <code>annotation-xml</code> のように HTML
+      が予約している名前も、同じように拒否します。属性名は小文字で、<code
         >on</code
       >
-      で始まる名前（<code>open</code> も含みます）、<code>style</code>、<code
-        >data-hs-*</code
-      >
+      で始まる名前（<code>once</code>
+      も含みます）、<code>style</code>、<code>id</code>、<code>data-hs-*</code>
       は使えません。イベント名は小文字で始め、小文字、数字、<code>-</code>、<code>.</code>、<code>:</code>、<code
         >_</code
       >
-      を使います。
+      を使います。ランタイムがすべての要素で扱う
+      <code>click</code>、<code>input</code>、<code>change</code>、<code
+        >submit</code
+      >
+      は使えません。型がこれらの名前を拒否し、手書きの
+      <code>data-hs-on-custom</code> にあってもランタイムは無視します。
     </dd>
     <dt><code>Element</code></dt>
     <dd>
       宣言したタグ名で要素を描画します。Hono JSX が名前を持つ HTML
-      属性、<code>role</code>、<code>part</code>、<code>exportparts</code>、<code>aria-*</code>、<code>data-*</code>、<code>children</code>、宣言した属性（固定値）を渡せます。要素には
+      属性、<code>role</code>、<code>part</code>、<code>exportparts</code>、<code>aria-*</code>、<code>data-*</code>、<code>children</code>、宣言した属性（固定値）を渡せます。<code
+        >true</code
+      >
+      は空の属性として描画し、<code>false</code> は属性を書きません。ただし
+      <code>aria-*</code
+      >、<code>data-*</code>、<code>draggable</code>、<code>spellcheck</code>、<code
+        >contenteditable</code
+      >
+      の真偽値は <code>"true"</code> または <code>"false"</code>
+      として描画します。要素には
       <code>id</code> を付け、一覧では要素ごとに別の
       <code>id</code> を付けてください。子を自分で描く要素は、タグと
       <code>id</code>
@@ -413,7 +430,11 @@ li:has(.row [data-hs-pending]) {
         >string</code
       >
       と <code>number</code> は文字列として、<code>boolean</code>
-      は属性の有無として書きます。<code>bindAttr</code>
+      は空の属性か属性なしとして書きます。値が変わったときだけ属性を書くので、ほかのシグナルが変わっても
+      <code>attributeChangedCallback</code> は呼ばれません。<code>id</code>
+      は束縛できません。子を自分で描く要素は <code>id</code>
+      が変わると作り直されるので、サーバーの描画で固定の
+      <code>id</code> を付けてください。<code>bindAttr</code>
       は束縛の項で説明した名前の一覧と <code>data-hs-attr</code>
       のままです。型は宣言したキーと値の型を検査しますが、余分なキーを持つ変数のオブジェクトを渡すと、そのキーも書かれます。実行時に検査するのは名前の規則だけです。
     </dd>
@@ -425,7 +446,11 @@ li:has(.row [data-hs-pending]) {
       を宣言した型の式として表します。1つの要素で複数のイベントを処理するときは、<code
         >element.on({ rate: ..., clear: ... })</code
       >
-      のように1つのオブジェクトで渡します。2つの結果を展開すると、あとのものだけが残ります。同じ要素のリクエストが送信中でもこれらのイベントは実行するので、続けて起きたイベントは捨てませんが、呼び出しが重なることがあります。リスナーは要素が挿入されたあとの次の描画から付くので、<code
+      のように1つのオブジェクトで渡します。2つの結果を展開すると、あとのものだけが残ります。ハンドラの中の
+      <code>call</code> は、<code>onSuccess</code> と
+      <code>onError</code> の文でも
+      <code>detail</code>
+      を使えます。同じ要素のリクエストが送信中でもこれらのイベントは実行するので、続けて起きたイベントは捨てませんが、呼び出しが重なることがあります。リスナーは要素が挿入されたあとの次の描画から付くので、<code
         >connectedCallback</code
       >
       の中で同期的に発火したイベントは何も実行しません。
@@ -437,7 +462,10 @@ li:has(.row [data-hs-pending]) {
       に書いた属性は、この更新ではランタイムに任せるので、要素が
       <code>attributeChangedCallback</code>
       でサーバーの一時的な値を見ることはありません。サーバーが変えるつもりだった束縛済みの属性は、ランタイムが同じ
-      tick のうちに描画し直すまで待ちます。
+      tick のうちに描画し直すまで待ちます。要素の JavaScript
+      はその子にユーザーの内容を描くことがあるので、ランタイムは子の中にある
+      hypersig の属性（束縛、<code>on.click</code>
+      などのハンドラ、スナップショット、値の束縛、ref、カスタムイベントのハンドラ）を無視します。これらは要素そのものか、要素の外に付けてください。
     </dd>
   </dl>
   <p><strong>スクリプトの読み込み方</strong></p>
@@ -465,7 +493,13 @@ li:has(.row [data-hs-pending]) {
     </li>
     <li>
       Live View
-      の更新は、適用する前にサニタイズします。カスタム要素に残るのは上の名前の規則を満たす属性だけで、拡張した組み込み要素（<code>is</code>）は受け付けません。
+      の更新は、適用する前にサニタイズします。カスタム要素には、DOMPurify
+      がどの要素にも許す属性、<code>data-*</code> と
+      <code>aria-*</code>、上の名前の規則を満たすその他の属性が残ります。URL
+      の値を検査するのは DOMPurify が許す属性だけなので、一覧にない属性には
+      <code>javascript:</code> の URL のような値もそのまま残ります。要素の
+      JavaScript
+      は、検査せずにその値をリンクとして使わないでください。拡張した組み込み要素（<code>is</code>）は受け付けません。
     </li>
   </ul>
 </section>

@@ -377,22 +377,31 @@ li:has(.row [data-hs-pending]) {
       letters, digits, <code>-</code>, <code>.</code>, and <code>_</code>. The
       type checks what it can, and the other characters are checked when
       <code>customElement</code> is called, so a typo in a tag name is an error
-      at startup. An attribute name must be lowercase and must not start with
-      <code>on</code> (this rejects <code>open</code> too), nor be
-      <code>style</code> or <code>data-hs-*</code>. An event name starts with a
-      lowercase letter and then has lowercase letters, digits, <code>-</code>,
-      <code>.</code>, <code>:</code>, or <code>_</code>.
+      at startup. The names HTML reserves, such as <code>font-face</code> and
+      <code>annotation-xml</code>, are rejected the same way. An attribute name
+      must be lowercase and must not start with <code>on</code> (this rejects
+      <code>once</code> too), nor be <code>style</code>, <code>id</code>, or
+      <code>data-hs-*</code>. An event name starts with a lowercase letter and
+      then has lowercase letters, digits, <code>-</code>, <code>.</code>,
+      <code>:</code>, or <code>_</code>. It cannot be <code>click</code>,
+      <code>input</code>, <code>change</code>, or <code>submit</code>, which the
+      runtime handles for every element; the type rejects these names, and the
+      runtime ignores them in a hand-written <code>data-hs-on-custom</code>.
     </dd>
     <dt><code>Element</code></dt>
     <dd>
       Renders the element with the declared tag name. It takes the HTML
       attributes Hono JSX names, <code>role</code>, <code>part</code>,
       <code>exportparts</code>, <code>aria-*</code>, <code>data-*</code>,
-      <code>children</code>, and the declared attributes as fixed values. Give
-      each element an <code>id</code>, and in a list give each one an
-      <code>id</code> of its own: a Live View update keeps an element that owns
-      its children only when the tag and the <code>id</code> match, and rebuilds
-      it otherwise.
+      <code>children</code>, and the declared attributes as fixed values. A
+      <code>true</code> value renders the attribute empty and
+      <code>false</code> leaves it out, except for <code>aria-*</code>,
+      <code>data-*</code>, <code>draggable</code>, <code>spellcheck</code>, and
+      <code>contenteditable</code>, whose booleans render as
+      <code>"true"</code> or <code>"false"</code>. Give each element an
+      <code>id</code>, and in a list give each one an <code>id</code> of its
+      own: a Live View update keeps an element that owns its children only when
+      the tag and the <code>id</code> match, and rebuilds it otherwise.
     </dd>
     <dt><code>scope.bindElement(element, values)</code></dt>
     <dd>
@@ -401,7 +410,12 @@ li:has(.row [data-hs-pending]) {
       <code>data-hs-element-attr</code> and keeps its own rule: it takes any
       declared name that passes the attribute rules above, and writes a
       <code>string</code> or <code>number</code> as text and a
-      <code>boolean</code> as a present or absent attribute.
+      <code>boolean</code> as an empty or absent attribute. It writes an
+      attribute only when its value changes, so
+      <code>attributeChangedCallback</code> does not run for changes to other
+      signals. <code>id</code> cannot be bound: an owned element whose
+      <code>id</code> changes is rebuilt, so give it a fixed <code>id</code>
+      from the server render.
       <code>bindAttr</code> keeps the name list and
       <code>data-hs-attr</code> described under Bindings. The type checks the
       declared keys and their value types, but an object from a variable that
@@ -414,10 +428,12 @@ li:has(.row [data-hs-pending]) {
       <code>detail</code> standing for the event's <code>detail</code> as an
       expression of the declared type. To handle several events on one element,
       pass one object, <code>element.on({ rate: ..., clear: ... })</code>;
-      spreading two results keeps only the later one. The runtime runs these
-      events even while a request from the same element is in flight, so rapid
-      events are not dropped and can send overlapping calls. It starts listening
-      on the next render after the element is inserted, so an event dispatched
+      spreading two results keeps only the later one. A <code>call</code> in the
+      handler can use <code>detail</code> in its <code>onSuccess</code> and
+      <code>onError</code> statements too. The runtime runs these events even
+      while a request from the same element is in flight, so rapid events are
+      not dropped and can send overlapping calls. It starts listening on the
+      next render after the element is inserted, so an event dispatched
       synchronously in <code>connectedCallback</code> runs nothing.
     </dd>
     <dt><code>ownsChildren</code></dt>
@@ -428,7 +444,10 @@ li:has(.row [data-hs-pending]) {
       during that update, so the element does not see a transient server value
       in <code>attributeChangedCallback</code>; a bound attribute the server
       meant to change waits for the runtime to render it again, within the same
-      tick.
+      tick. The runtime ignores hypersig attributes inside those children, such
+      as bindings, <code>on.click</code> handlers, snapshots, value bindings,
+      refs, and custom event handlers, because the element's JavaScript may
+      render user content there. Put them on the element itself or outside it.
     </dd>
   </dl>
   <p><strong>Loading the script</strong></p>
@@ -456,8 +475,13 @@ li:has(.row [data-hs-pending]) {
     </li>
     <li>
       A Live View update is sanitized before it is applied. A custom element
-      keeps only attributes that pass the name rules above, and customized
-      built-in elements (<code>is</code>) are not admitted.
+      keeps the attributes DOMPurify allows on any element,
+      <code>data-*</code> and <code>aria-*</code>, and other attributes that
+      pass the name rules above. Only DOMPurify's allowed attributes have their
+      URL values checked, so an attribute outside that list keeps any value,
+      such as a <code>javascript:</code> URL; the element's JavaScript must not
+      use it as a link without checking it. Customized built-in elements
+      (<code>is</code>) are not admitted.
     </li>
   </ul>
 </section>
