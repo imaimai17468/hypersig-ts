@@ -145,6 +145,66 @@ function numberAt(schema: JsonSchemaObject, key: string): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
+function rejectsEmptyString(property: JsonSchemaObject): boolean {
+  const minLength = numberAt(property, "minLength");
+  const choices = property["enum"];
+  return (
+    (minLength !== undefined && minLength >= 1) ||
+    typeof property["pattern"] === "string" ||
+    (Array.isArray(choices) && !choices.includes(""))
+  );
+}
+
+function endsWithUnescapedDollar(pattern: string): boolean {
+  if (!pattern.endsWith("$")) return false;
+  let backslashes = 0;
+  for (let i = pattern.length - 2; i >= 0 && pattern[i] === "\\"; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 0;
+}
+
+function hasTopLevelAlternation(pattern: string): boolean {
+  let classDepth = 0;
+  let groupDepth = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    const character = pattern[i];
+    if (character === "\\") i++;
+    else if (character === "[") classDepth++;
+    else if (character === "]" && classDepth > 0) classDepth--;
+    else if (classDepth > 0) continue;
+    else if (character === "(") groupDepth++;
+    else if (character === ")" && groupDepth > 0) groupDepth--;
+    else if (character === "|" && groupDepth === 0) return true;
+  }
+  return false;
+}
+
+function compilesAsPatternAttribute(pattern: string): boolean {
+  try {
+    new RegExp(`^(?:${pattern})$`, "v");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The browser wraps a `pattern` attribute as `^(?:pattern)$` with the `v`
+ * flag. A pattern is passed through only when that wrapping matches the same
+ * strings as the schema's own expression: anchored at both ends, with no
+ * top-level alternation, and valid under `v`.
+ */
+function isBrowserEquivalentPattern(pattern: string): boolean {
+  return (
+    pattern.startsWith("^") &&
+    endsWithUnescapedDollar(pattern) &&
+    !hasTopLevelAlternation(pattern) &&
+    compilesAsPatternAttribute(pattern)
+  );
+}
+
+/** Derived attributes never make the browser stricter than the server. */
 function deriveControl<Name extends string>(
   name: Name,
   schema: JsonSchemaObject
@@ -156,7 +216,8 @@ function deriveControl<Name extends string>(
   if (
     Array.isArray(required) &&
     required.includes(name) &&
-    property["type"] !== "boolean"
+    property["type"] !== "boolean" &&
+    rejectsEmptyString(property)
   ) {
     control.required = true;
   }
@@ -167,7 +228,7 @@ function deriveControl<Name extends string>(
   const pattern = property["pattern"];
   if (minLength !== undefined) control.minLength = minLength;
   if (maxLength !== undefined) control.maxLength = maxLength;
-  if (typeof pattern === "string" && /^\^.*\$$/s.test(pattern)) {
+  if (typeof pattern === "string" && isBrowserEquivalentPattern(pattern)) {
     control.pattern = pattern;
   }
   if (min !== undefined) control.min = min;
@@ -181,10 +242,12 @@ type ControlMethods<Schema, Wire> = Schema extends StandardJSONSchemaV1
       /**
        * Attributes for the input named `name`, derived from the input schema's
        * JSON Schema: `required`, `minLength`, `maxLength`, `min`, `max`, and
-       * a `pattern` that starts with `^` and ends with `$`. The schema is
-       * converted on the first call; a conversion error names this Action.
-       * Only a top-level object schema is read. Anything else yields `name`
-       * alone.
+       * `pattern`. None makes the browser stricter than the server:
+       * `required` appears only when the schema rejects the empty string, and
+       * `pattern` only when it is anchored with `^` and `$`, has no top-level
+       * `|`, and is valid under the `v` flag. The schema is converted on the
+       * first call; a conversion error names this Action. Only a top-level
+       * object schema is read. Anything else yields `name` alone.
        */
       control<Name extends FormFieldName<Wire>>(name: Name): FieldControl<Name>;
     }

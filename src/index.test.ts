@@ -675,7 +675,7 @@ function controlHypersig(libraryOptions?: Record<string, unknown>) {
   });
 }
 
-const ignoreUnsupported = { errorMode: "ignore" };
+const ignoreUnsupported = { ignoreActions: ["trim"] };
 
 it("derives control attributes from the input schema", () => {
   const todo = controlHypersig(ignoreUnsupported).action("todo", {
@@ -705,16 +705,74 @@ it("derives control attributes from the input schema", () => {
     pattern: "^[0-9]+$",
   });
   expect(todo.control("loose")).toEqual({ name: "loose", required: true });
-  expect(todo.control("count")).toEqual({
-    name: "count",
-    required: true,
-    min: 1,
-    max: 5,
-  });
+  expect(todo.control("count")).toEqual({ name: "count", min: 1, max: 5 });
   expect(todo.control("note")).toEqual({ name: "note" });
   expect(todo.control("done")).toEqual({ name: "done" });
   // @ts-expect-error The schema has no field named "titel".
   todo.control("titel");
+});
+
+it("requires a field only when its schema rejects the empty string", () => {
+  const choose = controlHypersig().action("required-rule", {
+    input: toStandardJsonSchema(
+      v.object({
+        any: v.string(),
+        filled: v.pipe(v.string(), v.minLength(1)),
+        choice: v.picklist(["a", "b"]),
+        blankable: v.picklist(["", "a"]),
+      })
+    ),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(choose.control("any")).toEqual({ name: "any" });
+  expect(choose.control("filled")).toEqual({
+    name: "filled",
+    required: true,
+    minLength: 1,
+  });
+  expect(choose.control("choice")).toEqual({ name: "choice", required: true });
+  expect(choose.control("blankable")).toEqual({ name: "blankable" });
+});
+
+it("emits only patterns the browser checks exactly as the server does", () => {
+  const match = controlHypersig().action("pattern-rule", {
+    input: toStandardJsonSchema(
+      v.object({
+        alternation: v.pipe(v.string(), v.regex(/^a|b$/)),
+        escapedDollar: v.pipe(v.string(), v.regex(/^a\$/)),
+        invalidUnderV: v.pipe(v.string(), v.regex(/^[a-z-]+$/)),
+        grouped: v.pipe(v.string(), v.regex(/^(a|b)$/)),
+        digits: v.pipe(v.string(), v.regex(/^[0-9]+$/)),
+      })
+    ),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(match.control("alternation")).toEqual({
+    name: "alternation",
+    required: true,
+  });
+  expect(match.control("escapedDollar")).toEqual({
+    name: "escapedDollar",
+    required: true,
+  });
+  expect(match.control("invalidUnderV")).toEqual({
+    name: "invalidUnderV",
+    required: true,
+  });
+  expect(match.control("grouped")).toEqual({
+    name: "grouped",
+    required: true,
+    pattern: "^(a|b)$",
+  });
+  expect(match.control("digits")).toEqual({
+    name: "digits",
+    required: true,
+    pattern: "^[0-9]+$",
+  });
 });
 
 it("offers control() only when the input schema converts to JSON Schema", () => {
@@ -762,6 +820,39 @@ it("converts the schema once", () => {
 it("reads only object schemas", () => {
   const action = controlHypersig().action("scalar", {
     input: fakeSchema(() => ({ type: "string" })) as ReturnType<
+      typeof toStandardJsonSchema<
+        v.ObjectSchema<{ x: v.StringSchema<undefined> }, undefined>
+      >
+    >,
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(action.control("x")).toEqual({ name: "x" });
+});
+
+it("returns only the name when the converter yields no object", () => {
+  const input = toStandardJsonSchema(v.object({ x: v.string() }));
+  // The converter's type promises an object, so only a runtime swap yields null.
+  Object.defineProperty(input["~standard"].jsonSchema, "input", {
+    value: () => null,
+  });
+  const action = controlHypersig().action("not-object", {
+    input,
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(action.control("x")).toEqual({ name: "x" });
+});
+
+it("returns only the name for a field the properties do not describe", () => {
+  const action = controlHypersig().action("missing-property", {
+    input: fakeSchema(() => ({
+      type: "object",
+      properties: { y: { type: "string", minLength: 1 } },
+      required: ["x", "y"],
+    })) as ReturnType<
       typeof toStandardJsonSchema<
         v.ObjectSchema<{ x: v.StringSchema<undefined> }, undefined>
       >
