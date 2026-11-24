@@ -1920,3 +1920,281 @@ it("binds roving focus attributes in the browser", async () => {
   expect(p.getAttribute("aria-label")).toBe("y");
   expect(p.getAttribute("tabindex")).toBe("0");
 });
+
+interface KeyPress {
+  key: string;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+  isComposing?: boolean;
+}
+
+/** Dispatches a `keydown` from the page's frame and reports whether it was prevented. */
+function press(target: Element, init: KeyPress): boolean {
+  const view = target.ownerDocument.defaultView;
+  if (!view) throw new Error("The element has no window");
+  const event = new view.KeyboardEvent("keydown", {
+    ...init,
+    bubbles: true,
+    cancelable: true,
+  });
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+it("runs the statements of a mapped key and prevents its default except for Tab", () => {
+  const s = signals({ active: 0, tabs: 0, spaces: 0 }, { name: "keys" }).with(
+    {}
+  );
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({
+        ArrowDown: s.active.set(s.active.add(1)),
+        Tab: [s.tabs.set(s.tabs.add(1))],
+        "Shift+Tab": [s.tabs.set(s.tabs.add(10))],
+        " ": [s.spaces.set(s.spaces.add(1))],
+      }),
+      children: element("input", { id: "field" }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const field = find("#field");
+
+  expect(press(field, { key: "ArrowDown" })).toBe(true);
+  expect(runtime.read(s.active.path)).toBe(1);
+  expect(press(field, { key: " " })).toBe(true);
+  expect(runtime.read(s.spaces.path)).toBe(1);
+  expect(press(field, { key: "Tab" })).toBe(false);
+  expect(press(field, { key: "Tab", shiftKey: true })).toBe(false);
+  expect(runtime.read(s.tabs.path)).toBe(11);
+  expect(press(field, { key: "ArrowUp" })).toBe(false);
+  expect(runtime.read(s.active.path)).toBe(1);
+});
+
+it("matches a key only when the pressed modifiers are exactly the mapped ones", () => {
+  const s = signals({ enter: 0, back: 0, all: 0 }, { name: "modifiers" }).with(
+    {}
+  );
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({
+        Enter: s.enter.set(s.enter.add(1)),
+        "Shift+Tab": s.back.set(s.back.add(1)),
+        "Control+Alt+Shift+Meta+K": s.all.set(s.all.add(1)),
+      }),
+      children: element("button", { id: "target" }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const target = find("#target");
+
+  expect(press(target, { key: "Enter", shiftKey: true })).toBe(false);
+  expect(press(target, { key: "Enter", ctrlKey: true })).toBe(false);
+  expect(press(target, { key: "Enter", altKey: true })).toBe(false);
+  expect(press(target, { key: "Enter", metaKey: true })).toBe(false);
+  expect(runtime.read(s.enter.path)).toBe(0);
+  expect(press(target, { key: "Enter" })).toBe(true);
+  expect(runtime.read(s.enter.path)).toBe(1);
+
+  press(target, { key: "Tab" });
+  press(target, { key: "Tab", shiftKey: true, ctrlKey: true });
+  expect(runtime.read(s.back.path)).toBe(0);
+  press(target, { key: "Tab", shiftKey: true });
+  expect(runtime.read(s.back.path)).toBe(1);
+
+  const allButMeta = { ctrlKey: true, altKey: true, shiftKey: true };
+  expect(press(target, { key: "K", ...allButMeta })).toBe(false);
+  expect(press(target, { key: "K", ...allButMeta, metaKey: true })).toBe(true);
+  expect(runtime.read(s.all.path)).toBe(1);
+});
+
+it("passes a key the nearest map lacks to the next map outward", () => {
+  const s = signals(
+    { inner: 0, outer: 0, escaped: 0 },
+    { name: "nested-keys" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({
+        Enter: s.outer.set(s.outer.add(1)),
+        Escape: s.escaped.set(s.escaped.add(1)),
+      }),
+      children: element("div", {
+        id: "plain",
+        children: element("div", {
+          ...on.keydown({ Enter: s.inner.set(s.inner.add(1)) }),
+          children: element("button", { id: "target" }),
+        }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  expect(press(find("#target"), { key: "Enter" })).toBe(true);
+  expect(runtime.read(s.inner.path)).toBe(1);
+  expect(runtime.read(s.outer.path)).toBe(0);
+  expect(press(find("#target"), { key: "Escape" })).toBe(true);
+  expect(runtime.read(s.escaped.path)).toBe(1);
+  press(find("#plain"), { key: "Enter" });
+  expect(runtime.read(s.outer.path)).toBe(1);
+});
+
+it("ignores keys pressed while an IME is composing and malformed key entries", () => {
+  const s = signals({ count: 0 }, { name: "composing" }).with({});
+  const count = s.count.set(s.count.add(1));
+  const valid = on.keydown({ Enter: count })["data-hs-on-keydown"];
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      "data-hs-on-keydown": valid,
+      children: element("div", {
+        // Hand-written entries: a key that is not a string, a pair with a
+        // malformed statement, an entry of the wrong length, and a valid one.
+        "data-hs-on-keydown": JSON.stringify([
+          [1, []],
+          ["Escape", [["nope"]]],
+          ["a"],
+          ["b", [], 1],
+          ["Home", [count]],
+        ]),
+        children: element("div", {
+          "data-hs-on-keydown": "not json",
+          children: element("button", { id: "target" }),
+        }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const target = find("#target");
+
+  expect(press(target, { key: "Enter", isComposing: true })).toBe(false);
+  expect(runtime.read(s.count.path)).toBe(0);
+  expect(press(target, { key: "Escape" })).toBe(false);
+  expect(press(target, { key: "Home" })).toBe(true);
+  expect(runtime.read(s.count.path)).toBe(1);
+  expect(press(target, { key: "Enter" })).toBe(true);
+  expect(runtime.read(s.count.path)).toBe(2);
+});
+
+it("ignores key maps inside owned children", () => {
+  const s = signals({ owned: 0, outer: 0 }, { name: "owned-keys" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({ Enter: s.outer.set(s.outer.add(1)) }),
+      children: element("star-rating", {
+        "data-hs-owns-children": "",
+        children: element("div", {
+          ...on.keydown({ Enter: s.owned.set(100) }),
+          children: element("button", { id: "target" }),
+        }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  expect(press(find("#target"), { key: "Enter" })).toBe(true);
+  expect(runtime.read(s.owned.path)).toBe(0);
+  expect(runtime.read(s.outer.path)).toBe(1);
+});
+
+/** A menu between two outside buttons that counts focus moving in and out. */
+function createFocusPage() {
+  const s = signals({ entered: 0, left: 0 }, { name: "focus-menu" }).with({});
+  const created = createPage(
+    render("div", {
+      ...s.init(),
+      children: [
+        element("button", { id: "before" }),
+        element("div", {
+          id: "menu",
+          ...on.focusEnter(s.entered.set(s.entered.add(1))),
+          ...on.focusLeave(s.left.set(s.left.add(1))),
+          ...on.keydown({
+            Enter: bump.call({ count: s.entered }),
+          }),
+          children: [
+            element("button", { id: "first" }),
+            element("div", {
+              id: "nested",
+              children: element("span", { id: "option", tabindex: "-1" }),
+            }),
+          ],
+        }),
+        element("button", { id: "after" }),
+      ],
+    })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: created.page, send: sender.send });
+  const focus = (selector: string) => created.find(selector).focus();
+  const counts = () => [
+    runtime.read(s.entered.path),
+    runtime.read(s.left.path),
+  ];
+  return { ...created, ...sender, runtime, focus, counts };
+}
+
+it("runs focus enter and leave only when focus crosses the element's edge", () => {
+  const { focus, counts } = createFocusPage();
+
+  focus("#before");
+  expect(counts()).toEqual([0, 0]);
+  focus("#first");
+  expect(counts()).toEqual([1, 0]);
+  // A click on an option with tabindex="-1" moves focus to it inside.
+  focus("#option");
+  focus("#first");
+  expect(counts()).toEqual([1, 0]);
+  focus("#after");
+  expect(counts()).toEqual([1, 1]);
+  focus("#option");
+  expect(counts()).toEqual([2, 1]);
+});
+
+it("treats focus going nowhere as leaving only while the page has focus", () => {
+  const { page, find, focus, counts } = createFocusPage();
+  const hasFocus = vi.spyOn(page, "hasFocus");
+
+  focus("#first");
+  expect(counts()).toEqual([1, 0]);
+  // Switching windows or tabs blurs the element without a related target.
+  hasFocus.mockReturnValue(false);
+  find("#first").blur();
+  expect(counts()).toEqual([1, 0]);
+  // Coming back focuses it again from nowhere, which is not entering.
+  hasFocus.mockReturnValue(true);
+  focus("#first");
+  expect(counts()).toEqual([1, 0]);
+
+  // A click on something that cannot take focus leaves focus on nothing.
+  find("#first").blur();
+  expect(counts()).toEqual([1, 1]);
+  focus("#option");
+  expect(counts()).toEqual([2, 1]);
+});
+
+it("runs no key or focus statements on an element while it is sending", async () => {
+  const { find, focus, counts, requests, request } = createFocusPage();
+
+  focus("#first");
+  expect(press(find("#first"), { key: "Enter" })).toBe(true);
+  expect(requests).toHaveLength(1);
+  // Pressing Enter again does not send twice, and focus moves run nothing.
+  expect(press(find("#first"), { key: "Enter" })).toBe(true);
+  focus("#after");
+  focus("#first");
+  expect(requests).toHaveLength(1);
+  expect(counts()).toEqual([1, 0]);
+
+  request(0).respond({ ok: true, data: 1 });
+  await settle();
+  focus("#after");
+  expect(counts()).toEqual([1, 1]);
+  press(find("#first"), { key: "Enter" });
+  expect(requests).toHaveLength(2);
+});

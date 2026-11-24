@@ -686,6 +686,90 @@ export function serializeStmts(stmts: StmtNode | readonly StmtNode[]): string {
 
 type Statements = StmtNode | readonly StmtNode[];
 
+const namedKeys = [
+  "Enter",
+  "Escape",
+  "Tab",
+  " ",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Backspace",
+  "Delete",
+] as const;
+
+/** The `KeyboardEvent.key` values with a name that `on.keydown` accepts. */
+export type NamedKey = (typeof namedKeys)[number];
+
+const namedKeySet: ReadonlySet<string> = new Set(namedKeys);
+
+type IsOneCharacter<Text extends string> = Text extends `${string}${infer Rest}`
+  ? Text extends ""
+    ? false
+    : Rest extends ""
+      ? true
+      : false
+  : false;
+
+/** Resolves to `Key` when it is a named key or one character, else `never`. */
+export type KeyName<Key extends string> = Key extends NamedKey
+  ? Key
+  : IsOneCharacter<Key> extends true
+    ? Key
+    : never;
+
+/** The modifiers in the one order a key combination writes them. */
+type ModifierOrder = ["Control", "Alt", "Shift", "Meta"];
+
+type WithoutModifiers<
+  Text extends string,
+  Order extends readonly string[] = ModifierOrder,
+> = Order extends readonly [
+  infer Modifier extends string,
+  ...infer Rest extends readonly string[],
+]
+  ? Text extends `${Modifier}+${infer After}`
+    ? After extends ""
+      ? Text
+      : WithoutModifiers<After, Rest>
+    : WithoutModifiers<Text, Rest>
+  : Text;
+
+/**
+ * Accepts a key name after any of `Control+`, `Alt+`, `Shift+` and `Meta+`
+ * in that order, such as `"Shift+Tab"`, and resolves to a message type
+ * otherwise. A `string` that is not a literal passes, and `on.keydown`
+ * checks it when called.
+ */
+export type KeyCombination<Key extends string> = string extends Key
+  ? Key
+  : [KeyName<WithoutModifiers<Key>>] extends [never]
+    ? "Use a named key or one character, after modifiers in the order Control, Alt, Shift, Meta"
+    : Key;
+
+type KeyMap = { readonly [key: string]: Statements };
+
+type CheckedKeyMap<Keys extends KeyMap> = {
+  readonly [Key in keyof Keys]: Key extends string
+    ? KeyCombination<Key> extends Key
+      ? Statements
+      : KeyCombination<Key>
+    : never;
+};
+
+const keyCombinationPattern =
+  /^(?:Control\+)?(?:Alt\+)?(?:Shift\+)?(?:Meta\+)?(.+)$/s;
+
+function isKeyCombination(key: string): boolean {
+  const name = keyCombinationPattern.exec(key)?.[1];
+  return name !== undefined && (namedKeySet.has(name) || name.length === 1);
+}
+
 /** Runs statements in order when the element receives the event. */
 export const on = {
   click: (stmts: Statements) => ({
@@ -696,5 +780,45 @@ export const on = {
   }),
   change: (stmts: Statements) => ({
     [eventAttributes.change]: serializeStmts(stmts),
+  }),
+  /**
+   * Runs the statements of the pressed key, checked from the focused element
+   * outward through each enclosing key map until one has the key. The pressed
+   * modifiers must be exactly the ones the key names, and a key is the
+   * `KeyboardEvent.key` value, so Shift with `a` is `"Shift+A"`. A handled key
+   * does not do its default action, except `Tab` and `Shift+Tab`. Keys pressed
+   * while an IME is composing, or while the element's Action is in flight,
+   * run nothing. Throws for a name `KeyCombination` rejects, which a computed
+   * `string` key can carry past the types.
+   */
+  keydown: <const Keys extends KeyMap>(map: Keys & CheckedKeyMap<Keys>) => {
+    const entries = Object.entries(map).map(([key, stmts]) => {
+      if (!isKeyCombination(key)) {
+        throw new Error(
+          `${JSON.stringify(key)} is not a key name after modifiers in the order Control, Alt, Shift, Meta`
+        );
+      }
+      return [key, listStmts(stmts)];
+    });
+    return { [eventAttributes.keydown]: JSON.stringify(entries) };
+  },
+  /**
+   * Runs when focus moves to the element or into it from outside, but not
+   * when it moves within it, or comes back to the page after a window or tab
+   * switch.
+   */
+  focusEnter: (stmts: Statements) => ({
+    [eventAttributes.focusEnter]: serializeStmts(stmts),
+  }),
+  /**
+   * Runs when focus moves from inside the element to outside it, including
+   * to nothing while the page keeps focus, such as a click on text. It does
+   * not run when focus moves within the element, or when the page loses
+   * focus to another window or tab. A click on a child that cannot take
+   * focus moves focus to nothing, so give children a user clicks
+   * `tabindex="-1"`.
+   */
+  focusLeave: (stmts: Statements) => ({
+    [eventAttributes.focusLeave]: serializeStmts(stmts),
   }),
 };

@@ -207,7 +207,8 @@ function isSnapshotEntry(entry: unknown): entry is SnapshotEntry {
   );
 }
 
-type CustomEventHandler = [event: string, stmts: StmtNode[]];
+/** An entry of a custom event map or a key map. */
+type NamedHandler = [name: string, stmts: StmtNode[]];
 
 /** Reads a JSON array of names, ignoring entries that are not strings. */
 function readNames(element: Element, name: string): ReadonlySet<string> {
@@ -225,21 +226,43 @@ function writeAttribute(element: Element, name: string, value: string) {
   if (element.getAttribute(name) !== value) element.setAttribute(name, value);
 }
 
-function isCustomEventHandler(entry: unknown): entry is CustomEventHandler {
+function isNamedHandler(entry: unknown): entry is NamedHandler {
   return (
     Array.isArray(entry) &&
     entry.length === 2 &&
     typeof entry[0] === "string" &&
-    isCustomEventName(entry[0]) &&
     isStmtList(entry[1])
   );
 }
 
-/** Ignores each malformed entry and keeps the others. */
-function readCustomEventHandlers(element: Element): CustomEventHandler[] {
-  const value = parseAttribute(element, customElementAttributes.onCustom);
-  return Array.isArray(value) ? value.filter(isCustomEventHandler) : [];
+/** Reads `[name, statements]` pairs, ignoring each malformed entry. */
+function readNamedHandlers(element: Element, name: string): NamedHandler[] {
+  const value = parseAttribute(element, name);
+  return Array.isArray(value) ? value.filter(isNamedHandler) : [];
 }
+
+function readCustomEventHandlers(element: Element): NamedHandler[] {
+  return readNamedHandlers(element, customElementAttributes.onCustom).filter(
+    ([name]) => isCustomEventName(name)
+  );
+}
+
+/**
+ * Writes the pressed key the way a key map names it, with the modifiers in
+ * the order Control, Alt, Shift, Meta.
+ */
+function formatKeyCombination(event: KeyboardEvent): string {
+  return (
+    (event.ctrlKey ? "Control+" : "") +
+    (event.altKey ? "Alt+" : "") +
+    (event.shiftKey ? "Shift+" : "") +
+    (event.metaKey ? "Meta+" : "") +
+    event.key
+  );
+}
+
+/** Keys whose default action moves focus, which a key map leaves to the browser. */
+const focusMovingKeys: ReadonlySet<string> = new Set(["Tab", "Shift+Tab"]);
 
 function isCustomElement(element: Element): boolean {
   return isCustomElementName(element.localName);
@@ -277,6 +300,15 @@ function findHandler(target: Element, selector: string): HTMLElement | null {
     handler = handler.parentElement?.closest<HTMLElement>(selector) ?? null;
   }
   return handler;
+}
+
+/** Finds the next handler outward from `handler`, as `findHandler` does. */
+function findOuterHandler(
+  handler: Element,
+  selector: string
+): HTMLElement | null {
+  const parent = handler.parentElement;
+  return parent && findHandler(parent, selector);
 }
 
 function readSnapshot(element: Element): SnapshotEntry[] {
@@ -635,6 +667,69 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       }
     });
   }
+
+  const keySelector = `[${eventAttributes.keydown}]`;
+  root.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if (event.isComposing || !isElement(target)) return;
+    const key = formatKeyCombination(event);
+    for (
+      let handler = findHandler(target, keySelector);
+      handler;
+      handler = findOuterHandler(handler, keySelector)
+    ) {
+      const entry = readNamedHandlers(handler, eventAttributes.keydown).find(
+        ([name]) => name === key
+      );
+      if (!entry) continue;
+      if (!focusMovingKeys.has(key)) event.preventDefault();
+      // Like a click, a key does not repeat the writes and calls of a handler
+      // whose Action is in flight, such as a second Enter.
+      if (!isSending(handler)) run(entry[1], handler);
+      return;
+    }
+  });
+
+  /**
+   * Runs the `attribute` statements of each handler from `inside` outward
+   * that does not contain `outside`, the element on the other side of the
+   * focus move.
+   */
+  function runFocusHandlers(
+    attribute: string,
+    inside: Element,
+    outside: Element | null
+  ) {
+    const selector = `[${attribute}]`;
+    for (
+      let handler = findHandler(inside, selector);
+      handler && !(outside && handler.contains(outside));
+      handler = findOuterHandler(handler, selector)
+    ) {
+      if (!isSending(handler)) run(readStmts(handler, attribute), handler);
+    }
+  }
+
+  // The element that last had focus, kept while the page loses focus to
+  // another window or tab, so focus coming back to it is not entering.
+  let lastFocused: Element | null = root.activeElement;
+  root.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!isElement(target)) return;
+    const from = isElement(event.relatedTarget)
+      ? event.relatedTarget
+      : lastFocused;
+    lastFocused = target;
+    runFocusHandlers(eventAttributes.focusEnter, target, from);
+  });
+  root.addEventListener("focusout", (event) => {
+    const target = event.target;
+    if (!isElement(target)) return;
+    const to = isElement(event.relatedTarget) ? event.relatedTarget : null;
+    if (!to && !root.hasFocus()) return;
+    lastFocused = to;
+    runFocusHandlers(eventAttributes.focusLeave, target, to);
+  });
 
   // The event fires before the form resets its fields and the reset fires no
   // input events, so the fields are read after the event.

@@ -43,6 +43,9 @@ export type {
 export { lit, on, ref, refs, signalFamily, signals, uuid } from "./signal.js";
 export type {
   Expr,
+  KeyCombination,
+  KeyName,
+  NamedKey,
   Signal,
   SignalGroup,
   SignalRef,

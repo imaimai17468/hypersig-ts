@@ -110,6 +110,10 @@ export const eventAttributes = {
   click: "data-hs-on-click",
   input: "data-hs-on-input",
   change: "data-hs-on-change",
+  /** A JSON array of `[key, statements]` pairs. */
+  keydown: "data-hs-on-keydown",
+  focusEnter: "data-hs-on-focus-enter",
+  focusLeave: "data-hs-on-focus-leave",
 } as const;
 
 /** Attributes that connect a custom element to the browser runtime. */

@@ -363,3 +363,59 @@ it("builds keyed refs that tell a key containing separators apart", () => {
   expect(() => refs({ name: runtimeName })).toThrow("Ref name");
   expect(refs().attr("x")["data-hs-ref"]).toBe(JSON.stringify(["refs-1", "x"]));
 });
+
+it("writes key maps and focus handlers as statements per key", () => {
+  const s = signals({ active: 0, open: false }, { name: "key-map" }).with({});
+  const down = s.active.set(s.active.add(1));
+  expect(
+    on.keydown({
+      ArrowDown: down,
+      "Shift+Tab": [s.open.set(false)],
+      "Control+Alt+Shift+Meta+k": [],
+      a: [],
+      "Shift++": [],
+      " ": [],
+      あ: [],
+    })
+  ).toEqual({
+    "data-hs-on-keydown": JSON.stringify([
+      ["ArrowDown", [down]],
+      ["Shift+Tab", [s.open.set(false)]],
+      ["Control+Alt+Shift+Meta+k", []],
+      ["a", []],
+      ["Shift++", []],
+      [" ", []],
+      ["あ", []],
+    ]),
+  });
+  expect(on.keydown({})).toEqual({ "data-hs-on-keydown": "[]" });
+  expect(on.focusEnter(s.open.set(true))).toEqual({
+    "data-hs-on-focus-enter": JSON.stringify([s.open.set(true)]),
+  });
+  expect(on.focusLeave([s.open.set(false)])).toEqual({
+    "data-hs-on-focus-leave": JSON.stringify([s.open.set(false)]),
+  });
+});
+
+it("rejects key names outside the named keys, single characters and the modifier order", () => {
+  // @ts-expect-error "Entr" is not a key name.
+  expect(() => on.keydown({ Entr: [] })).toThrow('"Entr"');
+  // @ts-expect-error Modifiers go in the order Control, Alt, Shift, Meta.
+  expect(() => on.keydown({ "Shift+Control+Enter": [] })).toThrow(
+    '"Shift+Control+Enter"'
+  );
+  // @ts-expect-error A character key is one character.
+  expect(() => on.keydown({ ab: [] })).toThrow('"ab"');
+  // @ts-expect-error A modifier needs a key after it.
+  expect(() => on.keydown({ "Shift+": [] })).toThrow('"Shift+"');
+  // @ts-expect-error A key name is not empty.
+  expect(() => on.keydown({ "": [] })).toThrow('""');
+  const name: string = "Control";
+  // A computed name is a string, which the types cannot check.
+  expect(() => on.keydown({ ["Shift+" + name]: [] })).toThrow(
+    '"Shift+Control"'
+  );
+  expect(() => on.keydown({ ["Meta+Alt+" + name]: [] })).toThrow(
+    '"Meta+Alt+Control"'
+  );
+});
