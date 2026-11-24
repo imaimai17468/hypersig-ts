@@ -51,8 +51,21 @@ export type SharedFragments = WeakMap<
 /** Runtime-wide state that every page render of the runtime shares. */
 export interface ViewRegistry {
   shared: SharedFragments;
-  /** Returns the same id for a definition on every call within the runtime. */
-  identify(definition: { readonly name?: string }): string;
+  /** Records a definition under its name. Throws when the name is invalid or taken. */
+  register(
+    definition:
+      | LiveView<any, any, any, any, any>
+      | SharedLiveView<any, any, any, any, any>
+  ): void;
+  /** Returns the name of a registered definition. Throws for one that was never registered. */
+  identify(definition: { readonly name: string }): string;
+  /** Finds the definition registered under a name. */
+  resolve(
+    name: string
+  ):
+    | LiveView<any, any, any, any, any>
+    | SharedLiveView<any, any, any, any, any>
+    | undefined;
 }
 
 export function renderContext<

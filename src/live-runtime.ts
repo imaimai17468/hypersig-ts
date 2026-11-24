@@ -81,23 +81,29 @@ export function createLiveRuntime<
   )
     throw new RangeError("Invalid Live View send timeout");
   const pages = new Map<string, PageSession<User, Event>>();
-  const ids = new WeakMap<object, string>();
-  const counts = new Map<string, number>();
+  const definitions = new Map<
+    string,
+    | LiveView<any, any, User, Event, Markup>
+    | SharedLiveView<any, any, User, Event, Markup>
+  >();
+  const registered = new WeakSet<object>();
   const registry: ViewRegistry = {
     shared: new WeakMap(),
-    identify(definition) {
-      const known = ids.get(definition);
-      if (known) return known;
-      const name = definition.name ?? "view";
+    register(definition) {
+      const { name } = definition;
       if (!identifierPattern.test(name))
         throw new Error(`Invalid Live View name: ${name}`);
-      const count = (counts.get(name) ?? 0) + 1;
-      counts.set(name, count);
-      // The number follows the last hyphen, so names that end in digits stay distinct.
-      const id = `${name}-${count}`;
-      ids.set(definition, id);
-      return id;
+      if (definitions.has(name))
+        throw new Error(`Duplicate Live View name: ${name}`);
+      definitions.set(name, definition);
+      registered.add(definition);
     },
+    identify(definition) {
+      if (!registered.has(definition))
+        throw new Error(`Unregistered Live View: ${definition.name}`);
+      return definition.name;
+    },
+    resolve: (name) => definitions.get(name),
   };
 
   function evict(token: string, page: PageSession<User, Event>) {
@@ -110,6 +116,7 @@ export function createLiveRuntime<
       this: void,
       definition: LiveView<Params, Data, User, Event, Markup> & NamedView<Name>
     ): LiveView<Params, Data, User, Event, Markup> {
+      registry.register(definition);
       return definition;
     },
     liveShared<
@@ -122,12 +129,15 @@ export function createLiveRuntime<
         NamedView<Name>,
       options?: SharedLoadOptions<Params, Data, User>
     ): SharedLiveView<Params, Data, User, Event, Markup> {
-      if (!options) return definition;
+      if (!options) {
+        registry.register(definition);
+        return definition;
+      }
       const inFlight = new Map<string, Promise<Data>>();
       const revision = definition.revision?.bind(definition);
       const key = definition.key?.bind(definition);
-      return {
-        ...(definition.name !== undefined && { name: definition.name }),
+      const shared: SharedLiveView<Params, Data, User, Event, Markup> = {
+        name: definition.name,
         ...(key && { key }),
         authorize: (params, user) => definition.authorize(params, user),
         subscribe: (params, user) => definition.subscribe(params, user),
@@ -155,6 +165,8 @@ export function createLiveRuntime<
           return pending;
         },
       };
+      registry.register(shared);
+      return shared;
     },
     async publish(this: void, event: Event) {
       try {

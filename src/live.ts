@@ -29,11 +29,11 @@ interface LiveViewDefinition<
   Event extends Topic,
 > {
   /**
-   * Starts this view's key in the page, so diagnostics and the DOM read as the
-   * view. The runtime appends a number per definition, so two definitions never
-   * share a key. Defaults to `view`.
+   * Identifies this view, so it is also the view's key in the page. Names are
+   * unique within a runtime: registering a second definition under the same
+   * name throws.
    */
-  name?: string;
+  name: string;
   /**
    * Tells apart instances of this definition placed under the same parent.
    * Required only when the parent places the definition more than once.
@@ -114,18 +114,5 @@ export interface SharedLiveView<
  * view first renders.
  */
 export interface NamedView<Name extends string> {
-  name?: string extends Name ? string : Identifier<Name>;
-}
-
-export function live<
-  Params,
-  Data,
-  User extends Principal,
-  Event extends Topic,
-  Markup,
-  const Name extends string = never,
->(
-  view: LiveView<Params, Data, User, Event, Markup> & NamedView<Name>
-): LiveView<Params, Data, User, Event, Markup> {
-  return view;
+  name: string extends Name ? string : Identifier<Name>;
 }

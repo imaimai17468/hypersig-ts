@@ -20,7 +20,6 @@ export type {
   HypersigOptions,
   Page,
 } from "./hono.js";
-export { live } from "./live.js";
 export type {
   LiveView,
   Principal,

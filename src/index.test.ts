@@ -8,7 +8,6 @@ import {
   createHypersig,
   createMemoryPubSub,
   errorOutlet,
-  live,
   signals,
   topic,
 } from "./index.js";
@@ -63,7 +62,7 @@ function setup(
     },
   });
   const load = vi.fn<() => number | Promise<number>>(() => count);
-  const counter = live({
+  const counter = hypersig.live({
     name: "counter",
     key: ({ id }: { id: string }) => id,
     subscribe: ({ id }) => [changed(id)],
@@ -134,7 +133,7 @@ function setup(
   };
 }
 
-async function openStream(app: Hono, path: string, keys = ["counter-1.main"]) {
+async function openStream(app: Hono, path: string, keys = ["counter.main"]) {
   const query = new URLSearchParams(keys.map((key) => ["view", key]));
   const response = await app.request(`${path}?${query}`, {
     headers: { "X-Session": "owner" },
@@ -180,10 +179,10 @@ it("scopes a page's authorized views to its session and catches changes made bef
   expect((await app.request("/")).status).toBe(401);
   const { source, path } = await pageUrl();
   expect(source).toContain("<output>0</output>");
-  expect((await app.request(path + "?view=counter-1.main")).status).toBe(401);
+  expect((await app.request(path + "?view=counter.main")).status).toBe(401);
   expect(
     (
-      await app.request(path + "?view=counter-1.main", {
+      await app.request(path + "?view=counter.main", {
         headers: { "X-Session": "other" },
       })
     ).status
@@ -200,7 +199,7 @@ it("scopes a page's authorized views to its session and catches changes made bef
   const stream = await openStream(app, path);
   try {
     expect(await stream.read()).toBe(
-      'event: html-update\ndata: {"target":"counter-1.main","version":1,"html":"<output>1</output>"}\n\n'
+      'event: html-update\ndata: {"target":"counter.main","version":1,"html":"<output>1</output>"}\n\n'
     );
     expect(await stream.read()).toContain("event: ready");
     expect(load).toHaveBeenCalledTimes(2);
@@ -469,20 +468,20 @@ it("reports a failed render without exposing its error or interrupting other vie
   const logger = vi.spyOn(console, "error").mockImplementation(() => {});
   const { app, pageUrl, load, commitOutsideAction, publish } = setup();
   const { path } = await pageUrl();
-  const stream = await openStream(app, path, ["counter-1.main", "other-1"]);
+  const stream = await openStream(app, path, ["counter.main", "other"]);
   try {
     expect(await stream.read()).toContain("<output>0</output>");
-    expect(await stream.read()).toContain('"target":"other-1"');
+    expect(await stream.read()).toContain('"target":"other"');
     expect(await stream.read()).toContain("event: ready");
     const error = new Error("internal render failure");
     load.mockRejectedValueOnce(error);
     await commitOutsideAction(1);
     expect(await stream.read()).toBe(
-      'event: view-error\ndata: "counter-1.main"\n\n'
+      'event: view-error\ndata: "counter.main"\n\n'
     );
     expect(logger).toHaveBeenCalledWith(error);
     await publish(changed("other"));
-    expect(await stream.read()).toContain('"target":"other-1","version":3');
+    expect(await stream.read()).toContain('"target":"other","version":3');
     await commitOutsideAction(2);
     expect(await stream.read()).toContain(
       '"version":4,"html":"<output>2</output>"'
@@ -537,19 +536,17 @@ it("rechecks ancestor access before releasing a child fragment", async () => {
   const response = await app.request("/");
   const source = await response.text();
   expect(source).toMatch(
-    /<div id="hs-view-parent-1\/child-1" data-hs-view="parent-1\/child-1">\s*<output>initial child<\/output>\s*<\/div>/
+    /<div id="hs-view-parent\/child" data-hs-view="parent\/child">\s*<output>initial child<\/output>\s*<\/div>/
   );
   const path = /data-hs-stream="([^"]+)"/.exec(source)?.[1];
   if (!path) throw new Error("Missing SSE URL");
-  expect((await app.request(path + "?view=parent-1%2Fchild-1")).status).toBe(
-    400
-  );
+  expect((await app.request(path + "?view=parent%2Fchild-1")).status).toBe(400);
 
-  const stream = await openStream(app, path, ["parent-1"]);
+  const stream = await openStream(app, path, ["parent"]);
   try {
-    expect(await stream.read()).toContain('"children":["parent-1/child-1"]');
+    expect(await stream.read()).toContain('"children":["parent/child"]');
     expect(await stream.read()).toContain(
-      '"target":"parent-1/child-1","version":2'
+      '"target":"parent/child","version":2'
     );
     expect(await stream.read()).toContain("event: ready");
     pauseChild = true;
@@ -558,11 +555,11 @@ it("rechecks ancestor access before releasing a child fragment", async () => {
     allowed = false;
     resume.complete();
     expect(await stream.read()).toContain(
-      '"target":"parent-1/child-1","version":3,"html":""'
+      '"target":"parent/child","version":3,"html":""'
     );
     await hypersig.publish(changed("parent"));
     expect(await stream.read()).toContain(
-      '"target":"parent-1","version":4,"html":""'
+      '"target":"parent","version":4,"html":""'
     );
   } finally {
     resume.complete();

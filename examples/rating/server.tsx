@@ -58,7 +58,7 @@ const save = hypersig.action("save-rating", {
   },
 });
 
-const summary = live({
+const summary = hypersig.live({
   name: "rating-summary",
   subscribe: () => [ratingsChanged()],
   authorize: () => true,

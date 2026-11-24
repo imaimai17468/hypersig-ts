@@ -49,7 +49,7 @@ const increment = hypersig.action("increment", {
   },
 });
 
-const counter = live({
+const counter = hypersig.live({
   name: "counter",
   key: ({ id }: { id: CounterId }) => id,
   revision: ({ id }) => id,

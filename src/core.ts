@@ -1,4 +1,3 @@
-export { live } from "./live.js";
 export type {
   LiveRenderContext,
   LiveView,

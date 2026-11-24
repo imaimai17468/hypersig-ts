@@ -13,7 +13,7 @@ test("keeps order lines and total on the same snapshot during a delayed price re
   await expect(page.locator(ready)).toHaveCount(1);
   const quantity = Number(await page.locator("#order-quantity").textContent());
   await page.evaluate(() => {
-    const order = document.querySelector('[data-hs-view="order-summary-1"]');
+    const order = document.querySelector('[data-hs-view="order-summary"]');
     if (!(order instanceof HTMLElement))
       throw new Error("Missing order boundary");
     const observer = new MutationObserver(() => {
@@ -91,15 +91,13 @@ test("SSR and an Action update only the subscribed counter in two browser sessio
     const renders = await readRenders(page);
     const original = await peer.locator("#heading").elementHandle();
     const independent = await peer
-      .locator('[data-hs-view="counter-1.other"]')
+      .locator('[data-hs-view="counter.other"]')
       .elementHandle();
     const field = await peer.locator("#draft").elementHandle();
     await peer.locator("#draft").fill("draft text");
     await peer.locator("#draft").press("End");
     await peer.evaluate(() => {
-      const affected = document.querySelector(
-        '[data-hs-view="counter-1.main"]'
-      );
+      const affected = document.querySelector('[data-hs-view="counter.main"]');
       const root = document.querySelector("main");
       if (!root) throw new Error("Missing main");
       root.dataset.testMutations = "0";
@@ -189,7 +187,7 @@ test("SSR and an Action update only the subscribed counter in two browser sessio
     ).toBe(true);
     expect(
       await peer
-        .locator('[data-hs-view="counter-1.other"]')
+        .locator('[data-hs-view="counter.other"]')
         .evaluate((node, previous) => node === previous, independent)
     ).toBe(true);
     expect(
@@ -275,11 +273,11 @@ test("ignores out-of-order, malformed and unrelated frames and sanitizes fragmen
       contentType: "text/event-stream",
       body:
         frame(
-          "counter-1.main",
+          "counter.main",
           5,
           '<output data-count="main" onclick="return false">42</output><script></script>'
         ) +
-        frame("counter-1.main", 4, '<output data-count="main">1</output>') +
+        frame("counter.main", 4, '<output data-count="main">1</output>') +
         frame("missing", 6, "<output>unrelated</output>") +
         "event: html-update\ndata: invalid\n\n" +
         "event: ready\ndata: {}\n\n",
@@ -295,7 +293,7 @@ test("ignores out-of-order, malformed and unrelated frames and sanitizes fragmen
 test("drops a removed view and resynchronizes it when the same boundary returns", async ({
   page,
 }) => {
-  const mainView = page.locator('[data-hs-view="counter-1.main"]');
+  const mainView = page.locator('[data-hs-view="counter.main"]');
   const restored = "html[data-hs-connection=ready]";
   await page.goto("/");
   await expect(page.locator(restored)).toHaveCount(1);
@@ -307,7 +305,7 @@ test("drops a removed view and resynchronizes it when the same boundary returns"
       request.url().includes("/stream/") &&
       !new URL(request.url()).searchParams
         .getAll("view")
-        .includes("counter-1.main")
+        .includes("counter.main")
   );
   await node.evaluate((element) => element.remove());
   await reduced;
@@ -409,7 +407,7 @@ test("marks a failed view, keeps its last HTML, and clears the marker at recover
       initial = false;
       await route.fulfill({
         contentType: "text/event-stream",
-        body: 'retry: 250\nevent: view-error\ndata: "counter-1.main"\n\n',
+        body: 'retry: 250\nevent: view-error\ndata: "counter.main"\n\n',
       });
     } else {
       await wait;
@@ -419,9 +417,10 @@ test("marks a failed view, keeps its last HTML, and clears the marker at recover
   try {
     await page.goto("/");
     await expect(page.locator(main)).toHaveCount(1);
-    await expect(
-      page.locator('[data-hs-view="counter-1.main"]')
-    ).toHaveAttribute("data-hs-view-error", "");
+    await expect(page.locator('[data-hs-view="counter.main"]')).toHaveAttribute(
+      "data-hs-view-error",
+      ""
+    );
   } finally {
     resume();
   }

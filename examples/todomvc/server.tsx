@@ -176,7 +176,7 @@ function TodoRow({ todo }: { todo: Todo }) {
   );
 }
 
-const list = live({
+const list = hypersig.live({
   name: "todos",
   key: ({ filter }: { filter: Filter }) => filter,
   subscribe: ({ filter }) =>
@@ -200,7 +200,7 @@ const list = live({
   ),
 });
 
-const counts = live({
+const counts = hypersig.live({
   name: "todo-counts",
   subscribe: () => [countsChanged()],
   authorize: () => true,
