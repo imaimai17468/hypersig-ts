@@ -109,7 +109,7 @@ type AttributeBindings<Attrs> = {
 };
 
 /** A signal holds arrays as read-only arrays. */
-type ReadonlyJson<Value> = Value extends readonly (infer Item)[]
+export type ReadonlyJson<Value> = Value extends readonly (infer Item)[]
   ? readonly ReadonlyJson<Item>[]
   : Value extends JsonObject
     ? { readonly [K in keyof Value]: ReadonlyJson<Value[K]> }

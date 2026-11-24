@@ -437,17 +437,24 @@ export const rating = customElement("star-rating", {
       attributes Hono JSX names, <code>role</code>, <code>part</code>,
       <code>exportparts</code>, <code>aria-*</code>, <code>data-*</code>,
       <code>children</code>, and the declared attributes as fixed values. A
-      <code>json</code> attribute takes any JSON value of its type and is
-      written as <code>JSON.stringify</code> text. A <code>true</code> value
-      renders the attribute empty and <code>false</code> leaves it out, except
-      for <code>aria-*</code>, <code>data-*</code>, <code>draggable</code>,
-      <code>spellcheck</code>, and <code>contenteditable</code>, whose booleans
-      render as <code>"true"</code> or <code>"false"</code>. When the
-      declaration sets <code>ownsChildren: true</code>, <code>id</code> is
-      required (a type error otherwise). In a list give each element an
-      <code>id</code> of its own: a Live View update keeps an element that owns
-      its children only when the tag and the <code>id</code> match, and rebuilds
-      it otherwise, which loses what the element's JavaScript held.
+      <code>json</code> attribute takes any JSON value of its type, read-only
+      arrays included, and is written as <code>JSON.stringify</code> text. A
+      value that is not JSON, such as <code>NaN</code> or one nested more than
+      64 levels deep, throws a <code>TypeError</code>. When a prop and
+      <code>bindElement</code> write the same attribute, the later one wins. A
+      <code>json</code> attribute named in
+      <code>data-hs-element-json</code> takes a string as text
+      <code>bindElement</code> already encoded, and any other value is encoded.
+      A <code>true</code> value renders the attribute empty and
+      <code>false</code> leaves it out, except for <code>aria-*</code>,
+      <code>data-*</code>, <code>draggable</code>, <code>spellcheck</code>, and
+      <code>contenteditable</code>, whose booleans render as
+      <code>"true"</code> or <code>"false"</code>. When the declaration sets
+      <code>ownsChildren: true</code>, <code>id</code> is required (a type error
+      otherwise). In a list give each element an <code>id</code> of its own: a
+      Live View update keeps an element that owns its children only when the tag
+      and the <code>id</code> match, and rebuilds it otherwise, which loses what
+      the element's JavaScript held.
     </dd>
     <dt><code>scope.bindElement(declaration, values)</code></dt>
     <dd>
@@ -531,11 +538,11 @@ defineElement(rating, {
       <code>number</code> that is not a finite number, a text boolean
       (<code>data-*</code>, <code>aria-*</code>) that is not
       <code>"true"</code> or <code>"false"</code>, or a <code>json</code> value
-      that <code>JSON.parse</code> cannot read. A <code>number</code> is read
-      with <code>Number()</code>, so <code>"0x10"</code> and
-      <code>"1e3"</code> read as numbers, and an empty string does not. A
-      <code>json</code> value is not checked against its declared type, so treat
-      it as input.
+      that <code>JSON.parse</code> cannot read or that nests more than 64 levels
+      deep. A <code>number</code> is read with <code>Number()</code>, so
+      <code>"0x10"</code> and <code>"1e3"</code> read as numbers, and an empty
+      string does not. A <code>json</code> value is not checked against its
+      declared type, so treat it as input.
     </li>
     <li>
       Attribute changes made in one task reach <code>update</code> once, in a
@@ -634,7 +641,7 @@ reactElement(sortableList, SortableList);
     <li>
       A <code>json</code> value is read with <code>JSON.parse</code> and not
       checked against <code>T</code> in the browser. A value that does not parse
-      reads as missing.
+      or nests more than 64 levels deep reads as missing.
     </li>
     <li>
       The type does not check a key of <code>bindElement</code> that is not

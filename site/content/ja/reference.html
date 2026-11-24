@@ -452,10 +452,21 @@ export const rating = customElement("star-rating", {
       属性、<code>role</code>、<code>part</code>、<code>exportparts</code>、<code>aria-*</code>、<code>data-*</code>、<code>children</code>、宣言した属性（固定値）を渡せます。<code
         >json</code
       >
-      の属性は、その型の JSON の値を受け取り、<code>JSON.stringify</code>
-      した文字列で書きます。<code>true</code> は空の属性として描画し、<code
-        >false</code
+      の属性は、その型の JSON
+      の値（読み取り専用の配列も含みます）を受け取り、<code
+        >JSON.stringify</code
       >
+      した文字列で書きます。<code>NaN</code> や 64 段より深い入れ子のような JSON
+      でない値は <code>TypeError</code> を投げます。同じ属性を props と
+      <code>bindElement</code> の両方で書くと、後に書いた方が残ります。<code
+        >data-hs-element-json</code
+      >
+      に名前がある <code>json</code> の属性は、文字列を
+      <code>bindElement</code>
+      が書き終えた文字列として受け取り、それ以外の値は変換して書きます。<code
+        >true</code
+      >
+      は空の属性として描画し、<code>false</code>
       は属性を書きません。ただし
       <code>aria-*</code
       >、<code>data-*</code>、<code>draggable</code>、<code>spellcheck</code>、<code
@@ -561,8 +572,10 @@ defineElement(rating, {
       でもない文字列の真偽値（<code>data-*</code>、<code>aria-*</code>）、<code
         >JSON.parse</code
       >
-      で読めない <code>json</code> です。<code>number</code> は
-      <code>Number()</code> で読むので、<code>"0x10"</code> や
+      で読めないか 64 段より深く入れ子になっている <code>json</code> です。<code
+        >number</code
+      >
+      は <code>Number()</code> で読むので、<code>"0x10"</code> や
       <code>"1e3"</code> も数になり、空の文字列は数になりません。<code
         >json</code
       >
@@ -675,7 +688,8 @@ reactElement(sortableList, SortableList);
     <li>
       <code>json</code> の値はブラウザで
       <code>JSON.parse</code> で読むだけで、<code>T</code>
-      かどうかは検査しません。読めない値は、ないものとして扱います。
+      かどうかは検査しません。読めない値と 64
+      段より深く入れ子になっている値は、ないものとして扱います。
     </li>
     <li>
       変数から渡したオブジェクトにある、宣言していない <code>bindElement</code>

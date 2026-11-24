@@ -1,5 +1,7 @@
 import { expect, expectTypeOf, it } from "vite-plus/test";
+import type * as elementEntry from "./element.js";
 import type { AttributeValues, EventDetail } from "./element.js";
+import type * as packageEntry from "./index.js";
 import { CustomTag, customElement, event, json, signals } from "./index.js";
 import type { JsonValue } from "./protocol.js";
 
@@ -396,4 +398,79 @@ it("renders a data-* or aria-* boolean as true or false text on every path", asy
       draggable: ["sig", ["flag-text-1", "checked"]],
     }),
   });
+});
+
+it("encodes a JSON prop written after or before bindElement for the same name", async () => {
+  const todos = signals({ items: ["a"] }, { name: "todo-order" }).with({});
+  const bound = todos.bindElement(list, { items: todos.items });
+  expect(
+    String(await CustomTag({ of: list, ...bound, items: ["b", "c"] }))
+  ).toContain('items="[&quot;b&quot;,&quot;c&quot;]"');
+  expect(
+    String(await CustomTag({ of: list, items: ["b", "c"], ...bound }))
+  ).toContain('items="[&quot;a&quot;]"');
+});
+
+it("encodes a JSON value that a hand-written data-hs-element-json names", async () => {
+  const board = customElement("json-board", {
+    attributes: { config: json<{ size: number }>() },
+  });
+  expect(
+    String(
+      await CustomTag({
+        of: board,
+        config: { size: 2 },
+        "data-hs-element-json": JSON.stringify(["config"]),
+      })
+    )
+  ).toContain('config="{&quot;size&quot;:2}"');
+});
+
+it("ignores a data-hs-element-json that is not JSON", async () => {
+  expect(
+    String(
+      await CustomTag({
+        of: list,
+        items: ["a"],
+        "data-hs-element-json": "[items",
+      })
+    )
+  ).toContain('items="[&quot;a&quot;]"');
+});
+
+it("takes read-only arrays for JSON attributes", async () => {
+  const items: readonly string[] = ["a"];
+  expect(String(await CustomTag({ of: list, items }))).toContain(
+    'items="[&quot;a&quot;]"'
+  );
+  const nested = customElement("nested-board", {
+    attributes: { rows: json<{ cells: number[] }[]>() },
+  });
+  const rows: readonly { readonly cells: readonly number[] }[] = [
+    { cells: [1] },
+  ];
+  expect(String(await CustomTag({ of: nested, rows }))).toContain(
+    'rows="[{&quot;cells&quot;:[1]}]"'
+  );
+  // @ts-expect-error The items attribute is a list of strings, not numbers.
+  void CustomTag({ of: list, items: [1] as readonly number[] });
+});
+
+it("exports the element types from hypersig.ts as from hypersig.ts/element", () => {
+  type Declared = typeof rating;
+  expectTypeOf<packageEntry.EventName<Declared>>().toEqualTypeOf<
+    elementEntry.EventName<Declared>
+  >();
+  expectTypeOf<packageEntry.Emit<Declared>>().toEqualTypeOf<
+    elementEntry.Emit<Declared>
+  >();
+  expectTypeOf<packageEntry.ElementImplementation<Declared>>().toEqualTypeOf<
+    elementEntry.ElementImplementation<Declared>
+  >();
+  expectTypeOf<packageEntry.MountedElement<Declared>>().toEqualTypeOf<
+    elementEntry.MountedElement<Declared>
+  >();
+  expectTypeOf<packageEntry.EventDetail<Declared, "rate">>().toEqualTypeOf<
+    elementEntry.EventDetail<Declared, "rate">
+  >();
 });

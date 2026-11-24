@@ -94,7 +94,7 @@ const taskList = hypersig.live({
         <CustomTag
           of={sortableList}
           id="tasks"
-          items={[...items]}
+          items={items}
           {...e.bindElement(sortableList, { failures: e.failures })}
           {...sortableList.on("reorder", (keys) => [
             reorder.call(

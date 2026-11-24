@@ -97,13 +97,16 @@ interface Mount {
  * `mount` runs when an element is inserted, with each declared attribute read
  * as its kind. A missing attribute, a `number` that is not a finite number, a
  * text boolean (`data-*`, `aria-*`) that is not `"true"` or `"false"`, and a
- * `json` value that `JSON.parse` cannot read are left out of `props`, so they
- * read as `undefined`. A `json` value
- * is not checked against its declared type. Attribute changes made in one task
- * reach `update` once, in a microtask, with every declared attribute.
- * `unmount` runs when the element is removed; inserting it again calls `mount`
- * again, so a move calls `unmount` and then `mount`. A change made before
- * `unmount` does not reach `update`.
+ * `json` value that `JSON.parse` cannot read or that nests more than 64
+ * levels deep are left out of `props`, so they read as `undefined`. A `json`
+ * value is not checked against its declared type. If `mount` throws, the
+ * element stays unmounted: neither `update` nor `unmount` runs for it until
+ * it is inserted again.
+ *
+ * Attribute changes made in one task reach `update` once, in a microtask,
+ * with every declared attribute. `unmount` runs when the element is removed;
+ * inserting it again calls `mount` again, so a move calls `unmount` and then
+ * `mount`. A change made before `unmount` does not reach `update`.
  *
  * `emit` dispatches a `CustomEvent` that does not bubble, which handlers from
  * the declaration's `on` receive. With `ownsChildren`, `mount` may render the

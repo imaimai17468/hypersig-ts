@@ -14,9 +14,13 @@ export type {
   AttributeKind,
   AttributeValues,
   CustomElement,
+  ElementImplementation,
+  Emit,
   EventDetail,
+  EventName,
   EventSpec,
   JsonAttribute,
+  MountedElement,
 } from "./element.js";
 export { CustomTag } from "./custom-tag.js";
 export type { TagProps } from "./custom-tag.js";

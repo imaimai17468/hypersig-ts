@@ -171,7 +171,7 @@ const sortableList = customElement("sortable-list", {
 #### 宣言と入口
 
 - `customElement(tag, { attributes, events, ownsChildren })`（`src/element.ts`）が宣言を値として返す。属性の種類は `"string"`、`"number"`、`"boolean"`、`json<T>()` の4つで、`event<Detail>()` がイベントの `detail` の型を持つ。`json<T>()` の `T` とイベントの `Detail` は JSON にできる型に限る。
-- 入口は3つに分ける。`hypersig.ts/element`（宣言と、ブラウザ側の `defineElement`）は Hono も React も読み込まず、DOM のないサーバーで import しても例外を出さない。`HTMLElement` を継承するクラスは `defineElement` の呼び出し時に作る。`hypersig.ts/react` は `reactElement` を持ち、React を読み込む。`hypersig.ts` は `customElement`、`event`、`json` を `hypersig.ts/element` から再 export し、React は読み込まない。`react` と `react-dom`（^19）は optional の peerDependency で、`hypersig.ts/react` を使うアプリだけが必要とする。
+- 入口は3つに分ける。`hypersig.ts/element`（宣言と、ブラウザ側の `defineElement`）は Hono も React も読み込まず、DOM のないサーバーで import しても例外を出さない。`HTMLElement` を継承するクラスは `defineElement` の呼び出し時に作る。`hypersig.ts/react` は `reactElement` を持ち、React を読み込む。`hypersig.ts` は `customElement`、`event`、`json` と宣言の型（`AttributeValues`、`EventName`、`EventDetail`、`Emit`、`ElementImplementation`、`MountedElement` など）を `hypersig.ts/element` から再 export し、React は読み込まない。`react` と `react-dom`（^19）は optional の peerDependency で、`hypersig.ts/react` を使うアプリだけが必要とする。
 - サーバーでは `<CustomTag of={declaration} id=... />`（`src/custom-tag.tsx`）が宣言のタグで要素を描き、`declaration.on(...)`、`scope.bindElement(declaration, values)` が属性を作る。
 - タグ名は型（`CustomTagName`）で検査できる範囲を検査し、残りの文字は `customElement()` を呼んだときに実行時に検査する。属性名、イベント名、属性の種類も同じときに実行時に検査するので、打ち間違いは起動時の例外になる。
 - `ownsChildren: true` の宣言の `CustomTag` は `id` を必須の props にする（型で強制する）。`id` がないと Live View の更新のたびに要素が作り直され、`unmount` → `mount` で部品の内部の状態が消える。値はアプリが決める（一覧なら行ごとに一意にする）。
@@ -180,7 +180,8 @@ const sortableList = customElement("sortable-list", {
 #### 属性の値の形式
 
 - `bindElement` は `data-hs-element-attr` に書く。`bindAttr` の `data-hs-attr` は名前の一覧で受け付けるので、サーバーとブラウザが同じ規則を使えるよう属性を分けた。`data-hs-element-attr` は宣言済みの名前を値の型で書き分ける（`string` と `number` は文字列、`boolean` は空の属性か属性なし）。ただし `aria-*`、`data-*`、`draggable`、`spellcheck`、`contenteditable` の `boolean` は `"true"` か `"false"` の文字列にする。この判定は `src/protocol.ts` の `rendersBooleanAsText` 1つで、`CustomTag`、`bindElement`、ランタイム、`defineElement` が共有する。Hono の JSX は自分の一覧にない名前の `true` を `"true"` と描くので、`bindElement` と `CustomTag` の props はそれ以外の名前の真偽値を空文字列か省略に直してから渡す。
-- `json` の属性は `formatJsonAttribute`（`JSON.stringify`）の文字列で書く。`CustomTag` の props、`bindElement`（Signal の値）、ランタイムの書き込みのどれも同じ形式にする。`bindElement` は JSON の属性の名前を `data-hs-element-json`（`customElementAttributes.elementJson`）に並べ、ランタイムはその名前の値を同じ関数で書く。JSON の属性がない束縛では、この属性は書かない。`bindElement` の出力を `CustomTag` に展開しても、すでに書いた JSON を二重に変換しない。
+- `json` の属性は `formatJsonAttribute`（`JSON.stringify`）の文字列で書く。`CustomTag` の props、`bindElement`（Signal の値）、ランタイムの書き込みのどれも同じ形式にする。`bindElement` は JSON の属性の名前を `data-hs-element-json`（`customElementAttributes.elementJson`）に並べ、ランタイムはその名前の値を同じ関数で書く。JSON の属性がない束縛では、この属性は書かない。`bindElement` の出力を `CustomTag` に展開しても、すでに書いた JSON を二重に変換しない。`CustomTag` が変換せずに渡すのは、`data-hs-element-json` に名前がある属性の文字列の値だけで、それ以外の値はすべて `formatJsonAttribute` で書く。そのため同じ属性を props と `bindElement` の両方で書くと後に書いた方が残り、手で書いた `data-hs-element-json` が名前を挙げた属性でも、オブジェクトや配列は JSON の文字列になる。`data-hs-element-json` が JSON の一覧として読めなければ、名前はないものとして扱う。`CustomTag` の `json` の props は読み取り専用の配列も受け付ける（`bindElement` の Signal と同じ）。
+- JSON の値の入れ子は `maxNestingDepth`（64 段）までにする。`isJsonValue` はそれより深い値を JSON と見なさないので、`CustomTag` は `NaN` などの JSON でない値と同じく `TypeError` を投げ、`defineElement` はその属性を `props` に含めない。
 - `on` で始まる名前（`once` を含む）、`style`、`id`、`data-hs-*` は型と実行時の両方で拒否する。`id` を拒否するのは、ブラウザだけで変わる `id` が子を自分で描く要素を更新のたびに作り直すためである。`json` の属性に `data-*` の名前は使えない（`CustomTag` は `data-*` の props を文字列、数、真偽値として渡すため、型と実行時の両方で拒否する）。ランタイムは値が変わらない属性を書かないので、ほかのシグナルの書き込みで `attributeChangedCallback` は呼ばれない。JSON の属性も同じ文字列かどうかで判定する。型は宣言していないキーを検査できないので、変数から渡したオブジェクトでは余分なキーも書かれる。
 - タグ名は HTML が予約している名前（`font-face` など）を拒否する。イベント名は、ランタイムがすべての要素に委譲で扱う `click`、`input`、`change`、`submit` を型と実行時の両方で拒否する。送信中のクリックを捨てる処理などと衝突するためである。
 
@@ -200,7 +201,7 @@ const sortableList = customElement("sortable-list", {
 ブラウザ側は `defineElement(declaration, { mount(host, props, emit) { return { update, unmount }; } })`（`src/define-element.ts`）で書く。
 
 - 宣言のタグ名で `customElements.define` を呼び、同じタグが定義済みなら例外にする。`observedAttributes` は宣言の属性名から作る。
-- `props` は宣言の属性の型から決まり、各項目は省略可能になる。属性がない、`number` が有限の数にならない、`data-*` や `aria-*` の真偽値が `"true"` か `"false"` でない、`json` が JSON として読めない、という属性は `props` に含めず、`undefined` として読む。`number` は `Number()` で読むので、`"0x10"` や `"1e3"` も数になる。空の文字列は数にしない。`json` の値は `JSON.parse` で読めることしか検査せず、宣言した `T` の形かどうかは実行時に検査しない。
+- `props` は宣言の属性の型から決まり、各項目は省略可能になる。属性がない、`number` が有限の数にならない、`data-*` や `aria-*` の真偽値が `"true"` か `"false"` でない、`json` が JSON として読めないか 64 段より深く入れ子になっている、という属性は `props` に含めず、`undefined` として読む。`number` は `Number()` で読むので、`"0x10"` や `"1e3"` も数になる。空の文字列は数にしない。`json` の値は `JSON.parse` で読めることしか検査せず、宣言した `T` の形かどうかは実行時に検査しない。
 - `emit(name, detail)` の `name` と `detail` は宣言で検査する。`bubbles: false` の `CustomEvent` を発火し、`data-hs-on-custom` のリスナーが受ける。
 - `connectedCallback` で `mount` を呼ぶ。`attributeChangedCallback` は、同じタスクの中の変更をまとめ、マイクロタスクで一度だけ `update` を呼ぶ（Live View の morph で複数の属性が同時に変わるため）。`update` には宣言したすべての属性を読み直して渡す。`disconnectedCallback` で `unmount` を呼ぶ。`unmount` の前の変更は `update` に届かない。切り離してから同じ要素を挿し直したら、もう一度 `mount` する（要素を動かすと `unmount` のあとに `mount` が走る）。
 - `mount` が例外を投げると、その要素は `mount` されないままになり、`update` も `unmount` も呼ばれない。その要素を挿し直すまで、もう一度 `mount` することはない。

@@ -80,6 +80,31 @@ it("leaves the bound attributes of a kept element to the runtime", () => {
   view.remove();
 });
 
+it("copies a fixed JSON attribute of a kept element and leaves a bound one to the runtime", () => {
+  const bindings = JSON.stringify({ items: ["sig", ["list-1", "items"]] });
+  const json = JSON.stringify(["items"]);
+  const view = createView(
+    `<sortable-list id="l" items='["a"]' config='{"size":1}' data-hs-owns-children data-hs-element-attr='${bindings}' data-hs-element-json='${json}'></sortable-list>`
+  );
+  const owned = view.querySelector("sortable-list");
+  if (!owned) throw new Error("Missing sortable-list");
+  renderOwnedChildren(owned);
+
+  morphView(
+    view,
+    sanitizeFragment(
+      `<sortable-list id="l" items='[]' config='{"size":2}' data-hs-owns-children data-hs-element-attr='${bindings}' data-hs-element-json='${json}'></sortable-list>`
+    ),
+    runtime
+  );
+
+  expect(view.querySelector("sortable-list")).toBe(owned);
+  expect(owned.getAttribute("config")).toBe('{"size":2}');
+  expect(owned.getAttribute("items")).toBe('["a"]');
+  expect(owned.querySelectorAll("button")).toHaveLength(2);
+  view.remove();
+});
+
 it("replaces an owned element whose id differs, rebuilding its children", () => {
   const view = createView(
     `<star-rating value="1" data-hs-owns-children></star-rating><p>tail</p>`
