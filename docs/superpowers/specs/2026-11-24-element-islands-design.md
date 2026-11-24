@@ -65,7 +65,7 @@ export const rating = customElement("star-rating", {
 ### 入口と分け方
 
 - `hypersig.ts/element`（新しい入口、ブラウザでもサーバーでも読める）：`customElement`、`event`、`json`、`defineElement`、宣言の型。Hono も DOM の外の依存も読み込まない。`defineElement` は DOM の API を使うが、import しただけでは DOM に触れない。
-- `hypersig.ts`（今の入口）：宣言に対するサーバー側の操作。`rating.Element`（今の `Element`）と `rating.on(...)`（今の `on`）、`scope.bindElement(rating, ...)` は今と同じ書き方で使えるようにする。Hono の JSX に依存する部分はこちらに置く。宣言の値と、サーバー側の操作をどう結び付けるか（宣言にメソッドを生やすか、`hypersig.ts` 側の関数に宣言を渡すか）は実装で決める。どちらでも `hypersig.ts/element` が Hono を読み込まないことを守る。
+- `hypersig.ts`（今の入口）：宣言に対するサーバー側の描画。`on(...)` は Hono に依存しないので宣言のメソッドのまま（`rating.on(...)`）、`scope.bindElement(rating, ...)` も今の書き方のまま使う。Hono の JSX に依存する要素の描画は、`hypersig.ts` の `CustomTag` コンポーネントに宣言を渡して行う（`<CustomTag of={rating} id="r" value={3} />`）。宣言の値にメソッドを後から生やす方式は、ブラウザで呼ぶと実行時に失敗するメソッドが型に現れるので取らない。今の `rating.Element` は `CustomTag` に置き換わる。
 - `hypersig.ts/react`（新しい入口）：React アダプター。`react` と `react-dom` は optional の peerDependency。
 - `customElement`、`event`、`json` は `hypersig.ts/element` から export し、`hypersig.ts` からも同じものを再 export する。古い `customElement<Spec>(tag, options)` は残さず、サンプル、テスト、ドキュメントを書き直す（未公開の 1.0.0 なので互換は保たない）。
 - `hypersig.ts/element` は DOM のない環境（サーバー）で import しても壊れない。`HTMLElement` を継承するクラスは `defineElement` を呼んだときに作る。`package.json` の `build` の最後にある Node での import の確認に、`hypersig.ts/element` を足す。
