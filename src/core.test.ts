@@ -1775,6 +1775,13 @@ it("limits top-level props to JSON while child props stay unconstrained", () => 
     load: (params: { at: Date }) => params.at.toISOString(),
     render: String,
   });
+  const sharedDated = runtime.liveShared({
+    name: "shared-dated",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: { at: Date }) => params.at.toISOString(),
+    renderShared: String,
+  });
   runtime.live({
     name: "parent",
     subscribe: () => [counterChanged("all")],
@@ -1827,6 +1834,15 @@ it("limits top-level props to JSON while child props stay unconstrained", () => 
   ) => {
     // @ts-expect-error Date is not JSON, so it cannot travel in the page token.
     await page.view(dated, { at: new Date() });
+    // The error names the param that is not JSON, not the whole call.
+    await page.view(dated, {
+      // @ts-expect-error Date is not JSON, so it cannot travel in the page token.
+      at: new Date(),
+    });
+    await page.view(sharedDated, {
+      // @ts-expect-error A shared view's params travel in the token too.
+      at: new Date(),
+    });
     // @ts-expect-error A Date nested in an interface is not JSON either.
     await page.view(scheduled, { slot: { start: new Date() }, tags: [] });
     // @ts-expect-error An array entry of undefined becomes null in JSON.

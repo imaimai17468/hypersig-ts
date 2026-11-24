@@ -41,19 +41,23 @@ type JsonCompatibleKnown<Value> = [Value] extends [JsonValue]
     : JsonCompatiblePart<Value>
   : JsonCompatiblePart<Value>;
 
+/** Shown where a top-level param holds a value that JSON cannot carry. */
+type NotJson =
+  "Top-level Live View params travel in the page token, so they must be JSON (no Date, function, bigint, symbol or undefined in an array)";
+
 type JsonCompatiblePart<Value> = Value extends string | number | boolean | null
   ? Value
   : Value extends readonly unknown[]
     ? { readonly [Index in keyof Value]: JsonCompatibleKnown<Value[Index]> }
     : Value extends Date | ((...args: never) => unknown)
-      ? never
+      ? NotJson
       : Value extends object
         ? {
             readonly [Key in keyof Value]:
               | JsonCompatibleKnown<Value[Key]>
               | (undefined extends Value[Key] ? undefined : never);
           }
-        : never;
+        : NotJson;
 
 /**
  * Places the page's top-level views. Their params travel in the page token,
@@ -66,15 +70,26 @@ export interface PageRenderContext<
   Event extends Topic,
   Markup,
 > {
-  view<Params, Data>(
-    definition: LiveView<Params, Data, User, Event, Markup>,
-    params: NoInfer<Params> & JsonCompatible<Params>
-  ): Promise<Markup>;
-  view<Params, Data extends SharedValue>(
-    definition: SharedLiveView<Params, Data, User, Event, Markup>,
-    params: NoInfer<Params> & JsonCompatible<Params>
+  /**
+   * One signature for both kinds of view, so a param that is not JSON is
+   * reported on that param instead of as a mismatch with the other kind.
+   */
+  view<Definition extends PageView<User, Event, Markup>>(
+    definition: Definition,
+    params: JsonParams<ParamsOf<Definition, User, Event>>
   ): Promise<Markup>;
 }
+
+type PageView<User extends Principal, Event extends Topic, Markup> =
+  | LiveView<never, unknown, User, Event, Markup>
+  | SharedLiveView<never, SharedValue, User, Event, Markup>;
+
+type ParamsOf<Definition, User extends Principal, Event extends Topic> =
+  Definition extends LiveViewDefinition<infer Params, User, Event>
+    ? Params
+    : never;
+
+type JsonParams<Params> = Params & JsonCompatible<Params>;
 
 interface LiveViewDefinition<
   Params,
