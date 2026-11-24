@@ -65,7 +65,8 @@ function updateViews(
     status: "connecting" | "ready" | "disconnected" | "reload-required"
   ) {
     document.documentElement.dataset.hsConnection = status;
-    const outlet = document.querySelector(
+    const outlet = findHandledOutlet(
+      document,
       `[${outletAttributes.connectionStatus}]`
     );
     if (outlet)
@@ -84,7 +85,7 @@ function updateViews(
       "[data-hs-view]"
     )) {
       const key = node.dataset.hsView;
-      if (key && !key.includes("/")) next.set(key, node);
+      if (key && !key.includes("/") && !isOwnedChild(node)) next.set(key, node);
     }
     if (
       next.size === views.size &&
