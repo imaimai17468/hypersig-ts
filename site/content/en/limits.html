@@ -86,6 +86,13 @@
       <code>reset</code> and fetches the page again.
     </li>
     <li>
+      A deploy does not reset open pages. Their tokens carry the old params,
+      their HTML stays as it was until each view's next update, and their
+      browser runtime stays until the page is loaded again. Changing the shape
+      of a view's params takes a new view name or removing the old keys.
+      <a href="../deploy/#updates">Deploy a new version</a>
+    </li>
+    <li>
       A JavaScript library such as a map or a rich text editor runs inside a
       custom element that you write and load yourself. hypersig.ts types the
       element's attributes and events, but it cannot check them against the

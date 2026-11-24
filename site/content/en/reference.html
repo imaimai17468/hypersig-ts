@@ -42,6 +42,17 @@
       tried to decrypt. When omitted, the keys are random per process, so set it
       to continue pages across restarts or to run multiple instances.
     </dd>
+    <dt><code>onDiagnostic</code></dt>
+    <dd>
+      Optional. Receives events about publishing, rendering, and opening pages.
+      <code>page-token-invalid</code> reports a token that was altered or
+      encrypted with a key the runtime does not hold. Any client can cause it by
+      sending a broken token, so do not alert on a single event.
+      <code>page-rebuild-failed</code> reports, in <code>view</code>, the name
+      of a view in a valid token that is no longer registered, or whose
+      <code>key()</code> throws or returns an invalid or duplicate key. Both get
+      <code>reset</code> and fetch the page again.
+    </dd>
     <dt><code>pageLifetimeMs</code></dt>
     <dd>
       Optional. How long a page registration is valid in milliseconds, counted

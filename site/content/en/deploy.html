@@ -42,7 +42,9 @@
     <code>pageLifetimeMs</code>). A connected page keeps receiving updates past
     expiry, and only a connection made after expiry fetches the page again. To
     rotate keys, add the new key first, keep the old key for the lifetime, then
-    remove it.
+    remove it. Each token uses a random 96-bit nonce, so one key can safely
+    encrypt about 2^32 tokens. Rotate well before a key reaches that count: at
+    least once a year for a busy service.
   </p>
   <p>
     For cross-instance changes, use a Pub/Sub adapter that delivers
@@ -51,6 +53,26 @@
   <p>
     Check that your proxy forwards SSE without buffering and allows long-lived
     connections.
+  </p>
+</section>
+
+<section id="updates">
+  <h2>Deploy a new version</h2>
+  <p>
+    A token stays valid across a deploy until it expires, so the new server
+    opens tokens the old one rendered. The params in a token reach the new
+    <code>authorize</code>, <code>subscribe</code>, <code>load</code>, and
+    <code>key</code> as if they had the new params type. When you change the
+    shape of a view's params, give the view a new <code>name</code>, so old
+    tokens get <code>reset</code>, or remove the keys that sealed the old tokens
+    from <code>pageKeys</code>.
+  </p>
+  <p>
+    A change to a template alone shows at the view's next update. A view the
+    browser left untouched, whose snapshot revision has not moved, keeps the old
+    HTML until its data changes. A page that stays open keeps its old browser
+    runtime and talks to the new server, so keep the runtime compatible across a
+    deploy, or remove the keys that sealed the old tokens.
   </p>
 </section>
 
