@@ -145,6 +145,76 @@ test("moves a row with the keyboard and saves it", async ({ page }) => {
   await expect(handle(page, "Write code")).toBeFocused();
 });
 
+test("does not start another drag while a dropped order is pending", async ({
+  page,
+}) => {
+  const peer = await openPeer(page);
+  const release = await holdReorders(page);
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/_hypersig/actions/reorder-items")) {
+      requests.push(request.url());
+    }
+  });
+  const moved = ["Review", "Test", "Write code", "Deploy"];
+
+  await Promise.all([
+    page.waitForRequest(reorderAction),
+    (async () => {
+      await pickUpOver(page, handle(page, "Write code"), rows(page).nth(2));
+      await page.mouse.up();
+    })(),
+  ]);
+  await expect(busyList(page)).toHaveCount(1);
+
+  // Moving Write code back would save the first order again.
+  await pickUpOver(page, handle(page, "Write code"), rows(page).nth(0));
+  await expect(page.locator("#tasks li[data-dragging]")).toHaveCount(0);
+  await page.mouse.up();
+  await handle(page, "Review").focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator("#tasks li[data-dragging]")).toHaveCount(0);
+  await expect(rows(page)).toHaveText(moved);
+
+  await release();
+  await expect(busyList(page)).toHaveCount(0);
+  await expect(rows(page)).toHaveText(moved);
+  await expect(rows(peer)).toHaveText(moved);
+  expect(requests).toHaveLength(1);
+  await page.reload();
+  await expect(rows(page)).toHaveText(moved);
+});
+
+test("rejects keys that do not reorder the list", async ({ page }) => {
+  const inputs = {
+    unknown: ["code", "review", "test", "ship"],
+    duplicate: ["code", "code", "test", "deploy"],
+    short: ["code", "review", "deploy"],
+  };
+  await page.evaluate((inputs) => {
+    for (const [id, keys] of Object.entries(inputs)) {
+      const button = document.createElement("button");
+      button.id = id;
+      button.dataset.hsAction = "/_hypersig/actions/reorder-items";
+      button.dataset.hsInput = JSON.stringify({ keys });
+      document.body.append(button);
+    }
+  }, inputs);
+
+  for (const id of Object.keys(inputs)) {
+    const [response] = await Promise.all([
+      page.waitForResponse(reorderAction),
+      page.locator(`#${id}`).click(),
+    ]);
+    expect(response.status()).toBe(409);
+    await expect(page.locator("p[role=alert]")).toHaveText(
+      "The list changed. Reload the page."
+    );
+  }
+  await page.reload();
+  await expect(rows(page)).toHaveText(initial);
+});
+
 test("returns to the server's order when the save fails", async ({ page }) => {
   // The server keeps Deploy last.
   await Promise.all([

@@ -54,7 +54,8 @@ function dropOrder(
  * pending and emits it; the pending order is dropped when `items` (the
  * committed order) or `failures` (a failed save) changes. While a row is
  * dragged, the rows stay in the order the drag started from, and the drop
- * applies to the latest `items`.
+ * applies to the latest `items`. Rows cannot be dragged while an order is
+ * pending, so only one save is in flight and its result clears the mark.
  */
 function SortableList({ items = [], failures, emit }: Props) {
   const [pending, setPending] = useState<PendingOrder | null>(null);
@@ -98,6 +99,7 @@ function SortableList({ items = [], failures, emit }: Props) {
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     setDragOrder(null);
     if (!over) return;
+    // After a peer's reorder the move applies by key, not by screen position.
     const order = dropOrder(latest, active.id, over.id);
     if (!order) return;
     setPending({ order, itemsText, failures });
@@ -117,6 +119,7 @@ function SortableList({ items = [], failures, emit }: Props) {
       <SortableContext
         items={shown.map((item) => item.key)}
         strategy={verticalListSortingStrategy}
+        disabled={isPendingCurrent}
       >
         <ol aria-label="Tasks" aria-busy={isPendingCurrent || undefined}>
           {shown.map((item) => (
