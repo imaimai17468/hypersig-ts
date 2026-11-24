@@ -41,6 +41,8 @@
     "example:memo": "bun run build && bun examples/shared-memo/server.tsx",
     "example:rating": "bun run build && bun run example:rating:browser && bun examples/rating/server.tsx",
     "example:rating:browser": "bun build examples/rating/rating.ts --target=browser --outfile=examples/rating/dist/rating.js",
+    "example:sortable": "bun run build && bun run example:sortable:browser && bun examples/sortable/server.tsx",
+    "example:sortable:browser": "bun build examples/sortable/list.tsx --target=browser --production --outfile=examples/sortable/dist/list.js",
     "test:browser": "bun run build && playwright test",
     "bench:phase4": "bun run build >&2 && node bench/run.ts"
   },
@@ -50,6 +52,9 @@
     "idiomorph": "0.8.0"
   },
   "devDependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "@playwright/test": "1.65.1",
     "@types/bun": "1.3.1",
     "@types/react": "19.3.0",

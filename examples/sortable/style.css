@@ -1,0 +1,76 @@
+:root {
+  color-scheme: light;
+  font:
+    1rem/1.5 system-ui,
+    sans-serif;
+  background: #f3f4f7;
+  color: #1c2230;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 36rem;
+  margin: 2rem auto;
+  padding: clamp(1rem, 5vw, 2rem);
+  background: white;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+}
+
+ol {
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-block: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #c9cfdb;
+  border-radius: 0.375rem;
+  background: white;
+}
+
+li[data-dragging] {
+  z-index: 1;
+  box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 0.15);
+}
+
+/* A dropped order that the server has not committed yet. */
+ol[aria-busy="true"] {
+  opacity: 0.5;
+}
+
+.handle {
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: #e8ebf1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle::before {
+  content: "⠿";
+}
+
+.handle:focus-visible {
+  outline: 2px solid #3056d3;
+  outline-offset: 2px;
+}
+
+[role="alert"] {
+  color: #a3261b;
+}
