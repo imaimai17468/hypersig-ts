@@ -142,6 +142,15 @@ function updateViews(
               previous.dataset.hsView === next.dataset.hsView
             );
           },
+          // The server HTML never has the attribute, so keep it on a control
+          // whose request is still in flight.
+          beforeAttributeUpdated(name, element, mutation) {
+            return !(
+              name === "data-hs-pending" &&
+              mutation === "remove" &&
+              signalRuntime.isSending(element)
+            );
+          },
         },
       });
       signalRuntime.applySnapshots(node);
@@ -225,8 +234,8 @@ function updateViews(
 }
 
 /**
- * Creates the `send` the signal runtime uses for every Action. It shows the
- * control as pending and reports failures in the error outlets.
+ * Creates the `send` the signal runtime uses for every Action. It reports
+ * failures in the error outlets; the runtime marks the control as pending.
  */
 function createActionSender(stream: URL) {
   const actionPath = new URL("../actions/", stream).pathname;
@@ -243,7 +252,6 @@ function createActionSender(stream: URL) {
       ?.querySelectorAll<HTMLElement>("[data-hs-field-error]");
     if (outlet) outlet.textContent = "";
     for (const field of fields ?? []) field.textContent = "";
-    control.setAttribute("data-hs-pending", "");
     let status = 0;
     let failure: unknown;
     try {
@@ -288,8 +296,6 @@ function createActionSender(stream: URL) {
       failure = await response.json().catch(() => null);
     } catch {
       // A status of zero represents a network error.
-    } finally {
-      control.removeAttribute("data-hs-pending");
     }
     let message = status
       ? `Action failed (${status}).`

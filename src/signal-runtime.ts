@@ -57,7 +57,9 @@ export interface SignalRuntime {
   applySnapshots(view: HTMLElement): void;
   /**
    * Sends a form or a button's Action. While it is in flight,
-   * `["$pending", url]` is `true`. A success sets `["$restored", url]` to
+   * `["$pending", url]` is `true`, and the control has `data-hs-pending`
+   * until the last request it sent ends, whether that request came from
+   * `send`, `sendForm`, or a `call` statement in its handler. A success sets `["$restored", url]` to
    * `false`. The control's `data-hs-on-success` statements run with the
    * output, or its `data-hs-on-error` statements run on failure. A control
    * with a request in flight is not sent again and gets `{ ok: false }`.
@@ -81,6 +83,11 @@ export interface SignalRuntime {
     url: string,
     submitter: HTMLElement | null
   ): Promise<SendResult>;
+  /**
+   * Reports whether `control` has a request in flight, so a Live View morph
+   * can keep its `data-hs-pending` attribute.
+   */
+  isSending(control: Element): boolean;
   write(path: SignalPath, value: JsonValue): void;
   read(path: SignalPath): JsonValue | undefined;
 }
@@ -241,7 +248,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     uuid: () => options.uuid?.() ?? crypto.randomUUID(),
   };
   const holds = new Map<string, Hold>();
-  const sendingControls = new Map<HTMLElement, number>();
+  const sendingControls = new Map<Element, number>();
   const sendingUrls = new Map<string, number>();
   let isRenderQueued = false;
 
@@ -372,7 +379,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
   }
 
-  function isSending(control: HTMLElement): boolean {
+  function isSending(control: Element): boolean {
     return sendingControls.has(control);
   }
 
@@ -391,6 +398,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   ): Promise<SendResult> {
     const pendingPath = ["$pending", url];
     addCount(sendingControls, control, 1);
+    control.setAttribute("data-hs-pending", "");
     addCount(sendingUrls, url, 1);
     write(pendingPath, true);
     for (const { path } of writes) {
@@ -405,7 +413,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     } catch {
       // A rejected send is a failed request.
     }
-    addCount(sendingControls, control, -1);
+    if (addCount(sendingControls, control, -1) === 0) {
+      control.removeAttribute("data-hs-pending");
+    }
     write(pendingPath, addCount(sendingUrls, url, -1) > 0);
     for (const { path, original } of writes) {
       const key = JSON.stringify(path);
@@ -557,6 +567,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         writes
       );
     },
+    isSending,
     write,
     read,
   };

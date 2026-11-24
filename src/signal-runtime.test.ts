@@ -1159,3 +1159,47 @@ it("refuses to send a form while it is pending, without running its submit state
   expect(requests).toHaveLength(2);
   expect(runtime.read(e.newKey.path)).toBe("f2");
 });
+
+it("keeps data-hs-pending on a control until its last send ends", async () => {
+  const { page, find, click } = createPage(
+    render("button", {
+      id: "twice",
+      ...on.click([bump.call({ count: 1 }), bump.call({ count: 2 })]),
+    }) +
+      render("form", {
+        id: "submit-call",
+        ...addTodo.form({ onSubmit: [bump.call({ count: 3 })] }),
+        children: element("input", {
+          name: addTodo.field("todoTitle"),
+          value: "x",
+        }),
+      })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: page, send: sender.send });
+  const button = find("#twice");
+  const form = find<HTMLFormElement>("#submit-call");
+
+  click("#twice");
+  expect(sender.requests).toHaveLength(2);
+  expect(button.hasAttribute("data-hs-pending")).toBe(true);
+  expect(runtime.isSending(button)).toBe(true);
+  sender.request(0).respond({ ok: true, data: 1 });
+  await settle();
+  expect(button.hasAttribute("data-hs-pending")).toBe(true);
+  expect(runtime.isSending(button)).toBe(true);
+  sender.request(1).respond({ ok: false });
+  await settle();
+  expect(button.hasAttribute("data-hs-pending")).toBe(false);
+  expect(runtime.isSending(button)).toBe(false);
+
+  const sent = runtime.sendForm(form, addTodo.url, null);
+  expect(sender.requests).toHaveLength(4);
+  expect(form.hasAttribute("data-hs-pending")).toBe(true);
+  sender.request(2).respond({ ok: true, data: 3 });
+  await settle();
+  expect(form.hasAttribute("data-hs-pending")).toBe(true);
+  sender.request(3).respond({ ok: true, data: null });
+  await sent;
+  expect(form.hasAttribute("data-hs-pending")).toBe(false);
+});

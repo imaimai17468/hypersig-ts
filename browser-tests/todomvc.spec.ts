@@ -288,6 +288,9 @@ test("keeps the confirmed value when a toggle fails", async ({ page }) => {
   await expect(toggle).toHaveAttribute("data-hs-pending", "", {
     timeout: 1000,
   });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false", {
+    timeout: 1000,
+  });
   await answered;
   await expect(page.locator("[data-hs-error]")).toHaveText(
     "Action failed (500)."
@@ -295,6 +298,50 @@ test("keeps the confirmed value when a toggle fails", async ({ page }) => {
   await expect(toggle).not.toHaveAttribute("data-hs-pending");
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(toggle).toHaveText("○");
+});
+
+test("keeps a toggle pending while another update re-renders the list", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  if (!baseURL) throw new Error("Missing TodoMVC base URL");
+  const peerSession = await browser.newContext({ baseURL });
+  try {
+    await page.goto("/");
+    await waitForLive(page);
+    const toggle = await addTask(page, "Held toggle");
+    const peer = await peerSession.newPage();
+    await peer.goto("/");
+    await waitForLive(peer);
+
+    let resume = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    await page.route(toggleUrl, async (route) => {
+      await waiting;
+      await route.continue();
+    });
+    const started = page.waitForRequest(toggleUrl);
+    const answered = page.waitForResponse(toggleUrl);
+    await toggle.click();
+    try {
+      await started;
+      await expect(toggle).toHaveAttribute("data-hs-pending", "");
+      await submitTask(peer, "Peer task");
+      await expect(row(page, "Peer task")).toBeVisible();
+      await expect(toggle).toHaveAttribute("data-hs-pending", "");
+      await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    } finally {
+      resume();
+    }
+    await answered;
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(toggle).not.toHaveAttribute("data-hs-pending");
+  } finally {
+    await peerSession.close();
+  }
 });
 
 test("marks a delete as pending and removes the row once confirmed", async ({
