@@ -480,6 +480,25 @@ function bindAttributes(
   return rendered;
 }
 
+/**
+ * Holds, on the object `bindElement` returns, the text it wrote for each `json`
+ * attribute. Spreading the object copies it, and Hono JSX does not render
+ * symbol keys, so `CustomTag` can tell that text from a later prop.
+ */
+const encodedJson = Symbol("hypersig.encodedJson");
+
+class EncodedJson {
+  constructor(readonly texts: ReadonlyMap<string, string>) {}
+}
+
+/** Reads the `json` attribute text that `bindElement` wrote into `props`. */
+export function readEncodedJson(
+  props: object
+): ReadonlyMap<string, string> | undefined {
+  const encoded: unknown = Reflect.get(props, encodedJson);
+  return encoded instanceof EncodedJson ? encoded.texts : undefined;
+}
+
 function bindElementAttributes(
   element: AnyCustomElement,
   values: Readonly<Record<string, ExprInput | undefined>>,
@@ -488,6 +507,7 @@ function bindElementAttributes(
   const rendered: Record<string, string> = {};
   const nodes: Record<string, ExprNode> = {};
   const jsonNames: string[] = [];
+  const encoded = new Map<string, string>();
   for (const [name, input] of Object.entries(values)) {
     if (input === undefined) continue;
     if (!isBindableCustomAttribute(name)) {
@@ -501,6 +521,7 @@ function bindElementAttributes(
       element.attributes[name] === "json"
     ) {
       rendered[name] = formatJsonAttribute(value);
+      encoded.set(name, rendered[name]);
       jsonNames.push(name);
     } else if (typeof value !== "boolean" || rendersBooleanAsText(name)) {
       rendered[name] = formatText(value);
@@ -509,6 +530,10 @@ function bindElementAttributes(
   rendered[customElementAttributes.elementAttr] = JSON.stringify(nodes);
   if (jsonNames.length > 0) {
     rendered[customElementAttributes.elementJson] = JSON.stringify(jsonNames);
+    Object.defineProperty(rendered, encodedJson, {
+      value: new EncodedJson(encoded),
+      enumerable: true,
+    });
   }
   return rendered;
 }

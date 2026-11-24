@@ -130,7 +130,9 @@ it("binds JSON attributes in the same format and names them for the runtime", as
     label: todos.label,
     empty: null,
   });
-  expect(bound).toEqual({
+  // The string keys are the attributes; a symbol key carries the same text for
+  // CustomTag and is never rendered.
+  expect(Object.fromEntries(Object.entries(bound))).toEqual({
     items: '["a"]',
     label: '"abc"',
     empty: "null",
@@ -141,7 +143,11 @@ it("binds JSON attributes in the same format and names them for the runtime", as
     }),
     "data-hs-element-json": JSON.stringify(["items", "label", "empty"]),
   });
-  expect(todos.bindElement(list, { items: todos.items })).toEqual({
+  expect(
+    Object.fromEntries(
+      Object.entries(todos.bindElement(list, { items: todos.items }))
+    )
+  ).toEqual({
     items: '["a"]',
     "data-hs-element-attr": JSON.stringify({
       items: ["sig", ["todo-json-1", "items"]],
@@ -409,6 +415,29 @@ it("encodes a JSON prop written after or before bindElement for the same name", 
   expect(
     String(await CustomTag({ of: list, items: ["b", "c"], ...bound }))
   ).toContain('items="[&quot;a&quot;]"');
+});
+
+it("encodes a JSON string prop written after bindElement for the same name", async () => {
+  const titled = customElement("titled-card", {
+    attributes: { label: json<string>() },
+  });
+  const card = signals({ label: "a" }, { name: "card-label" }).with({});
+  const bound = card.bindElement(titled, { label: card.label });
+  expect(
+    String(await CustomTag({ of: titled, ...bound, label: "abc" }))
+  ).toContain('label="&quot;abc&quot;"');
+  expect(
+    String(await CustomTag({ of: titled, label: "abc", ...bound }))
+  ).toContain('label="&quot;a&quot;"');
+  expect(
+    String(
+      await CustomTag({
+        of: titled,
+        label: "true",
+        "data-hs-element-json": JSON.stringify(["label"]),
+      })
+    )
+  ).toContain('label="&quot;true&quot;"');
 });
 
 it("encodes a JSON value that a hand-written data-hs-element-json names", async () => {

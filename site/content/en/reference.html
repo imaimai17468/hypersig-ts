@@ -441,20 +441,19 @@ export const rating = customElement("star-rating", {
       arrays included, and is written as <code>JSON.stringify</code> text. A
       value that is not JSON, such as <code>NaN</code> or one nested more than
       64 levels deep, throws a <code>TypeError</code>. When a prop and
-      <code>bindElement</code> write the same attribute, the later one wins. A
-      <code>json</code> attribute named in
-      <code>data-hs-element-json</code> takes a string as text
-      <code>bindElement</code> already encoded, and any other value is encoded.
-      A <code>true</code> value renders the attribute empty and
-      <code>false</code> leaves it out, except for <code>aria-*</code>,
-      <code>data-*</code>, <code>draggable</code>, <code>spellcheck</code>, and
-      <code>contenteditable</code>, whose booleans render as
-      <code>"true"</code> or <code>"false"</code>. When the declaration sets
-      <code>ownsChildren: true</code>, <code>id</code> is required (a type error
-      otherwise). In a list give each element an <code>id</code> of its own: a
-      Live View update keeps an element that owns its children only when the tag
-      and the <code>id</code> match, and rebuilds it otherwise, which loses what
-      the element's JavaScript held.
+      <code>bindElement</code> write the same attribute, the later one wins.
+      <code>CustomTag</code> leaves alone only the exact text
+      <code>bindElement</code> wrote for an attribute, and encodes every prop
+      value, strings included. A <code>true</code> value renders the attribute
+      empty and <code>false</code> leaves it out, except for
+      <code>aria-*</code>, <code>data-*</code>, <code>draggable</code>,
+      <code>spellcheck</code>, and <code>contenteditable</code>, whose booleans
+      render as <code>"true"</code> or <code>"false"</code>. When the
+      declaration sets <code>ownsChildren: true</code>, <code>id</code> is
+      required (a type error otherwise). In a list give each element an
+      <code>id</code> of its own: a Live View update keeps an element that owns
+      its children only when the tag and the <code>id</code> match, and rebuilds
+      it otherwise, which loses what the element's JavaScript held.
     </dd>
     <dt><code>scope.bindElement(declaration, values)</code></dt>
     <dd>
