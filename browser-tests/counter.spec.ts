@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createServer } from "node:net";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
@@ -514,6 +515,23 @@ test("retains a moved child View's DOM and SSR snapshot until its own Topic chan
 });
 
 /** Starts a counter process of its own, which a test can stop and start again. */
+/**
+ * Asks the OS for a port no other process holds, so repeated and parallel
+ * runs do not collide. The restart tests reuse it for the second server,
+ * because the page's stream URL and cookies belong to that origin.
+ */
+async function findFreePort(): Promise<number> {
+  const probe = createServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const address = probe.address();
+  probe.close();
+  await once(probe, "close");
+  if (address === null || typeof address === "string")
+    throw new Error("Expected a TCP address");
+  return address.port;
+}
+
 async function startCounter(port: number) {
   const url = `http://127.0.0.1:${port}`;
   const server = spawn("bun", ["examples/counter/server.tsx"], {
@@ -561,7 +579,7 @@ async function startCounter(port: number) {
 test("applies updates from a restarted server process that counts versions from 1 again", async ({
   browser,
 }) => {
-  const port = 3223;
+  const port = await findFreePort();
   let server = await startCounter(port);
   const context = await browser.newContext({ baseURL: server.url });
   try {
@@ -597,7 +615,7 @@ test("applies updates from a restarted server process that counts versions from 
 test("redraws a view whose access returned while the browser was offline", async ({
   browser,
 }) => {
-  const port = 3224;
+  const port = await findFreePort();
   let server = await startCounter(port);
   const context = await browser.newContext({ baseURL: server.url });
   try {
