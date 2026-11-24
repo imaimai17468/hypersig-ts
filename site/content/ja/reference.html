@@ -123,8 +123,9 @@ const href = links.counters[":counterKey"].$path({
       は、スキーマが必須とし、真偽値ではなく、空文字列をはじく項目にだけ付きます。空文字列をはじくのは、<code
         >minLength</code
       >
-      が 1 以上のとき、<code>pattern</code> があるとき、<code>""</code>
-      を含まない <code>enum</code> のときです。必須の <code>v.string()</code> は
+      が 1 以上のとき、<code>""</code> に一致しない
+      <code>pattern</code> があるとき、<code>""</code> を含まない
+      <code>enum</code> のときです。必須の <code>v.string()</code> は
       <code>""</code> を受け付けるので、<code>required</code>
       は付きません。
     </li>

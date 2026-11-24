@@ -145,12 +145,26 @@ function numberAt(schema: JsonSchemaObject, key: string): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
+/**
+ * JSON Schema patterns are unanchored ECMAScript regular expressions with the
+ * `u` flag. A pattern that fails to compile cannot be shown to reject "", so it
+ * does not count.
+ */
+function patternRejectsEmptyString(pattern: string): boolean {
+  try {
+    return !new RegExp(pattern, "u").test("");
+  } catch {
+    return false;
+  }
+}
+
 function rejectsEmptyString(property: JsonSchemaObject): boolean {
   const minLength = numberAt(property, "minLength");
+  const pattern = property["pattern"];
   const choices = property["enum"];
   return (
     (minLength !== undefined && minLength >= 1) ||
-    typeof property["pattern"] === "string" ||
+    (typeof pattern === "string" && patternRejectsEmptyString(pattern)) ||
     (Array.isArray(choices) && !choices.includes(""))
   );
 }

@@ -117,9 +117,9 @@ const href = links.counters[":counterKey"].$path({
     <li>
       <code>required</code> is set only for a field the schema requires that is
       not a boolean and whose schema rejects the empty string: a
-      <code>minLength</code> of at least 1, any <code>pattern</code>, or an
-      <code>enum</code> without <code>""</code>. A required
-      <code>v.string()</code> accepts <code>""</code>, so it gets no
+      <code>minLength</code> of at least 1, a <code>pattern</code> that does not
+      match <code>""</code>, or an <code>enum</code> without <code>""</code>. A
+      required <code>v.string()</code> accepts <code>""</code>, so it gets no
       <code>required</code>.
     </li>
     <li>

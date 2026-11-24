@@ -106,7 +106,7 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 
 共有メモは通常の Action 入力に操作 ID を含める。同じセッション・同じ操作 ID・同じ入力の再送には、確定済みの結果を返す。SQLite は業務更新、操作結果、Outbox を同じトランザクションで記録する。送信結果が不明なときはフォームが操作 ID を保持し、結果を確認するか、利用者が最新版を明示的に編集元に選んだときに新しい ID に切り替える。この操作履歴は共有メモのストアが所有する。
 
-入力欄の制約属性は `action.control(name)` が作る。入力スキーマが Standard JSON Schema も実装しているときだけ型に現れ、最初の呼び出しで JSON Schema に変換した結果の最上位の `properties` と `required` から `required`、`minLength`、`maxLength`、`pattern`、`min`、`max` を返す。導き出した属性でブラウザがサーバーより厳しくなってはならないので、`required` は空文字列をはじくスキーマ（`minLength` が 1 以上、`pattern` がある、`""` を含まない `enum`）にだけ付け、`pattern` は `^` と `$` で囲まれ、最上位に `|` がなく、`v` フラグで解釈できるものだけを返す。変換できない部分は `createHypersig` の `jsonSchema.libraryOptions` で飛ばし（Valibot の `v.trim()` なら `{ ignoreActions: ["trim"] }`。`errorMode: "ignore"` は正規表現のフラグを落とすので使わない）、失敗したときは Action 名を含む例外にする。送信前の文言はブラウザ標準で、スキーマのメッセージはサーバーの検証後に表示される。
+入力欄の制約属性は `action.control(name)` が作る。入力スキーマが Standard JSON Schema も実装しているときだけ型に現れ、最初の呼び出しで JSON Schema に変換した結果の最上位の `properties` と `required` から `required`、`minLength`、`maxLength`、`pattern`、`min`、`max` を返す。導き出した属性でブラウザがサーバーより厳しくなってはならないので、`required` は空文字列をはじくスキーマ（`minLength` が 1 以上、`""` に一致しない `pattern` がある、`""` を含まない `enum`）にだけ付け、`pattern` は `^` と `$` で囲まれ、最上位に `|` がなく、`v` フラグで解釈できるものだけを返す。変換できない部分は `createHypersig` の `jsonSchema.libraryOptions` で飛ばし（Valibot の `v.trim()` なら `{ ignoreActions: ["trim"] }`。`errorMode: "ignore"` は正規表現のフラグを落とすので使わない）、失敗したときは Action 名を含む例外にする。送信前の文言はブラウザ標準で、スキーマのメッセージはサーバーの検証後に表示される。
 
 標準ランタイムからの送信には JSON を返す。`data-hs-field-error="fieldName"` をフォーム内に置くと、スキーマの検証結果をテキストで反映できる。`data-hs-pending` は送信処理中のフォームまたはボタンに付く。保存前の入力や送信中表示はブラウザが管理する。公開内容の反映は Live View と SSE が担う。共有メモの公開ガイドはブラウザの標準 prefetch に対応する。利用者ごとのページ登録を含む HTML は `no-store` で返す。
 

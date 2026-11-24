@@ -720,6 +720,8 @@ it("requires a field only when its schema rejects the empty string", () => {
         filled: v.pipe(v.string(), v.minLength(1)),
         choice: v.picklist(["a", "b"]),
         blankable: v.picklist(["", "a"]),
+        digits: v.pipe(v.string(), v.regex(/^[0-9]+$/)),
+        optionalDigits: v.pipe(v.string(), v.regex(/^[0-9]*$/)),
       })
     ),
     output: v.null(),
@@ -734,6 +736,16 @@ it("requires a field only when its schema rejects the empty string", () => {
   });
   expect(choose.control("choice")).toEqual({ name: "choice", required: true });
   expect(choose.control("blankable")).toEqual({ name: "blankable" });
+  expect(choose.control("digits")).toEqual({
+    name: "digits",
+    required: true,
+    pattern: "^[0-9]+$",
+  });
+  // The server accepts "" for this pattern, so the browser must too.
+  expect(choose.control("optionalDigits")).toEqual({
+    name: "optionalDigits",
+    pattern: "^[0-9]*$",
+  });
 });
 
 it("emits only patterns the browser checks exactly as the server does", () => {
