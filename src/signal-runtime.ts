@@ -9,9 +9,13 @@ import type {
 } from "./protocol.js";
 import {
   booleanAttributes,
+  customElementAttributes,
   defaultMark,
   eventAttributes,
   isBindableAttribute,
+  isBindableCustomAttribute,
+  isCustomElementName,
+  isCustomEventName,
   isExprNode,
   isJsonValue,
   isSignalPath,
@@ -87,6 +91,13 @@ export interface SignalRuntime {
    * can keep its `data-hs-pending` attribute.
    */
   isSending(control: Element): boolean;
+  /**
+   * Reports whether a Live View morph keeps the children of `previous`, which
+   * the element's JavaScript rendered, and only copies the attributes of
+   * `next`. Both elements need `data-hs-owns-children`, the same tag name and
+   * the same `id`, where two elements without an `id` also match.
+   */
+  keepsChildren(previous: Element, next: Element): boolean;
   write(path: SignalPath, value: JsonValue): void;
   read(path: SignalPath): JsonValue | undefined;
 }
@@ -185,6 +196,28 @@ function isSnapshotEntry(entry: unknown): entry is SnapshotEntry {
   );
 }
 
+type CustomEventHandler = [event: string, stmts: StmtNode[]];
+
+function isCustomEventHandler(entry: unknown): entry is CustomEventHandler {
+  return (
+    Array.isArray(entry) &&
+    entry.length === 2 &&
+    typeof entry[0] === "string" &&
+    isCustomEventName(entry[0]) &&
+    isStmtList(entry[1])
+  );
+}
+
+/** Ignores each malformed entry and keeps the others. */
+function readCustomEventHandlers(element: Element): CustomEventHandler[] {
+  const value = parseAttribute(element, customElementAttributes.onCustom);
+  return Array.isArray(value) ? value.filter(isCustomEventHandler) : [];
+}
+
+function isCustomElement(element: Element): boolean {
+  return isCustomElementName(element.localName);
+}
+
 function readSnapshot(element: Element): SnapshotEntry[] {
   const value = parseAttribute(element, signalAttributes.signals);
   return Array.isArray(value) ? value.filter(isSnapshotEntry) : [];
@@ -233,6 +266,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   };
   const sendingControls = new Map<Element, number>();
   const sendingUrls = new Map<string, number>();
+  const listenedEvents = new WeakMap<Element, Set<string>>();
   let isRenderQueued = false;
 
   function read(path: SignalPath): JsonValue | undefined {
@@ -290,9 +324,20 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       Array.isArray(bindings)
     )
       return;
+    const isCustom = isCustomElement(element);
     for (const name of Object.keys(bindings)) {
       const node: unknown = Reflect.get(bindings, name);
-      if (!isBindableAttribute(name) || !isExprNode(node)) continue;
+      if (!isExprNode(node)) continue;
+      if (isCustom) {
+        if (!isBindableCustomAttribute(name)) continue;
+        // The same rule as `bindElement` on the server, so a `false` never
+        // becomes `="false"`.
+        const value = evaluate(node, context);
+        if (typeof value === "boolean") element.toggleAttribute(name, value);
+        else element.setAttribute(name, formatText(value));
+        continue;
+      }
+      if (!isBindableAttribute(name)) continue;
       const value = evaluate(node, context);
       if (booleanAttributeNames.has(name)) {
         element.toggleAttribute(name, isTruthy(value));
@@ -322,7 +367,34 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (element.value !== text) element.value = text;
   }
 
+  /**
+   * Custom events may not bubble, so each custom element gets its own
+   * listener per declared event. A listener reads the attribute when the
+   * event fires, so a morph that changes it takes effect.
+   */
+  function listenToCustomEvents(element: HTMLElement) {
+    const events = listenedEvents.get(element) ?? new Set<string>();
+    listenedEvents.set(element, events);
+    for (const [event] of readCustomEventHandlers(element)) {
+      if (events.has(event)) continue;
+      events.add(event);
+      element.addEventListener(event, (fired) => {
+        const detail: unknown = "detail" in fired ? fired.detail : null;
+        for (const [name, stmts] of readCustomEventHandlers(element)) {
+          if (name === event) {
+            run(stmts, element, null, isJsonValue(detail) ? detail : null);
+          }
+        }
+      });
+    }
+  }
+
   function render() {
+    for (const element of root.querySelectorAll<HTMLElement>(
+      `[${customElementAttributes.onCustom}]`
+    )) {
+      if (isCustomElement(element)) listenToCustomEvents(element);
+    }
     for (const element of root.querySelectorAll(`[${signalAttributes.text}]`)) {
       if (codeElementNames.has(element.tagName)) continue;
       const node = readExpr(element, signalAttributes.text);
@@ -397,9 +469,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   function run(
     stmts: readonly StmtNode[],
     control: HTMLElement,
-    output: JsonValue = null
+    output: JsonValue = null,
+    detail: JsonValue = null
   ) {
-    const runContext = { ...context, output };
+    const runContext = { ...context, output, detail };
     for (const stmt of stmts) {
       switch (stmt[0]) {
         case "set":
@@ -512,6 +585,15 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       );
     },
     isSending,
+    keepsChildren(previous, next) {
+      const mark = customElementAttributes.ownsChildren;
+      return (
+        previous.hasAttribute(mark) &&
+        next.hasAttribute(mark) &&
+        previous.tagName === next.tagName &&
+        previous.getAttribute("id") === next.getAttribute("id")
+      );
+    },
     write,
     read,
   };

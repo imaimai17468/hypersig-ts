@@ -5,6 +5,7 @@ import { expect, it, vi } from "vite-plus/test";
 import {
   createHypersig,
   createMemoryPubSub,
+  customElement,
   on,
   ref,
   signals,
@@ -1163,4 +1164,228 @@ it("keeps data-hs-pending on a control until its last send ends", async () => {
   sender.request(3).respond({ ok: true, data: null });
   await sent;
   expect(form.hasAttribute("data-hs-pending")).toBe(false);
+});
+
+const rating = customElement<{
+  attributes: { value: number; open: boolean };
+  events: { rate: number };
+}>("star-rating", { ownsChildren: true });
+
+/** Dispatches a `CustomEvent` that does not bubble, created in the page's frame. */
+function dispatchCustom(target: Element, type: string, detail: unknown) {
+  const view = target.ownerDocument.defaultView;
+  if (!view) throw new Error("The element has no window");
+  target.dispatchEvent(new view.CustomEvent(type, { detail, bubbles: false }));
+}
+
+it("binds declared attributes on custom elements only", async () => {
+  const stars = signals(
+    { count: 3, open: false },
+    { name: "custom-attrs" }
+  ).with({});
+  const handBound = JSON.stringify({
+    value: ["sig", stars.count.path],
+    onrate: ["lit", "alert(1)"],
+    style: ["lit", "color: red"],
+  });
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: [
+        element("star-rating", {
+          id: "rating",
+          ...stars.bindElement(rating, {
+            value: stars.count,
+            open: stars.open,
+          }),
+        }),
+        element("star-rating", { id: "hand", "data-hs-attr": handBound }),
+        element("div", { id: "plain", "data-hs-attr": handBound }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  runtime.write(stars.count.path, 5);
+  runtime.write(stars.open.path, true);
+  await settle();
+  expect(find("#rating").getAttribute("value")).toBe("5");
+  expect(find("#rating").getAttribute("open")).toBe("");
+  expect(find("#hand").getAttribute("value")).toBe("5");
+  expect(find("#hand").hasAttribute("onrate")).toBe(false);
+  expect(find("#hand").hasAttribute("style")).toBe(false);
+  expect(find("#plain").hasAttribute("value")).toBe(false);
+
+  runtime.write(stars.open.path, false);
+  await settle();
+  expect(find("#rating").hasAttribute("open")).toBe(false);
+});
+
+it("runs statements for a non-bubbling custom event with its detail", async () => {
+  const stars = signals({ count: 0 }, { name: "custom-detail" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("star-rating", {
+        id: "rating",
+        ...rating.on("rate", (detail) => stars.count.set(detail)),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  dispatchCustom(find("#rating"), "rate", 4);
+  expect(runtime.read(stars.count.path)).toBe(4);
+});
+
+it("uses null for a detail that is not JSON", () => {
+  const stars = signals(
+    { count: 2 as number | null },
+    { name: "custom-null" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("star-rating", {
+        id: "rating",
+        ...rating.on("rate", (detail) => stars.count.set(detail)),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  dispatchCustom(find("#rating"), "rate", () => 1);
+  expect(runtime.read(stars.count.path)).toBe(null);
+});
+
+it("attaches listeners to custom elements added later", async () => {
+  const stars = signals(
+    { count: 0, renders: 0 },
+    { name: "custom-later" }
+  ).with({});
+  const { page, find } = createPage(render("div", { ...stars.init() }));
+  const runtime = startSignals({ root: page });
+
+  page.body.insertAdjacentHTML(
+    "beforeend",
+    render("star-rating", {
+      id: "rating",
+      ...rating.on("rate", (detail) =>
+        stars.count.set(stars.count.add(detail))
+      ),
+    })
+  );
+  runtime.write(stars.renders.path, 1);
+  await settle();
+  runtime.write(stars.renders.path, 2);
+  await settle();
+
+  dispatchCustom(find("#rating"), "rate", 2);
+  expect(runtime.read(stars.count.path)).toBe(2);
+});
+
+it("ignores malformed custom event entries and runs the valid ones", () => {
+  const stars = signals({ count: 0 }, { name: "custom-malformed" }).with({});
+  const set = [["set", stars.count.path, ["detail"]]];
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("star-rating", {
+        id: "rating",
+        "data-hs-on-custom": JSON.stringify([
+          ["Rate", set],
+          "rate",
+          ["rate", [["set", "not-a-path", ["detail"]]]],
+          ["rate", set],
+        ]),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  dispatchCustom(find("#rating"), "Rate", 7);
+  expect(runtime.read(stars.count.path)).toBe(0);
+  dispatchCustom(find("#rating"), "rate", 3);
+  expect(runtime.read(stars.count.path)).toBe(3);
+});
+
+it("runs the statements of the current attribute after it changes", async () => {
+  const stars = signals(
+    { count: 0, other: 0 },
+    { name: "custom-changed" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("star-rating", {
+        id: "rating",
+        ...rating.on("rate", (detail) => stars.count.set(detail)),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  find("#rating").setAttribute(
+    "data-hs-on-custom",
+    rating.on("rate", (detail) => stars.other.set(detail))["data-hs-on-custom"]
+  );
+  runtime.write(stars.count.path, 0);
+  await settle();
+  dispatchCustom(find("#rating"), "rate", 6);
+  expect(runtime.read(stars.count.path)).toBe(0);
+  expect(runtime.read(stars.other.path)).toBe(6);
+});
+
+it("does not run custom event statements on an ordinary element", () => {
+  const stars = signals({ count: 0 }, { name: "custom-plain" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("div", {
+        id: "plain",
+        ...rating.on("rate", (detail) => stars.count.set(detail)),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  dispatchCustom(find("#plain"), "rate", 4);
+  expect(runtime.read(stars.count.path)).toBe(0);
+});
+
+it("keeps children only for matching owned elements", () => {
+  const { page, find } = createPage(`
+    <star-rating id="a" data-hs-owns-children></star-rating>
+    <star-rating id="a2" data-hs-owns-children></star-rating>
+    <star-rating data-hs-owns-children class="anon"></star-rating>
+    <star-rating id="a" class="unowned"></star-rating>
+    <other-rating id="a" data-hs-owns-children></other-rating>
+  `);
+  const runtime = startSignals({ root: page });
+  const owned = find("#a");
+  const copy = (html: string) => {
+    const template = page.createElement("template");
+    template.innerHTML = html;
+    const next = template.content.firstElementChild;
+    if (!next) throw new Error("Missing element");
+    return next;
+  };
+
+  expect(
+    runtime.keepsChildren(
+      owned,
+      copy('<star-rating id="a" value="2" data-hs-owns-children></star-rating>')
+    )
+  ).toBe(true);
+  expect(
+    runtime.keepsChildren(
+      find(".anon"),
+      copy("<star-rating data-hs-owns-children></star-rating>")
+    )
+  ).toBe(true);
+  expect(runtime.keepsChildren(owned, find("#a2"))).toBe(false);
+  expect(runtime.keepsChildren(owned, find(".anon"))).toBe(false);
+  expect(runtime.keepsChildren(owned, find(".unowned"))).toBe(false);
+  expect(runtime.keepsChildren(find(".unowned"), owned)).toBe(false);
+  expect(runtime.keepsChildren(owned, find("other-rating"))).toBe(false);
 });

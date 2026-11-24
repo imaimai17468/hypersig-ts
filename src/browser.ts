@@ -1,10 +1,10 @@
-import DOMPurify from "dompurify";
-import { Idiomorph } from "idiomorph";
 import { preserveDrafts, restoreDrafts } from "./drafts.js";
+import { morphView } from "./morph.js";
 import { events, isJsonValue, outletAttributes } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
+import { sanitizeFragment } from "./sanitize.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
-import { isTextControl, startSignals } from "./signal-runtime.js";
+import { startSignals } from "./signal-runtime.js";
 
 function isUpdate(value: unknown): value is HtmlUpdate {
   return (
@@ -107,12 +107,7 @@ function updateViews(
       if (!isUpdate(update)) return;
       const node = findView(update.target);
       if (!node || update.version <= (versions.get(node) ?? 0)) return;
-      const fragment = DOMPurify.sanitize(update.html, {
-        RETURN_DOM_FRAGMENT: true,
-        USE_PROFILES: { html: true },
-        FORBID_TAGS: ["style", "template"],
-        FORBID_ATTR: ["data-hs-stream", "style"],
-      });
+      const fragment = sanitizeFragment(update.html);
       const childTargets = new Set(update.children);
       for (const child of fragment.querySelectorAll<HTMLElement>(
         "[data-hs-view]"
@@ -129,32 +124,7 @@ function updateViews(
           child.removeAttribute("data-hs-view");
         }
       }
-      // Idiomorph is synchronous when head processing is non-blocking.
-      void Idiomorph.morph(node, fragment, {
-        head: { style: "none" },
-        morphStyle: "innerHTML",
-        ignoreActiveValue: isTextControl(document.activeElement),
-        restoreFocus: true,
-        callbacks: {
-          beforeNodeMorphed(previous, next) {
-            return !(
-              previous instanceof HTMLElement &&
-              next instanceof HTMLElement &&
-              next.dataset.hsView &&
-              previous.dataset.hsView === next.dataset.hsView
-            );
-          },
-          // The server HTML never has the attribute, so keep it on a control
-          // whose request is still in flight.
-          beforeAttributeUpdated(name, element, mutation) {
-            return !(
-              name === "data-hs-pending" &&
-              mutation === "remove" &&
-              signalRuntime.isSending(element)
-            );
-          },
-        },
-      });
+      morphView(node, fragment, signalRuntime);
       signalRuntime.applySnapshots(node);
       node.removeAttribute("data-hs-view-error");
       versions.set(node, update.version);
