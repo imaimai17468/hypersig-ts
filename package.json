@@ -31,6 +31,7 @@
     "example:counter": "bun run build && bun examples/counter/server.tsx",
     "example:todomvc": "bun run build && bun examples/todomvc/server.tsx",
     "example:memo": "bun run build && bun examples/shared-memo/server.tsx",
+    "example:rating": "bun run build && bun examples/rating/server.tsx",
     "test:browser": "bun run build && playwright test",
     "bench:phase4": "bun run build >&2 && node bench/run.ts"
   },
