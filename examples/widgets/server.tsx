@@ -172,14 +172,18 @@ const countryFilter = signals({ query: "" }, { name: "country-filter" });
 const draft = signals({ text: "" }, { name: "draft" });
 const draftTimer = timer({ name: "draft-save" });
 
+// The APG select-only combobox, without type-ahead or PageUp and PageDown.
 function FruitCombobox({ fruit }: { fruit: Fruit }) {
   const index = fruitKeys.indexOf(fruit);
   const c = combo.with({ selected: index, active: index });
-  // Opening starts from the chosen option; an open list moves its active one.
+  // Opening with an arrow key starts from the chosen option; an open list
+  // moves its active one.
   const move = (to: Parameters<typeof c.active.set>[0]) => [
     c.active.set(c.open.choose(to, c.selected)),
     c.open.set(true),
   ];
+  // Home and End open a closed list at the first or last option, too.
+  const moveTo = (index: number) => [c.active.set(index), c.open.set(true)];
   const pick = [
     c.selected.set(c.active),
     c.open.set(false),
@@ -235,8 +239,8 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
             {...on.keydown({
               ArrowDown: move(c.active.add(1).clamp(0, lastFruit)),
               ArrowUp: move(c.active.sub(1).clamp(0, lastFruit)),
-              Home: move(0),
-              End: move(lastFruit),
+              Home: moveTo(0),
+              End: moveTo(lastFruit),
               Escape: [c.open.set(false)],
             })}
           >
@@ -429,6 +433,8 @@ function CountryFilter() {
   );
 }
 
+// Saves are not ordered: a slow save that commits after a later one leaves the
+// older text saved.
 function DraftEditor({ text }: { text: string }) {
   const d = draft.with({ text });
   return (

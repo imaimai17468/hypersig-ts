@@ -107,6 +107,18 @@ test.describe("select-only combobox", () => {
     await expectActive(page, "Cherry");
     await box.press("Escape");
     await expect(listbox).toBeHidden();
+
+    // Home and End open a closed list at the first and last option.
+    await box.press("End");
+    await expect(listbox).toBeVisible();
+    await expectActive(page, "Orange");
+    await box.press("Escape");
+    await box.press("Home");
+    await expect(listbox).toBeVisible();
+    await expectActive(page, "Apple");
+    await box.press("Escape");
+    await expect(listbox).toBeHidden();
+    await expect(box).toHaveText("Cherry");
   });
 
   test("saves only the option picked with the keyboard, not the opening", async ({
