@@ -4,6 +4,8 @@ import { maxNestingDepth } from "./protocol.js";
 export interface EvaluationContext {
   read(path: SignalPath): JsonValue | undefined;
   output?: JsonValue;
+  /** The `detail` of the custom event whose statements are running. */
+  detail?: JsonValue;
   uuid(): string;
 }
 
@@ -131,6 +133,8 @@ function evaluateAt(
       return context.uuid();
     case "output":
       return context.output ?? null;
+    case "detail":
+      return context.detail ?? null;
   }
 }
 

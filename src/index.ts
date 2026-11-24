@@ -8,6 +8,12 @@ export type {
   JsonValue,
   ResultHandlers,
 } from "./action.js";
+export { customElement } from "./element.js";
+export type {
+  CustomElement,
+  CustomElementSpec,
+  ElementProps,
+} from "./element.js";
 export { createHypersig } from "./hono.js";
 export type {
   HonoLiveRenderContext as LiveRenderContext,

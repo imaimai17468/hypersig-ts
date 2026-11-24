@@ -2,7 +2,13 @@ import { expect, it } from "vite-plus/test";
 import type { EvaluationContext } from "./evaluate.js";
 import { evaluate, formatText } from "./evaluate.js";
 import type { ExprNode, JsonValue } from "./protocol.js";
-import { isBindableAttribute, isExprNode, isStmtNode } from "./protocol.js";
+import {
+  isBindableAttribute,
+  isBindableCustomAttribute,
+  isCustomElementName,
+  isExprNode,
+  isStmtNode,
+} from "./protocol.js";
 
 function createContext(
   values: Record<string, JsonValue>,
@@ -167,4 +173,40 @@ it("rejects and stops evaluating nodes nested deeper than 64 levels", () => {
   expect(evaluate(nestExpr(64), context)).toBe("deep");
   expect(evaluate(nestExpr(65), context)).toBeNull();
   expect(() => evaluate(nestExpr(100_000), context)).not.toThrow();
+});
+
+it("reads the detail of a custom event", () => {
+  expect(evaluate(["detail"], createContext({}, { detail: 4 }))).toBe(4);
+  expect(
+    evaluate(["get", ["detail"], "x"], createContext({}, { detail: { x: 1 } }))
+  ).toBe(1);
+  expect(evaluate(["detail"], createContext({}))).toBeNull();
+  expect(isExprNode(["detail"])).toBe(true);
+  expect(isExprNode(["detail", 1])).toBe(false);
+});
+
+it("recognizes custom element names", () => {
+  for (const name of ["star-rating", "x-1", "a-b.c_d", "my-"]) {
+    expect(isCustomElementName(name)).toBe(true);
+  }
+  for (const name of [
+    "rating",
+    "Star-rating",
+    "star-Rating",
+    "1-a",
+    "-a",
+    "a-b!",
+    "",
+  ]) {
+    expect(isCustomElementName(name)).toBe(false);
+  }
+});
+
+it("allows custom element attributes other than handlers, style and runtime attributes", () => {
+  for (const name of ["value", "max", "aria-label", "data-x"]) {
+    expect(isBindableCustomAttribute(name)).toBe(true);
+  }
+  for (const name of ["onrate", "onclick", "style", "data-hs-x", "Value", ""]) {
+    expect(isBindableCustomAttribute(name)).toBe(false);
+  }
 });

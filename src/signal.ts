@@ -1,3 +1,4 @@
+import type { CustomElement, CustomElementSpec } from "./element.js";
 import type { EvaluationContext } from "./evaluate.js";
 import { evaluate, formatText, isTruthy } from "./evaluate.js";
 import type { Identifier } from "./identifier.js";
@@ -15,6 +16,7 @@ import {
   defaultMark,
   eventAttributes,
   isBindableAttribute,
+  isBindableCustomAttribute,
   signalAttributes,
 } from "./protocol.js";
 
@@ -103,6 +105,10 @@ type AttributeBindings<Attrs> = {
       : never;
 };
 
+type ElementBindings<Attributes extends CustomElementSpec["attributes"]> = {
+  readonly [K in keyof Attributes]?: Attributes[K] | Expr<Attributes[K]>;
+};
+
 export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
   /**
    * Writes every field so the browser runtime loads them. Fields passed to
@@ -125,6 +131,16 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
    */
   bindAttr<Attrs extends Partial<Record<BindableAttribute, Expr<JsonValue>>>>(
     attrs: Attrs & AttributeBindings<Attrs>
+  ): Record<string, string | true> & { [signalAttributes.attr]: string };
+  /**
+   * Binds the attributes a custom element declares, each to a value or an
+   * expression of the declared type. A `true` value renders the attribute
+   * empty and `false` leaves it out; other values render as text. Throws for
+   * a name that is not lowercase, or is `on*`, `style`, or `data-hs-*`.
+   */
+  bindElement<Spec extends CustomElementSpec>(
+    element: CustomElement<Spec>,
+    values: ElementBindings<Spec["attributes"]>
   ): Record<string, string | true> & { [signalAttributes.attr]: string };
   bindValue(signal: Signal<string> | Signal<number> | Signal<boolean>): {
     [signalAttributes.bind]: string;
@@ -152,6 +168,7 @@ const scopeMembers = [
   "bindText",
   "bindShow",
   "bindAttr",
+  "bindElement",
   "bindValue",
 ] as const;
 
@@ -393,6 +410,10 @@ function createGroup(
     }),
     bindAttr: (attrs: Readonly<Record<string, ExprHandle | undefined>>) =>
       bindAttributes(attrs, valueOf),
+    bindElement: (
+      _element: unknown,
+      values: Readonly<Record<string, ExprInput | undefined>>
+    ) => bindElementAttributes(values, valueOf),
     bindValue: (signal: SignalHandle) => {
       const kind = inputKindOf(signal.path);
       const value = valueOf(signal);
@@ -433,6 +454,27 @@ function bindAttributes(
     const value = valueOf(expr);
     if (!booleanAttributeNames.has(name)) rendered[name] = formatText(value);
     else if (isTruthy(value)) rendered[name] = true;
+  }
+  rendered[signalAttributes.attr] = JSON.stringify(nodes);
+  return rendered;
+}
+
+function bindElementAttributes(
+  values: Readonly<Record<string, ExprInput | undefined>>,
+  valueOf: (expr: ExprHandle) => JsonValue
+): Record<string, string | true> {
+  const rendered: Record<string, string | true> = {};
+  const nodes: Record<string, ExprNode> = {};
+  for (const [name, input] of Object.entries(values)) {
+    if (input === undefined) continue;
+    if (!isBindableCustomAttribute(name)) {
+      throw new TypeError(`Cannot bind custom element attribute "${name}"`);
+    }
+    const node = nodeOf(input);
+    nodes[name] = node;
+    const value = valueOf(new ExprHandle(node));
+    if (typeof value !== "boolean") rendered[name] = formatText(value);
+    else if (value) rendered[name] = true;
   }
   rendered[signalAttributes.attr] = JSON.stringify(nodes);
   return rendered;

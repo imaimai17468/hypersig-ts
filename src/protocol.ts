@@ -53,7 +53,8 @@ export type ExprNode =
   | ["if", ExprNode, ExprNode, ExprNode]
   | ["get", ExprNode, string]
   | ["uuid"]
-  | ["output"];
+  | ["output"]
+  | ["detail"];
 
 export type StmtNode =
   | ["set", SignalPath, ExprNode]
@@ -97,6 +98,12 @@ export const eventAttributes = {
   change: "data-hs-on-change",
 } as const;
 
+/** Attributes that connect a custom element to the browser runtime. */
+export const customElementAttributes = {
+  onCustom: "data-hs-on-custom",
+  ownsChildren: "data-hs-owns-children",
+} as const;
+
 export const bindableAttributes = [
   "disabled",
   "checked",
@@ -117,6 +124,41 @@ export function isBindableAttribute(name: string): boolean {
   if (bindableAttributeNames.has(name)) return true;
   return (
     name.startsWith("data-") && name.length > 5 && !name.startsWith("data-hs-")
+  );
+}
+
+const customElementNamePattern = /^[a-z][a-z0-9._-]*-[a-z0-9._-]*$/;
+
+/**
+ * Accepts a lowercase letter followed by lowercase letters, digits, `-`, `.`
+ * or `_`, with at least one `-`.
+ */
+export function isCustomElementName(name: string): boolean {
+  return customElementNamePattern.test(name);
+}
+
+const customEventNamePattern = /^[a-z][a-z0-9.:_-]*$/;
+
+/**
+ * Accepts a lowercase letter followed by lowercase letters, digits, `-`, `.`,
+ * `:` or `_`.
+ */
+export function isCustomEventName(name: string): boolean {
+  return customEventNamePattern.test(name);
+}
+
+const customAttributeNamePattern = /^[a-z][a-z0-9._-]*$/;
+
+/**
+ * Accepts the lowercase attribute names a custom element may have bound,
+ * except event handlers (`on*`), `style`, and the runtime's `data-hs-*`.
+ */
+export function isBindableCustomAttribute(name: string): boolean {
+  return (
+    customAttributeNamePattern.test(name) &&
+    !name.startsWith("on") &&
+    name !== "style" &&
+    !name.startsWith("data-hs-")
   );
 }
 
@@ -196,6 +238,7 @@ function isExprNodeAt(value: unknown, depth: number): value is ExprNode {
       return value.length === 3 && isChild(first) && typeof second === "string";
     case "uuid":
     case "output":
+    case "detail":
       return value.length === 1;
     default:
       return false;
