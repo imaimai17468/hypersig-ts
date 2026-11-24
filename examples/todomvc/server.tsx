@@ -10,7 +10,6 @@ import {
   createHypersig,
   createMemoryPubSub,
   errorOutlet,
-  live,
   topic,
 } from "../../src/index.js";
 import {

@@ -15,6 +15,7 @@ import type {
   LeafSnapshot,
   LiveRenderer,
   ViewInstance,
+  RegisteredView,
   ViewRegistry,
 } from "./render.js";
 import { streamPage } from "./stream.js";
@@ -81,13 +82,9 @@ export function createLiveRuntime<
   )
     throw new RangeError("Invalid Live View send timeout");
   const pages = new Map<string, PageSession<User, Event>>();
-  const definitions = new Map<
-    string,
-    | LiveView<any, any, User, Event, Markup>
-    | SharedLiveView<any, any, User, Event, Markup>
-  >();
+  const definitions = new Map<string, RegisteredView<User, Event, Markup>>();
   const registered = new WeakSet<object>();
-  const registry: ViewRegistry = {
+  const registry: ViewRegistry<User, Event, Markup> = {
     shared: new WeakMap(),
     register(definition) {
       const { name } = definition;

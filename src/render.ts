@@ -48,24 +48,28 @@ export type SharedFragments = WeakMap<
   { data: SharedValue; html: Promise<string> }
 >;
 
+/** A definition of any params and data, as the registry stores it. */
+export type RegisteredView<
+  User extends Principal,
+  Event extends Topic,
+  Markup,
+> =
+  | LiveView<never, unknown, User, Event, Markup>
+  | SharedLiveView<never, SharedValue, User, Event, Markup>;
+
 /** Runtime-wide state that every page render of the runtime shares. */
-export interface ViewRegistry {
+export interface ViewRegistry<
+  User extends Principal,
+  Event extends Topic,
+  Markup,
+> {
   shared: SharedFragments;
   /** Records a definition under its name. Throws when the name is invalid or taken. */
-  register(
-    definition:
-      | LiveView<any, any, any, any, any>
-      | SharedLiveView<any, any, any, any, any>
-  ): void;
+  register(definition: RegisteredView<User, Event, Markup>): void;
   /** Returns the name of a registered definition. Throws for one that was never registered. */
   identify(definition: { readonly name: string }): string;
   /** Finds the definition registered under a name. */
-  resolve(
-    name: string
-  ):
-    | LiveView<any, any, any, any, any>
-    | SharedLiveView<any, any, any, any, any>
-    | undefined;
+  resolve(name: string): RegisteredView<User, Event, Markup> | undefined;
 }
 
 export function renderContext<
@@ -78,7 +82,7 @@ export function renderContext<
   views: Map<string, ViewInstance<User, Event>>,
   mode: "initial" | "update",
   admit: () => void,
-  registry: ViewRegistry,
+  registry: ViewRegistry<User, Event, Markup>,
   parent?: string
 ): LiveRenderContext<User, Event, Markup> {
   return {
