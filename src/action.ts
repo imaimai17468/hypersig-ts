@@ -1,4 +1,7 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type {
+  StandardJSONSchemaV1,
+  StandardSchemaV1,
+} from "@standard-schema/spec";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Principal } from "./live.js";
@@ -30,14 +33,31 @@ export type ActionFormResult<Output> =
   | { type: "invalid"; values: FormData; issues: readonly ActionIssue[] }
   | { type: "rejected"; values: FormData; error: ActionError };
 
+/** Attributes for an input element, derived from the input schema. */
+export interface FieldControl<Name extends string> {
+  name: Name;
+  required?: true;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  min?: number;
+  max?: number;
+}
+
+export interface JsonSchemaOptions {
+  /** Passed to the schema library when it converts an input schema. */
+  libraryOptions?: Record<string, unknown>;
+}
+
 export interface ActionDefinition<
   Wire,
   Input,
   Value,
   Output,
   User extends Principal,
+  Schema = unknown,
 > {
-  input: StandardSchemaV1<Wire, Input>;
+  input: StandardSchemaV1<Wire, Input> & Schema;
   output: StandardSchemaV1<Value, Output>;
   authorize(input: NoInfer<Input>, user: User): MaybePromise<boolean>;
   execute(input: NoInfer<Input>, user: User): MaybePromise<NoInfer<Value>>;
@@ -114,104 +134,63 @@ function readIssues(issues: readonly StandardSchemaV1.Issue[]): ActionIssue[] {
   });
 }
 
-export function registerAction<
-  Wire,
-  Input,
-  Value,
-  Output,
-  User extends Principal,
->(
-  routes: Hono,
-  basePath: string,
-  name: string,
-  origin: string,
-  authenticate: (request: Request) => MaybePromise<User | null>,
-  definition: ActionDefinition<Wire, Input, Value, Output, User>
-) {
-  const path = `/actions/${name}`;
-  const url = basePath + path;
-  routes.post(
-    path,
-    async (c, next) => {
-      c.header("Cache-Control", "no-store");
-      if (c.req.header("Origin") !== origin) {
-        return c.json({ error: "origin" }, 403);
-      }
-      await next();
-    },
-    bodyLimit({
-      maxSize: 64 * 1024,
-      onError: (c) => c.json({ error: "size" }, 413),
-    }),
-    async (c) => {
-      const user = await authenticate(c.req.raw);
-      if (!user) return c.json({ error: "authentication" }, 401);
-      const type = c.req
-        .header("Content-Type")
-        ?.split(";")[0]
-        ?.trim()
-        .toLowerCase();
-      if (
-        type !== "application/json" &&
-        type !== "multipart/form-data" &&
-        type !== "application/x-www-form-urlencoded"
-      ) {
-        return c.json({ error: "media-type" }, 415);
-      }
-      let body: unknown;
-      let values: FormData | undefined;
-      try {
-        if (type === "application/json") body = await c.req.raw.json();
-        else {
-          values = await c.req.raw.formData();
-          body = readForm(values);
-        }
-      } catch {
-        return c.json({ error: "body" }, 400);
-      }
-      const accept = c.req
-        .header("Accept")
-        ?.split(",")
-        .map((entry) => entry.split(";", 1)[0]?.trim().toLowerCase());
-      const form =
-        values && accept?.includes("text/html") && definition.formResponse;
-      const parsed = await definition.input["~standard"].validate(body);
-      if (parsed.issues) {
-        const issues = readIssues(parsed.issues);
-        if (form && values)
-          return form({ type: "invalid", values, issues }, c.req.raw, user);
-        return c.json(
-          {
-            error: "input",
-            issues: issues.map(({ message }) => message),
-            fieldIssues: issues,
-          },
-          422
-        );
-      }
-      if (!(await definition.authorize(parsed.value, user))) {
-        return c.json({ error: "authorization" }, 403);
-      }
-      let value: Value;
-      try {
-        value = await definition.execute(parsed.value, user);
-      } catch (error) {
-        if (!(error instanceof ActionError)) throw error;
-        if (form && values)
-          return form({ type: "rejected", values, error }, c.req.raw, user);
-        return c.json(
-          { error: "action", message: error.message },
-          error.status
-        );
-      }
-      const result = await definition.output["~standard"].validate(value);
-      if (result.issues) throw new Error(`Invalid output from Action ${name}`);
-      if (form)
-        return form({ type: "success", data: result.value }, c.req.raw, user);
-      return c.json({ data: result.value });
-    }
-  );
+type JsonSchemaObject = Readonly<Record<string, unknown>>;
 
+function isRecord(value: unknown): value is JsonSchemaObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberAt(schema: JsonSchemaObject, key: string): number | undefined {
+  const value = schema[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function deriveControl<Name extends string>(
+  name: Name,
+  schema: JsonSchemaObject
+): FieldControl<Name> {
+  const { properties, required } = schema;
+  const property = isRecord(properties) ? properties[name] : undefined;
+  const control: FieldControl<Name> = { name };
+  if (!isRecord(property)) return control;
+  if (
+    Array.isArray(required) &&
+    required.includes(name) &&
+    property["type"] !== "boolean"
+  ) {
+    control.required = true;
+  }
+  const minLength = numberAt(property, "minLength");
+  const maxLength = numberAt(property, "maxLength");
+  const min = numberAt(property, "minimum");
+  const max = numberAt(property, "maximum");
+  const pattern = property["pattern"];
+  if (minLength !== undefined) control.minLength = minLength;
+  if (maxLength !== undefined) control.maxLength = maxLength;
+  if (typeof pattern === "string" && /^\^.*\$$/s.test(pattern)) {
+    control.pattern = pattern;
+  }
+  if (min !== undefined) control.min = min;
+  if (max !== undefined) control.max = max;
+  return control;
+}
+
+/** `control()` exists only when the input schema converts to JSON Schema. */
+type ControlMethods<Schema, Wire> = Schema extends StandardJSONSchemaV1
+  ? {
+      /**
+       * Attributes for the input named `name`, derived from the input schema's
+       * JSON Schema: `required`, `minLength`, `maxLength`, `min`, `max`, and
+       * a `pattern` that starts with `^` and ends with `$`. The schema is
+       * converted on the first call; a conversion error names this Action.
+       * Only a top-level object schema is read. Anything else yields `name`
+       * alone.
+       */
+      control<Name extends FormFieldName<Wire>>(name: Name): FieldControl<Name>;
+    }
+  : unknown;
+
+function createActionMethods<Wire, Output>(url: string, name: string) {
   const callSuccess = (
     onSuccess: NonNullable<ResultHandlers<Output>["onSuccess"]>
   ): Statements => onSuccess(outputExprOf<Output>());
@@ -307,5 +286,160 @@ export function registerAction<
           : {}),
       };
     },
+  };
+}
+
+export function registerAction<
+  Wire,
+  Input,
+  Value,
+  Output,
+  User extends Principal,
+  Schema = unknown,
+>(
+  routes: Hono,
+  basePath: string,
+  name: string,
+  origin: string,
+  authenticate: (request: Request) => MaybePromise<User | null>,
+  definition: ActionDefinition<Wire, Input, Value, Output, User, Schema>,
+  jsonSchema?: JsonSchemaOptions
+): ReturnType<typeof createActionMethods<Wire, Output>> &
+  ControlMethods<Schema, Wire>;
+export function registerAction<
+  Wire,
+  Input,
+  Value,
+  Output,
+  User extends Principal,
+  Schema,
+>(
+  routes: Hono,
+  basePath: string,
+  name: string,
+  origin: string,
+  authenticate: (request: Request) => MaybePromise<User | null>,
+  definition: ActionDefinition<Wire, Input, Value, Output, User, Schema>,
+  jsonSchema: JsonSchemaOptions = {}
+) {
+  const path = `/actions/${name}`;
+  const url = basePath + path;
+  routes.post(
+    path,
+    async (c, next) => {
+      c.header("Cache-Control", "no-store");
+      if (c.req.header("Origin") !== origin) {
+        return c.json({ error: "origin" }, 403);
+      }
+      await next();
+    },
+    bodyLimit({
+      maxSize: 64 * 1024,
+      onError: (c) => c.json({ error: "size" }, 413),
+    }),
+    async (c) => {
+      const user = await authenticate(c.req.raw);
+      if (!user) return c.json({ error: "authentication" }, 401);
+      const type = c.req
+        .header("Content-Type")
+        ?.split(";")[0]
+        ?.trim()
+        .toLowerCase();
+      if (
+        type !== "application/json" &&
+        type !== "multipart/form-data" &&
+        type !== "application/x-www-form-urlencoded"
+      ) {
+        return c.json({ error: "media-type" }, 415);
+      }
+      let body: unknown;
+      let values: FormData | undefined;
+      try {
+        if (type === "application/json") body = await c.req.raw.json();
+        else {
+          values = await c.req.raw.formData();
+          body = readForm(values);
+        }
+      } catch {
+        return c.json({ error: "body" }, 400);
+      }
+      const accept = c.req
+        .header("Accept")
+        ?.split(",")
+        .map((entry) => entry.split(";", 1)[0]?.trim().toLowerCase());
+      const form =
+        values && accept?.includes("text/html") && definition.formResponse;
+      const parsed = await definition.input["~standard"].validate(body);
+      if (parsed.issues) {
+        const issues = readIssues(parsed.issues);
+        if (form && values)
+          return form({ type: "invalid", values, issues }, c.req.raw, user);
+        return c.json(
+          {
+            error: "input",
+            issues: issues.map(({ message }) => message),
+            fieldIssues: issues,
+          },
+          422
+        );
+      }
+      if (!(await definition.authorize(parsed.value, user))) {
+        return c.json({ error: "authorization" }, 403);
+      }
+      let value: Value;
+      try {
+        value = await definition.execute(parsed.value, user);
+      } catch (error) {
+        if (!(error instanceof ActionError)) throw error;
+        if (form && values)
+          return form({ type: "rejected", values, error }, c.req.raw, user);
+        return c.json(
+          { error: "action", message: error.message },
+          error.status
+        );
+      }
+      const result = await definition.output["~standard"].validate(value);
+      if (result.issues) throw new Error(`Invalid output from Action ${name}`);
+      if (form)
+        return form({ type: "success", data: result.value }, c.req.raw, user);
+      return c.json({ data: result.value });
+    }
+  );
+
+  let inputSchema: JsonSchemaObject | undefined;
+  const readInputSchema = (): JsonSchemaObject => {
+    if (inputSchema) return inputSchema;
+    const standard: unknown = definition.input["~standard"];
+    const converter =
+      isRecord(standard) && isRecord(standard["jsonSchema"])
+        ? standard["jsonSchema"]
+        : undefined;
+    const convert = converter?.["input"];
+    if (typeof convert !== "function") {
+      throw new Error(`Action ${name} has no JSON Schema conversion`);
+    }
+    try {
+      const converted: unknown = convert.call(converter, {
+        target: "draft-2020-12",
+        libraryOptions: jsonSchema.libraryOptions,
+      });
+      inputSchema = isRecord(converted) ? converted : {};
+    } catch (error) {
+      throw new Error(
+        `Action ${name}: converting the input schema to JSON Schema failed. ` +
+          `Skip unsupported parts with jsonSchema.libraryOptions in createHypersig`,
+        { cause: error }
+      );
+    }
+    return inputSchema;
+  };
+
+  const methods = createActionMethods<Wire, Output>(url, name);
+  const standard: unknown = definition.input["~standard"];
+  if (!isRecord(standard) || !isRecord(standard["jsonSchema"])) return methods;
+  return {
+    ...methods,
+    control: <Name extends string>(controlName: Name): FieldControl<Name> =>
+      deriveControl(controlName, readInputSchema()),
   };
 }

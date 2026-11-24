@@ -3,6 +3,8 @@ export type {
   ActionDefinition,
   ActionFormResult,
   ActionIssue,
+  FieldControl,
+  JsonSchemaOptions,
   JsonValue,
   ResultHandlers,
 } from "./action.js";

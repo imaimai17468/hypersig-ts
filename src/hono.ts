@@ -4,7 +4,7 @@ import { streamSSE } from "hono/streaming";
 import type { SSEStreamingApi } from "hono/streaming";
 import type { HtmlEscapedString } from "hono/utils/html";
 import { registerAction } from "./action.js";
-import type { ActionDefinition } from "./action.js";
+import type { ActionDefinition, JsonSchemaOptions } from "./action.js";
 import { identifierPattern } from "./identifier.js";
 import type { Identifier } from "./identifier.js";
 import type { LiveRuntimeOptions } from "./live-runtime.js";
@@ -40,6 +40,8 @@ export interface HypersigOptions<
   authenticate: (request: Request) => User | null | Promise<User | null>;
   /** Non-secret and stable across server restarts, unique to the authenticated session. */
   draftScope?: (user: User) => string;
+  /** Options for converting input schemas that support `control()`. */
+  jsonSchema?: JsonSchemaOptions;
 }
 
 const renderer: LiveRenderer<Markup> = {
@@ -151,9 +153,9 @@ export function createHypersig<User extends Principal, Event extends Topic>(
      * Registers an Action under a literal name. A second Action with the same
      * name throws here, when the application starts.
      */
-    action<const Name extends string, Wire, Input, Value, Output>(
+    action<const Name extends string, Wire, Input, Value, Output, Schema>(
       name: Identifier<Name>,
-      definition: ActionDefinition<Wire, Input, Value, Output, User>
+      definition: ActionDefinition<Wire, Input, Value, Output, User, Schema>
     ) {
       if (!identifierPattern.test(name) || actions.has(name)) {
         throw new Error(`Invalid or duplicate Action name: ${name}`);
@@ -165,7 +167,8 @@ export function createHypersig<User extends Principal, Event extends Topic>(
         name,
         origin,
         authenticate,
-        definition
+        definition,
+        options.jsonSchema
       );
     },
     async page(

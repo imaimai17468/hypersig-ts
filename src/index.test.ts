@@ -1,3 +1,4 @@
+import { toStandardJsonSchema } from "@valibot/to-json-schema";
 import { Hono } from "hono";
 import { html } from "hono/html";
 import * as v from "valibot";
@@ -663,4 +664,125 @@ it("exports the types that signal and Action signatures name", () => {
   expect(increment.call({ amount: "1" }, handlers)[3]).toEqual([
     ["set", group.count.path, ["output"]],
   ]);
+});
+
+function controlHypersig(libraryOptions?: Record<string, unknown>) {
+  return createHypersig({
+    origin,
+    authenticate: () => ({ sessionId: "owner" }),
+    pubsub: createMemoryPubSub<CounterEvent>(),
+    ...(libraryOptions ? { jsonSchema: { libraryOptions } } : {}),
+  });
+}
+
+const ignoreUnsupported = { errorMode: "ignore" };
+
+it("derives control attributes from the input schema", () => {
+  const todo = controlHypersig(ignoreUnsupported).action("todo", {
+    input: toStandardJsonSchema(
+      v.object({
+        title: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(200)),
+        code: v.pipe(v.string(), v.regex(/^[0-9]+$/)),
+        loose: v.pipe(v.string(), v.regex(/[0-9]/)),
+        count: v.pipe(v.number(), v.minValue(1), v.maxValue(5)),
+        note: v.optional(v.string()),
+        done: v.boolean(),
+      })
+    ),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(todo.control("title")).toEqual({
+    name: "title",
+    required: true,
+    minLength: 1,
+    maxLength: 200,
+  });
+  expect(todo.control("code")).toEqual({
+    name: "code",
+    required: true,
+    pattern: "^[0-9]+$",
+  });
+  expect(todo.control("loose")).toEqual({ name: "loose", required: true });
+  expect(todo.control("count")).toEqual({
+    name: "count",
+    required: true,
+    min: 1,
+    max: 5,
+  });
+  expect(todo.control("note")).toEqual({ name: "note" });
+  expect(todo.control("done")).toEqual({ name: "done" });
+  // @ts-expect-error The schema has no field named "titel".
+  todo.control("titel");
+});
+
+it("offers control() only when the input schema converts to JSON Schema", () => {
+  const plain = controlHypersig().action("plain", {
+    input: v.object({ title: v.string() }),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  // @ts-expect-error A schema without JSON Schema conversion has no control().
+  expect(plain.control).toBeUndefined();
+});
+
+function fakeSchema(convert: () => Record<string, unknown>) {
+  const wrapped = toStandardJsonSchema(v.object({ x: v.string() }));
+  return {
+    "~standard": {
+      ...wrapped["~standard"],
+      jsonSchema: { input: convert, output: convert },
+    },
+  };
+}
+
+it("converts the schema once", () => {
+  const convert = vi.fn<() => Record<string, unknown>>(() => ({
+    type: "object",
+    properties: { x: {} },
+    required: ["x"],
+  }));
+  const action = controlHypersig().action("once", {
+    input: fakeSchema(convert) as ReturnType<
+      typeof toStandardJsonSchema<
+        v.ObjectSchema<{ x: v.StringSchema<undefined> }, undefined>
+      >
+    >,
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  action.control("x");
+  action.control("x");
+  expect(convert).toHaveBeenCalledTimes(1);
+});
+
+it("reads only object schemas", () => {
+  const action = controlHypersig().action("scalar", {
+    input: fakeSchema(() => ({ type: "string" })) as ReturnType<
+      typeof toStandardJsonSchema<
+        v.ObjectSchema<{ x: v.StringSchema<undefined> }, undefined>
+      >
+    >,
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(action.control("x")).toEqual({ name: "x" });
+});
+
+it("names the action when conversion fails", () => {
+  const action = controlHypersig().action("convert-fails", {
+    input: toStandardJsonSchema(
+      v.object({ title: v.pipe(v.string(), v.trim()) })
+    ),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  expect(() => action.control("title")).toThrow(
+    /convert-fails.*libraryOptions/s
+  );
 });
