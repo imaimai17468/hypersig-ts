@@ -105,21 +105,48 @@ const href = links.counters[":counterKey"].$path({
     type only when the input schema also implements Standard JSON Schema, for
     example when it is wrapped with <code>toStandardJsonSchema()</code> from
     <code>@valibot/to-json-schema</code>; for any other schema it is a type
-    error. The schema is converted to JSON Schema once, on the first call.
-    <code>required</code> is set for fields the schema requires, except
-    booleans. <code>pattern</code> is set only when the expression starts with
-    <code>^</code> and ends with <code>$</code>. No <code>type</code> is
-    emitted. A field the converted schema does not describe returns only its
-    name.
+    error. The schema is converted to JSON Schema once, on the first call. No
+    <code>type</code> is emitted. A field the converted schema does not describe
+    returns only its name.
   </p>
+  <p>
+    The derived attributes never make the browser stricter than the server.
+    Where an attribute could reject a value the server accepts, it is left out:
+  </p>
+  <ul>
+    <li>
+      <code>required</code> is set only for a field the schema requires that is
+      not a boolean and whose schema rejects the empty string: a
+      <code>minLength</code> of at least 1, any <code>pattern</code>, or an
+      <code>enum</code> without <code>""</code>. A required
+      <code>v.string()</code> accepts <code>""</code>, so it gets no
+      <code>required</code>.
+    </li>
+    <li>
+      <code>pattern</code> is set only when the expression starts with
+      <code>^</code>, ends with an unescaped <code>$</code>, has no top-level
+      <code>|</code>, and compiles with the <code>v</code> flag, because the
+      browser checks <code>^(?:pattern)$</code> with that flag.
+      <code>pattern</code> has no effect on <code>&lt;textarea&gt;</code>.
+    </li>
+    <li>
+      <code>min</code> and <code>max</code> appear only when the input-side
+      schema is a number. Form posts are strings, so a form field that converts
+      with <code>toNumber()</code> or <code>transform()</code> yields neither.
+    </li>
+  </ul>
   <p>
     If conversion fails, <code>control()</code> throws an error that names the
     Action. Pass <code>jsonSchema: { libraryOptions }</code> to
     <code>createHypersig</code> to skip parts that have no JSON Schema form,
-    such as <code>{ errorMode: "ignore" }</code> for Valibot's
-    <code>v.trim()</code>. The message a user sees before submission is the
-    browser's own; the server's schema messages appear only after the server
-    validates.
+    such as <code>{ ignoreActions: ["trim"] }</code> for Valibot's
+    <code>v.trim()</code>. Constraints written after a skipped action are
+    checked in the browser against the raw value, so skip only actions that do
+    not change what those constraints mean. Avoid
+    <code>{ errorMode: "ignore" }</code>: it drops a regular expression's flags
+    and keeps its pattern, so the browser checks a different expression. The
+    message a user sees before submission is the browser's own; the server's
+    schema messages appear only after the server validates.
   </p>
 </section>
 

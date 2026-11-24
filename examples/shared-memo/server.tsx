@@ -60,8 +60,9 @@ const hypersig = createHypersig({
   origin,
   pubsub: createMemoryPubSub<ReturnType<typeof memoChanged>>(),
   reconcileIntervalMs: 30_000,
-  // `v.trim()` has no JSON Schema form; control() reads the rest.
-  jsonSchema: { libraryOptions: { errorMode: "ignore" } },
+  // `v.trim()` has no JSON Schema form. Skipping it leaves the text lengths,
+  // which the browser checks against the untrimmed value.
+  jsonSchema: { libraryOptions: { ignoreActions: ["trim"] } },
   ...(Bun.env.HYPERSIG_TRACE === "1" && {
     onDiagnostic: (event) => console.info(JSON.stringify(event)),
   }),

@@ -36,8 +36,9 @@ type TodoEvent =
 const hypersig = createHypersig({
   origin,
   pubsub: createMemoryPubSub<TodoEvent>(),
-  // `v.trim()` has no JSON Schema form; control() reads the rest.
-  jsonSchema: { libraryOptions: { errorMode: "ignore" } },
+  // `v.trim()` has no JSON Schema form. Skipping it leaves the title lengths,
+  // which the browser checks against the untrimmed value.
+  jsonSchema: { libraryOptions: { ignoreActions: ["trim"] } },
   authenticate(request) {
     const sessionId = getCookie(new Context(request), cookie);
     return sessionId && sessions.has(sessionId) ? { sessionId } : null;

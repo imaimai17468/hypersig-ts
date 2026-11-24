@@ -104,19 +104,49 @@ const href = links.counters[":counterKey"].$path({
   </p>
   <p>
     <code>action.control(name)</code>
-    は、項目名と、入力スキーマから読み取った制約属性（<code>required</code>、<code>minLength</code>、<code>maxLength</code>、<code>pattern</code>、<code>min</code>、<code>max</code>）を返します。入力欄に展開して使います。<code
+    は、項目名と、入力スキーマから読み取った制約属性（<code>required</code>、<code>minLength</code>、<code>maxLength</code>、<code>pattern</code>、<code>min</code>、<code>max</code>）を返します。<code
       >&lt;input {...add.control("title")} /&gt;</code
     >
-    入力スキーマが Standard JSON Schema も実装しているとき（たとえば
-    <code>@valibot/to-json-schema</code> の
+    のように入力欄に展開して使います。入力スキーマが Standard JSON Schema
+    も実装しているとき（たとえば <code>@valibot/to-json-schema</code> の
     <code>toStandardJsonSchema()</code>
     で包んだとき）だけ型に現れ、それ以外のスキーマでは型エラーになります。JSON
-    Schema への変換は最初の呼び出しで一度だけ行います。<code>required</code>
-    は、スキーマが必須とする項目に付きます（真偽値を除く）。<code>pattern</code>
-    は、式が <code>^</code> で始まり
-    <code>$</code> で終わるときだけ付きます。<code>type</code>
+    Schema への変換は最初の呼び出しで一度だけ行います。<code>type</code>
     は出しません。変換後のスキーマに記述がない項目は、名前だけを返します。
   </p>
+  <p>
+    導き出した属性によって、ブラウザがサーバーより厳しくなることはありません。サーバーが受け付ける値をはじくおそれのある属性は付けません。
+  </p>
+  <ul>
+    <li>
+      <code>required</code>
+      は、スキーマが必須とし、真偽値ではなく、空文字列をはじく項目にだけ付きます。空文字列をはじくのは、<code
+        >minLength</code
+      >
+      が 1 以上のとき、<code>pattern</code> があるとき、<code>""</code>
+      を含まない <code>enum</code> のときです。必須の <code>v.string()</code> は
+      <code>""</code> を受け付けるので、<code>required</code>
+      は付きません。
+    </li>
+    <li>
+      <code>pattern</code> は、式が
+      <code>^</code> で始まり、エスケープされていない
+      <code>$</code> で終わり、最上位に <code>|</code> がなく、<code>v</code>
+      フラグで正規表現として解釈できるときだけ付きます。ブラウザは
+      <code>^(?:pattern)$</code> をこのフラグで照合するためです。<code
+        >&lt;textarea&gt;</code
+      >
+      では <code>pattern</code> は効きません。
+    </li>
+    <li>
+      <code>min</code> と
+      <code>max</code>
+      は、入力側のスキーマが数値のときだけ付きます。フォームの送信値は文字列なので、<code
+        >toNumber()</code
+      >
+      や <code>transform()</code> で変換する項目には付きません。
+    </li>
+  </ul>
   <p>
     変換に失敗すると、<code>control()</code> は Action
     名を含む例外を投げます。JSON Schema にできない部分は、<code
@@ -124,8 +154,11 @@ const href = links.counters[":counterKey"].$path({
     >
     に <code>jsonSchema: { libraryOptions }</code> を渡して飛ばせます（Valibot
     の <code>v.trim()</code> なら
-    <code>{ errorMode: "ignore" }</code
-    >）。送信前に表示される文言はブラウザ標準のもので、スキーマのメッセージが表示されるのはサーバーが検証した後です。
+    <code>{ ignoreActions: ["trim"] }</code
+    >）。飛ばしたアクションより後に書いた制約は、ブラウザでは変換前の値に対して確かめられます。飛ばすのは、後の制約の意味を変えないアクションだけにしてください。<code
+      >{ errorMode: "ignore" }</code
+    >
+    は使わないでください。正規表現のフラグを落としてパターンだけを残すため、ブラウザが別の式で照合します。送信前に表示される文言はブラウザ標準のもので、スキーマのメッセージが表示されるのはサーバーが検証した後です。
   </p>
 </section>
 
