@@ -217,7 +217,13 @@ const e = editor.with({ base: draft.revision });</code></pre>
     <dd>
       Runs statements in the browser when the form is submitted, before the
       request is sent. Writes made there are owned by the submit request, like
-      the writes before a <code>call</code>.
+      the writes before a <code>call</code>. A form with
+      <code>onSubmit</code> can be submitted again while an earlier request is
+      in flight; each request owns its own writes and previews, and
+      <code>pending()</code> and the form's <code>data-hs-pending</code>
+      attribute stay set until the last request ends. A form without
+      <code>onSubmit</code> sends one request at a time and ignores a submit
+      while its request is in flight.
     </dd>
     <dt>
       <code>insertTemplate(initial, { name })</code>
@@ -237,12 +243,17 @@ const e = editor.with({ base: draft.revision });</code></pre>
           methods (<code>bindText</code>, <code>bindShow</code>,
           <code>bindAttr</code>) render <code>item</code> with the
           <code>initial</code> values on the server and with the inserted values
-          in the browser.
+          in the browser. Use <code>item</code> only with these methods inside
+          the template: elsewhere nothing reports a mistake, another scope's
+          bind methods render it as <code>false</code> on the server, and in the
+          browser it has no value outside a preview.
         </li>
         <li>
           <code>slot()</code> goes on the list element the browser inserts into.
-          Put it only on lists the item will join. If a slot's list never
-          receives the confirmed row, the preview stays forever.
+          Put it inside the Live View that renders the confirmed rows, and only
+          on lists the item will join. If the slot's Live View never receives
+          the confirmed row, or the slot is outside every Live View, a
+          successful preview stays until the page reloads.
         </li>
         <li>
           <code>insert(values, key)</code> is a statement. It appends a preview
@@ -253,8 +264,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
         </li>
         <li>
           <code>confirms(key)</code> goes on the confirmed row. When an element
-          with <code>confirms(key)</code> appears in the slot, the preview for
-          that key is removed.
+          with <code>confirms(key)</code> appears anywhere in the Live View that
+          holds the slot (not in a nested Live View), the preview for that key
+          is removed. A failed Action also removes it.
         </li>
       </ul>
     </dd>
@@ -273,11 +285,14 @@ const e = editor.with({ base: draft.revision });</code></pre>
     An optimistic add chains these. The browser creates the key, shows the
     preview, and sends the key in the Action input. The server validates the key
     format, rejects a key that already exists, and renders the confirmed row
-    with <code>confirms(key)</code>.
+    with <code>confirms(key)</code>. The browser replaces the key before each
+    send, so the hidden input's server-rendered value is only for a form posted
+    without JavaScript; give it a fresh key per request, or a native submit
+    fails key validation.
   </p>
   <pre><code>const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
 const composer = signals({ title: "", key: "" }, { name: "composer" });
-const entry = composer.with({});
+const entry = composer.with({ key: crypto.randomUUID() });
 
 &lt;form
   {...entry.init()}
@@ -293,7 +308,11 @@ const entry = composer.with({});
   &lt;input name={add.field("todoTitle")} {...entry.bindValue(entry.title)} /&gt;
 &lt;/form&gt;
 
-&lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
+&lt;ul {...newTodo.slot()}&gt;
+  {todos.map((todo) =&gt; (
+    &lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
+  ))}
+&lt;/ul&gt;
 
 &lt;template {...newTodo.template()}&gt;
   &lt;li&gt;&lt;span {...newTodo.bindText(newTodo.item.title)} /&gt;&lt;/li&gt;

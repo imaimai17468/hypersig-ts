@@ -215,7 +215,16 @@ const e = editor.with({ base: draft.revision });</code></pre>
       フォームの送信時、リクエストを送る前にブラウザで文を実行します。ここで書いた値は、<code
         >call</code
       >
-      より前の書き込みと同じく、その送信リクエストが持ちます。
+      より前の書き込みと同じく、その送信リクエストが持ちます。<code
+        >onSubmit</code
+      >
+      を持つフォームは、前のリクエストが送信中でも再び送信できます。それぞれのリクエストが自分の書き込みと仮の行を持ち、<code
+        >pending()</code
+      >
+      とフォームの
+      <code>data-hs-pending</code>
+      属性は最後のリクエストが終わるまで残ります。<code>onSubmit</code>
+      のないフォームは一度に一つのリクエストだけを送り、送信中にもう一度送信しても無視します。
     </dd>
     <dt>
       <code>insertTemplate(initial, { name })</code>
@@ -236,11 +245,17 @@ const e = editor.with({ base: draft.revision });</code></pre>
           <code>&lt;template&gt;</code> を取り除くためです。束縛
           (<code>bindText</code>、<code>bindShow</code>、<code>bindAttr</code>)
           は、サーバーでは <code>initial</code> の値で、ブラウザでは挿入した値で
-          <code>item</code> を描画します。
+          <code>item</code> を描画します。<code>item</code>
+          はテンプレートの中のこれらの束縛でだけ使ってください。ほかの場所で使っても誤りは報告されず、サーバーでは別のスコープの束縛が
+          <code>false</code>
+          と描画し、ブラウザでは仮の行の外で値を持ちません。
         </li>
         <li>
           <code>slot()</code>
-          は、ブラウザが行を挿入する一覧の要素に付けます。項目が加わる一覧にだけ置いてください。確定した行が届かない一覧に置くと、仮の行が残り続けます。
+          は、ブラウザが行を挿入する一覧の要素に付けます。確定した行を描く Live
+          View の中の、項目が加わる一覧にだけ置いてください。スロットの Live
+          View に確定した行が届かない場合や、スロットがどの Live View
+          の中にもない場合、成功した仮の行はページを読み込み直すまで残ります。
         </li>
         <li>
           <code>insert(values, key)</code>
@@ -250,9 +265,10 @@ const e = editor.with({ base: draft.revision });</code></pre>
           は文字列か文字列の式です。項目名の誤りは型でだけ検査するので、型のない呼び出し元は、未知の項目名を書いてもエラーになりません。
         </li>
         <li>
-          <code>confirms(key)</code> は確定した行に付けます。スロット内に
+          <code>confirms(key)</code> は確定した行に付けます。スロットを含む Live
+          View のどこかに (入れ子の Live View の中は除く)
           <code>confirms(key)</code> を持つ要素が現れると、その key
-          の仮の行を取り除きます。
+          の仮の行を取り除きます。Action が失敗したときも取り除きます。
         </li>
       </ul>
     </dd>
@@ -271,11 +287,14 @@ const e = editor.with({ base: draft.revision });</code></pre>
     楽観的な追加は、これらをつなげて作ります。ブラウザが key
     を作り、仮の行を表示し、Action の入力で key を送ります。サーバーは key
     の形式を検証し、すでにある key は拒否し、確定した行を
-    <code>confirms(key)</code> 付きで描画します。
+    <code>confirms(key)</code> 付きで描画します。ブラウザは送信のたびに key
+    を書き換えるので、hidden input にサーバーが描く値は JavaScript
+    なしで送るフォームのためだけにあります。リクエストごとに新しい key
+    を描いてください。そうしないと、ネイティブの送信が key の検証で失敗します。
   </p>
   <pre><code>const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
 const composer = signals({ title: "", key: "" }, { name: "composer" });
-const entry = composer.with({});
+const entry = composer.with({ key: crypto.randomUUID() });
 
 &lt;form
   {...entry.init()}
@@ -291,7 +310,11 @@ const entry = composer.with({});
   &lt;input name={add.field("todoTitle")} {...entry.bindValue(entry.title)} /&gt;
 &lt;/form&gt;
 
-&lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
+&lt;ul {...newTodo.slot()}&gt;
+  {todos.map((todo) =&gt; (
+    &lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
+  ))}
+&lt;/ul&gt;
 
 &lt;template {...newTodo.template()}&gt;
   &lt;li&gt;&lt;span {...newTodo.bindText(newTodo.item.title)} /&gt;&lt;/li&gt;
