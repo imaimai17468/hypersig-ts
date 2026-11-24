@@ -840,6 +840,17 @@ export type KeyCombination<Key extends string> = string extends Key
 
 type KeyMap = { readonly [key: string | number]: Statements };
 
+type ModifierPrefix =
+  `${"" | "Control+"}${"" | "Alt+"}${"" | "Shift+"}${"" | "Meta+"}`;
+
+/**
+ * Every named key after each allowed set of modifiers. It adds no rule of its
+ * own: listing them as optional properties lets an editor suggest them.
+ */
+type SuggestedKeys = {
+  readonly [Key in `${ModifierPrefix}${NamedKey}`]?: Statements;
+};
+
 type CheckedKeyMap<Keys extends KeyMap> = {
   readonly [Key in keyof Keys]: Key extends string | number
     ? KeyCombination<`${Key}`> extends `${Key}`
@@ -885,10 +896,13 @@ export const on = {
    * `Tab` and `Shift+Tab`. Keys pressed while an IME is composing, or while the
    * element's Action is in flight, run nothing, and so does a key whose
    * default an element inside already prevented. A map inside a custom
-   * element that renders its own children is ignored. Throws for a name `KeyCombination` rejects, which a computed
-   * `string` key can carry past the types.
+   * element that renders its own children is ignored. Editors suggest the
+   * named keys with their modifiers. Throws for a name `KeyCombination`
+   * rejects, which a computed `string` key can carry past the types.
    */
-  keydown: <const Keys extends KeyMap>(map: Keys & CheckedKeyMap<Keys>) => {
+  keydown: <const Keys extends KeyMap>(
+    map: Keys & CheckedKeyMap<Keys> & SuggestedKeys
+  ) => {
     const entries = Object.entries(map).map(([key, stmts]) => {
       const error = findKeyCombinationError(key);
       if (error) throw new Error(error);
