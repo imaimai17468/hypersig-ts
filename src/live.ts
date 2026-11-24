@@ -25,6 +25,37 @@ export interface LiveRenderContext<
 }
 
 /**
+ * Accepts `Value` when every part of it is JSON: strings, numbers, booleans,
+ * null, arrays of those, and objects of those, including interfaces and
+ * optional properties. Turns a Date, function, bigint, symbol, or an array
+ * entry that may be undefined into `never`, so the call that passes it fails.
+ * A view that does not declare its params accepts any JSON value.
+ */
+type JsonCompatible<Value> = unknown extends Value
+  ? JsonValue
+  : JsonCompatibleKnown<Value>;
+
+type JsonCompatibleKnown<Value> = [Value] extends [JsonValue]
+  ? [JsonValue] extends [Value]
+    ? Value
+    : JsonCompatiblePart<Value>
+  : JsonCompatiblePart<Value>;
+
+type JsonCompatiblePart<Value> = Value extends string | number | boolean | null
+  ? Value
+  : Value extends readonly unknown[]
+    ? { readonly [Index in keyof Value]: JsonCompatibleKnown<Value[Index]> }
+    : Value extends Date | ((...args: never) => unknown)
+      ? never
+      : Value extends object
+        ? {
+            readonly [Key in keyof Value]:
+              | JsonCompatibleKnown<Value[Key]>
+              | (undefined extends Value[Key] ? undefined : never);
+          }
+        : never;
+
+/**
  * Places the page's top-level views. Their params travel in the page token,
  * so they must be JSON. A value TypeScript accepts as JSON but that does not
  * survive `JSON.stringify`, such as `NaN` or a class instance, reaches the view
@@ -37,11 +68,11 @@ export interface PageRenderContext<
 > {
   view<Params, Data>(
     definition: LiveView<Params, Data, User, Event, Markup>,
-    params: NoInfer<Params> & JsonValue
+    params: NoInfer<Params> & JsonCompatible<Params>
   ): Promise<Markup>;
   view<Params, Data extends SharedValue>(
     definition: SharedLiveView<Params, Data, User, Event, Markup>,
-    params: NoInfer<Params> & JsonValue
+    params: NoInfer<Params> & JsonCompatible<Params>
   ): Promise<Markup>;
 }
 

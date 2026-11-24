@@ -56,6 +56,9 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * key seals new tokens and every key opens them, so rotate by adding the new
    * key in front and removing the old one after a page lifetime. Without keys,
    * the runtime makes one at startup, and only this process can open its pages.
+   * Each token takes a random 96-bit AES-GCM nonce, which stays safe for about
+   * 2^32 tokens per key, so put a new key in front well before a key seals
+   * that many pages: at least once a year for a busy service.
    */
   pageKeys?: readonly string[];
   /** How long a rendered page can open a stream, counted from SSR (default 12 hours). */
@@ -230,7 +233,7 @@ export function createLiveRuntime<
         expiresAt: Date.now() + pageLifetimeMs,
         views: [...views.values()].map((view) => ({
           name: view.definition.name,
-          params: toJson(view.params),
+          params: toJson(view.params, view.definition.name),
         })),
         ...(Object.keys(snapshots).length > 0 && { snapshots }),
       };
@@ -269,11 +272,17 @@ export function createLiveRuntime<
       )
         return { status: "invalid-count" };
 
-      const placed = rebuildViews(claims);
-      if (!placed) return { status: "expired" };
+      const rebuilt = rebuildViews(claims);
+      if (rebuilt.status === "failed") {
+        report(onDiagnostic, {
+          type: "page-rebuild-failed",
+          view: rebuilt.view,
+        });
+        return { status: "expired" };
+      }
       const views = new Map<string, ViewInstance<User, Event>>();
       for (const key of keys) {
-        const view = placed.get(key);
+        const view = rebuilt.views.get(key);
         if (!view) return { status: "unknown-view" };
         views.set(key, view);
       }
@@ -315,32 +324,47 @@ export function createLiveRuntime<
     },
   };
 
-  /** Returns undefined when a view is no longer registered or no longer takes its key. */
-  function rebuildViews(claims: PageClaims) {
+  /** Fails with the name of the first view that is no longer registered or no longer takes its key. */
+  function rebuildViews(claims: PageClaims): RebuiltViews<User, Event> {
     const views = new Map<string, ViewInstance<User, Event>>();
     for (const { name, params } of claims.views) {
       const definition = registry.resolve(name);
-      if (!definition) return;
+      if (!definition) return { status: "failed", view: name };
       let target: string;
       try {
         target = viewTarget(name, definition, params);
       } catch {
-        return;
+        return { status: "failed", view: name };
       }
-      if (views.has(target)) return;
+      if (views.has(target)) return { status: "failed", view: name };
       views.set(
         target,
         createViewInstance(definition, params, target, renderer, registry)
       );
     }
-    return views;
+    return { status: "rebuilt", views };
   }
 }
 
-/** Reads params back as the token will carry them, dropping what JSON cannot hold. */
-function toJson(params: unknown): JsonValue {
-  const json: unknown = JSON.parse(JSON.stringify(params) ?? "null");
+type RebuiltViews<User extends Principal, Event extends Topic> =
+  | { status: "rebuilt"; views: Map<string, ViewInstance<User, Event>> }
+  | { status: "failed"; view: string };
+
+/**
+ * Reads params back as the token will carry them, dropping what JSON cannot
+ * hold. Throws, naming the view, for params `JSON.stringify` rejects, such as
+ * a bigint, a circular value, or one nested too deeply.
+ */
+function toJson(params: unknown, view: string): JsonValue {
+  let json: unknown;
+  try {
+    json = JSON.parse(JSON.stringify(params) ?? "null");
+  } catch (error) {
+    throw new Error(`Live View params of ${view} cannot be written as JSON`, {
+      cause: error,
+    });
+  }
   if (!isJsonValue(json))
-    throw new Error("Expected Live View params that JSON can hold");
+    throw new Error(`Expected Live View params of ${view} that JSON can hold`);
   return json;
 }

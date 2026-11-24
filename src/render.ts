@@ -100,9 +100,7 @@ export function renderContext<
         parent
       );
       if (views.has(target)) {
-        throw new Error(
-          `Invalid, duplicate or too-deep Live View key: ${target}`
-        );
+        throw new Error(`Duplicate Live View key: ${target}`);
       }
       admit();
       const instance = createViewInstance(
@@ -148,7 +146,7 @@ export function viewTarget<Params>(
     (key !== undefined && !keyPattern.test(key)) ||
     target.split("/").length > maxDepth
   ) {
-    throw new Error(`Invalid, duplicate or too-deep Live View key: ${target}`);
+    throw new Error(`Invalid or too-deep Live View key: ${target}`);
   }
   return target;
 }

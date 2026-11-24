@@ -55,7 +55,8 @@ function updateViews(
   let versions = new WeakMap<HTMLElement, number>();
   /**
    * Top-level keys whose nodes still hold the SSR HTML. Filled from the views
-   * of the first connection, and only shrinks.
+   * of the first connection, and only shrinks: an update, a view error, or a
+   * node replaced under the same key removes its key.
    */
   const pristine = new Set<string>();
   let hasConnected = false;
@@ -93,6 +94,9 @@ function updateViews(
       return;
 
     connection?.close();
+    // A node app code put in place of a view no longer holds the SSR HTML.
+    for (const [key, node] of next)
+      if (views.get(key) !== node) pristine.delete(key);
     views = next;
     if (views.size === 0) {
       connection = undefined;

@@ -2,8 +2,18 @@ import type { Topic } from "./topic.js";
 
 export type LiveDiagnostic<Event extends Topic> =
   | { type: "send-timeout" }
-  /** A page token was altered, or sealed with a key this runtime does not hold. */
+  /**
+   * A page token was altered, or sealed with a key this runtime does not hold.
+   * Any client can cause this by sending garbage, so a single occurrence is
+   * not a reason to alert. A rise after a deploy points to a dropped page key.
+   */
   | { type: "page-token-invalid" }
+  /**
+   * A valid page token names a view the runtime no longer registers, or whose
+   * `key()` throws or returns an invalid or duplicate key for the params the
+   * token holds. The page renders again. `view` is the failing view's name.
+   */
+  | { type: "page-rebuild-failed"; view: string }
   | { type: "publish" | "publish-error"; topic: Event }
   | { type: "invalidate"; topic: Event; target: string }
   | {

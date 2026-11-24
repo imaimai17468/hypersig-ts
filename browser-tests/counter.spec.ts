@@ -326,6 +326,34 @@ test("drops a removed view and resynchronizes it when the same boundary returns"
   await expect(page.locator(restored)).toHaveCount(1);
 });
 
+test("streams a fresh render to a view node that app code replaced under the same key", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator(ready)).toHaveCount(1);
+  const count = await page.locator(main).textContent();
+  const reopened = page.waitForRequest(
+    (request) =>
+      request.url().includes("/stream/") &&
+      new URL(request.url()).searchParams
+        .getAll("view")
+        .includes("counter.main")
+  );
+  await page.locator('[data-hs-view="counter.main"]').evaluate((element) => {
+    const replacement = element.cloneNode(true);
+    if (!(replacement instanceof HTMLElement))
+      throw new Error("Expected an element clone");
+    const value = replacement.querySelector('[data-count="main"]');
+    if (value) value.textContent = "replaced";
+    element.replaceWith(replacement);
+  });
+  const request = await reopened;
+  expect(new URL(request.url()).searchParams.getAll("pristine")).not.toContain(
+    "counter.main"
+  );
+  await expect(page.locator(main)).toHaveText(count ?? "");
+});
+
 test("submits a standard form and exposes validation errors without changing server state", async ({
   page,
 }) => {

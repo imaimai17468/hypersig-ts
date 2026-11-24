@@ -1014,4 +1014,24 @@ it("limits top-level page props to JSON in the Hono adapter", () => {
     // @ts-expect-error Date is not JSON, so it cannot travel in the page token.
     page.view(dated, { at: new Date() });
   expectTypeOf(placeDated).returns.toEqualTypeOf<Promise<HtmlEscapedString>>();
+  interface Filter {
+    query: string;
+    sort?: "asc" | "desc";
+  }
+  const filtered = hypersig.live({
+    name: "filtered",
+    subscribe: () => [changed("filtered")],
+    authorize: () => true,
+    load: (params: Filter) => params.query,
+    render: (value) => html`<p>${value}</p>`,
+  });
+  const placeFiltered = (
+    page: Parameters<Parameters<typeof hypersig.page>[1]>[0]
+  ) => {
+    const filter: Filter = { query: "a" };
+    return page.view(filtered, filter);
+  };
+  expectTypeOf(placeFiltered).returns.toEqualTypeOf<
+    Promise<HtmlEscapedString>
+  >();
 });

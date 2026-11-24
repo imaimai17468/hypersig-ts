@@ -29,6 +29,7 @@ export type PageTokenResult =
 export const maxTokenLength = 6144;
 
 const keyLength = 32;
+/** A random 96-bit nonce per token stays unique for about 2^32 tokens per key. */
 const ivLength = 12;
 const tagLength = 16;
 const tokenPattern = /^[A-Za-z0-9_-]+$/;

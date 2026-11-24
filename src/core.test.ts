@@ -315,13 +315,16 @@ it("keys each Live View by its registered, unique name", async () => {
       await page.view(repeated, { id: "a" });
       return page.view(repeated, { id: "a" });
     })
-  ).rejects.toThrow("Invalid, duplicate or too-deep Live View key: item.a");
+  ).rejects.toThrow("Duplicate Live View key: item.a");
   await expect(
     runtime.renderPage(user, async (page) => {
       await page.view(panel, {});
       return page.view(panel, {});
     })
-  ).rejects.toThrow("Invalid, duplicate or too-deep Live View key: panel");
+  ).rejects.toThrow("Duplicate Live View key: panel");
+  await expect(
+    runtime.renderPage(user, (page) => page.view(repeated, { id: "a b" }))
+  ).rejects.toThrow("Invalid or too-deep Live View key: item.a b");
 
   const loose = { ...base, name: "loose", render: () => "" };
   await expect(
@@ -1476,14 +1479,103 @@ it("resets when a token names a view the runtime no longer has", async () => {
   const token = await renderCounter(
     counterRuntime(store, { pageKeys: [key1] })
   );
+  const diagnostics: LiveDiagnostic<CounterEvent>[] = [];
   const redeployed = createLiveRuntime<Principal, CounterEvent, string>({
     renderer,
     pubsub: createMemoryPubSub(),
     pageKeys: [key1],
+    onDiagnostic: (event) => diagnostics.push(event),
   });
   expect((await redeployed.openPage(token, counterKeys, viewer)).status).toBe(
     "expired"
   );
+  expect(diagnostics).toEqual([
+    { type: "page-rebuild-failed", view: "counter" },
+  ]);
+});
+
+it("names the view whose key no longer rebuilds from the token", async () => {
+  const itemRuntime = (key: (params: { id: string }) => string) => {
+    const diagnostics: LiveDiagnostic<CounterEvent>[] = [];
+    const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+      renderer,
+      pubsub: createMemoryPubSub(),
+      pageKeys: [key1],
+      onDiagnostic: (event) => diagnostics.push(event),
+    });
+    runtime.live({
+      name: "header",
+      subscribe: () => [counterChanged("all")],
+      authorize: () => true,
+      load: () => "header",
+      render: String,
+    });
+    const view = runtime.live({
+      name: "item",
+      key,
+      subscribe: () => [counterChanged("all")],
+      authorize: () => true,
+      load: (params: { id: string }) => params.id,
+      render: String,
+    });
+    return { runtime, view, diagnostics };
+  };
+  const origin = itemRuntime((params) => params.id);
+  const token = readToken(
+    await origin.runtime.renderPage(
+      viewer,
+      async (page, key) =>
+        streamToken(key) +
+        (await page.view(origin.view, { id: "a" })) +
+        (await page.view(origin.view, { id: "b" }))
+    )
+  );
+  const request = { views: ["item.a", "item.b"], pristine: [] };
+  expect((await origin.runtime.openPage(token, request, viewer)).status).toBe(
+    "open"
+  );
+  expect(origin.diagnostics).toEqual([]);
+
+  for (const key of [
+    () => "same",
+    () => "not a key",
+    () => {
+      throw new Error("key failed");
+    },
+  ]) {
+    const redeployed = itemRuntime(key);
+    expect(
+      (await redeployed.runtime.openPage(token, request, viewer)).status
+    ).toBe("expired");
+    expect(redeployed.diagnostics).toEqual([
+      { type: "page-rebuild-failed", view: "item" },
+    ]);
+  }
+});
+
+it("names the view whose params JSON cannot hold", async () => {
+  const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    pageKeys: [key1],
+  });
+  const view = runtime.live({
+    name: "ledger",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: () => null,
+    render: () => "ledger",
+  });
+  const circular: { self?: unknown } = {};
+  circular.self = circular;
+  for (const params of [{ total: 1n }, circular]) {
+    await expect(
+      runtime.renderPage(viewer, (page) =>
+        // @ts-expect-error bigint and circular values are not JSON.
+        page.view(view, params)
+      )
+    ).rejects.toThrow(/Live View params of ledger.*JSON/s);
+  }
 });
 
 it("denies another session and unknown keys", async () => {
@@ -1698,11 +1790,49 @@ it("limits top-level props to JSON while child props stay unconstrained", () => 
     load: (params: { at: string; zone?: string | undefined }) => params.at,
     render: String,
   });
+  interface Filter {
+    query: string;
+    page: number;
+    tags: readonly string[];
+    sort?: "asc" | "desc";
+  }
+  const filtered = runtime.live({
+    name: "filtered",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: Filter) => params.query,
+    render: String,
+  });
+  interface Schedule {
+    slot: { start: Date };
+    tags: readonly string[];
+  }
+  const scheduled = runtime.live({
+    name: "scheduled",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: Schedule) => params.slot.start.toISOString(),
+    render: String,
+  });
+  const tagged = runtime.live({
+    name: "tagged",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: { tags: readonly (string | undefined)[] }) =>
+      params.tags.join(),
+    render: String,
+  });
   const placeViews = async (
     page: PageRenderContext<Principal, CounterEvent, string>
   ) => {
     // @ts-expect-error Date is not JSON, so it cannot travel in the page token.
     await page.view(dated, { at: new Date() });
+    // @ts-expect-error A Date nested in an interface is not JSON either.
+    await page.view(scheduled, { slot: { start: new Date() }, tags: [] });
+    // @ts-expect-error An array entry of undefined becomes null in JSON.
+    await page.view(tagged, { tags: ["a", undefined] });
+    const filter: Filter = { query: "a", page: 1, tags: ["x"] };
+    await page.view(filtered, filter);
     return page.view(stamped, { at: "2026-11-24", zone: undefined });
   };
   expectTypeOf(placeViews).returns.toEqualTypeOf<Promise<string>>();
