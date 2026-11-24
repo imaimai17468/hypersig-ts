@@ -367,6 +367,16 @@ it("builds keyed refs that tell a key containing separators apart", () => {
     "tab-1",
     ["sig", ["keyed-focus-1", "key"]],
   ]);
+  const keyTypes = signals(
+    { index: 0, flag: false, keys: ["a"] },
+    { name: "focus-key-types" }
+  );
+  // @ts-expect-error A number expression never matches a string key.
+  tabs.focus(keyTypes.index);
+  // @ts-expect-error A boolean expression never matches a string key.
+  tabs.focus(keyTypes.flag);
+  // @ts-expect-error An array expression never matches a string key.
+  tabs.focus(keyTypes.keys);
   // @ts-expect-error A refs name must be an identifier.
   expect(() => refs({ name: "bad name" })).toThrow("Ref name");
   const runtimeName: string = "also bad";

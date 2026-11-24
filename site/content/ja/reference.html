@@ -281,9 +281,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
       と <code>lower()</code> は空文字列、<code>includes</code> は false、<code
         >mod(0)</code
       >
-      は 0、範囲外の <code>at</code> は <code>fallback</code> になります。<code
-        >length()</code
-      >
+      は 0、<code>clamp</code> は値か <code>max</code> が数でなければ
+      <code>min</code>、<code>min</code> が数でなければ 0、範囲外の
+      <code>at</code> は <code>fallback</code> になります。<code>length()</code>
       は UTF-16 の長さなので、絵文字などは 2 と数えます。<code>mod</code>
       は 0 以上 n 未満に収めます。
     </dd>
@@ -306,7 +306,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
       (<code>Enter</code>、<code>Escape</code>、<code>Tab</code>、<code
         >" "</code
       >、矢印、<code>Home</code>、<code>End</code>、<code>PageUp</code>、<code>PageDown</code>、<code>Backspace</code>、<code>Delete</code>)、1
-      文字のキー、数のキーを書けます。修飾キーは
+      文字のキー、数のキーを書けます。数のキーは 1 桁
+      (<code>"0"</code>〜<code>"9"</code>) だけで、<code>10</code>
+      は型エラーと例外になります。修飾キーは
       <code>Control+</code>、<code>Alt+</code>、<code>Shift+</code>、<code
         >Meta+</code
       >
@@ -332,6 +334,10 @@ const e = editor.with({ base: draft.revision });</code></pre>
         <li>
           対応表を持つ要素で Action
           の送信が進行中なら、キーの既定の動作は止めますが文は実行しません。
+        </li>
+        <li>
+          中の要素 (キーを自分で扱うアイランドなど)
+          がすでに既定の動作を止めたキーでは、どの対応表も実行しません。子を自分で描くカスタム要素の中の対応表は無視します。
         </li>
         <li>
           型で検査できない制約があります。macOS では Meta を押すと文字の
@@ -361,7 +367,12 @@ const e = editor.with({ base: draft.revision });</code></pre>
       計算した key の要素にフォーカスします。要素に
       <code>{...tabRefs.attr(key)}</code> を付け、文
       <code>tabRefs.focus(keyExpr)</code>
-      が式の値の要素にフォーカスを移します。見つからないとき、式が文字列でないときは何もしません。<code
+      が式の値の要素にフォーカスを移します。key
+      は文字列か文字列の式で、数、真偽値、配列の式は型エラーになります。見つからないときは何もしません。<code
+        >ref()</code
+      >
+      と <code>refs()</code> はどちらも <code>data-hs-ref</code> を書くので、1
+      つの要素にはどちらか一方だけを付けてください。両方を展開すると後のほうだけが残ります。<code
         >focus()</code
       >
       は、予約済みの描き直しを先に済ませてから移すので、同じ文の一覧で前の

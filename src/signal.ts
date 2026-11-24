@@ -46,7 +46,8 @@ interface NumberMethods {
   le(other: number | Expr<number>): Expr<boolean>;
   /**
    * Keeps the value within `min..max`. Evaluates to `min` when `min > max` or
-   * when the value or `max` is not a number.
+   * when the value or `max` is not a number, and to `0` when `min` is not a
+   * number.
    */
   clamp(min: number | Expr<number>, max: number | Expr<number>): Expr<number>;
   /**
@@ -172,8 +173,11 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
     hidden?: true;
   };
   /**
-   * Binds `disabled`, `checked`, some `aria-*` attributes, and `data-*`
-   * attributes other than `data-hs-*`. Throws for any other name.
+   * Binds `disabled`, `checked`, `hidden`, `tabindex`, `aria-pressed`,
+   * `aria-expanded`, `aria-current`, `aria-hidden`, `aria-invalid`,
+   * `aria-busy`, `aria-activedescendant`, `aria-selected`, `aria-controls`,
+   * `aria-label`, and `data-*` attributes other than `data-hs-*`. Throws for
+   * any other name.
    */
   bindAttr<Attrs extends Partial<Record<BindableAttribute, Expr<JsonValue>>>>(
     attrs: Attrs & AttributeBindings<Attrs>
@@ -631,6 +635,10 @@ export function signalFamily(
 }
 
 export interface SignalRef {
+  /**
+   * Marks the element that `focus()` moves focus to. It writes the same
+   * attribute as `refs().attr(key)`, so an element takes only one of them.
+   */
   attr(): { [signalAttributes.ref]: string };
   focus(): StmtNode;
 }
@@ -648,13 +656,16 @@ export function ref(options?: { name?: string }): SignalRef {
 }
 
 export interface SignalRefs {
-  /** Marks an element as the one `focus(key)` reaches for this key. */
+  /**
+   * Marks an element as the one `focus(key)` reaches for this key. It writes
+   * the same attribute as `ref().attr()`, so an element takes only one of them.
+   */
   attr(key: string): { [signalAttributes.ref]: string };
   /**
    * Moves focus to the element marked with the key the expression evaluates to.
-   * Does nothing when no element has the key or the value is not a string.
+   * Does nothing when no element has the key.
    */
-  focus(key: string | AnyExpr): StmtNode;
+  focus(key: string | Expr<string>): StmtNode;
 }
 
 /** Names a family of elements that `focus(key)` picks among by a computed key. */
@@ -869,10 +880,12 @@ export const on = {
    * the `KeyboardEvent.key` value, and the pressed modifiers must be exactly
    * the ones the key names, except that Shift is ignored for a character key
    * other than Space: `"?"` and `"A"` match with or without Shift, since which
-   * characters need it depends on the keyboard layout. A handled key
-   * does not do its default action, except `Tab` and `Shift+Tab`. Keys pressed
-   * while an IME is composing, or while the element's Action is in flight,
-   * run nothing. Throws for a name `KeyCombination` rejects, which a computed
+   * characters need it depends on the keyboard layout. A number key is one
+   * digit, such as `1`. A handled key does not do its default action, except
+   * `Tab` and `Shift+Tab`. Keys pressed while an IME is composing, or while the
+   * element's Action is in flight, run nothing, and so does a key whose
+   * default an element inside already prevented. A map inside a custom
+   * element that renders its own children is ignored. Throws for a name `KeyCombination` rejects, which a computed
    * `string` key can carry past the types.
    */
   keydown: <const Keys extends KeyMap>(map: Keys & CheckedKeyMap<Keys>) => {

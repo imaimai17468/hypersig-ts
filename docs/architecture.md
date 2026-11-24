@@ -158,17 +158,19 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 
 選択式のコンボボックスやタブのような部品を Signal の文だけで書けるように、次の命令を足した。属性名は `src/protocol.ts` で一度だけ定義し、キーの名前や時間は型と実行時の両方で検査する。
 
-- **式**: 文字列に `length()`、`trim()`、`lower()`、`includes(other)`、数に `clamp(min, max)`、`mod(n)`、配列に `at(index, fallback)`、`length()`。どれもサーバーとブラウザの `evaluate` で同じ結果になり、型が合わない値でも例外にしない（`length()` は文字列と配列以外で 0、`trim()` と `lower()` は文字列以外で `""`、`includes` は両方が文字列でなければ false、`mod(0)` は 0、`at` は範囲外や整数でない番号で `fallback`）。`length()` は UTF-16 の長さ（`String.prototype.length`）で、絵文字などのサロゲートペアは 2 と数える。
+- **式**: 文字列に `length()`、`trim()`、`lower()`、`includes(other)`、数に `clamp(min, max)`、`mod(n)`、配列に `at(index, fallback)`、`length()`。どれもサーバーとブラウザの `evaluate` で同じ結果になり、型が合わない値でも例外にしない（`length()` は文字列と配列以外で 0、`trim()` と `lower()` は文字列以外で `""`、`includes` は両方が文字列でなければ false、`mod(0)` は 0、`clamp` は値か `max` が数でなければ `min`、`min` が数でなければ 0、`at` は範囲外や整数でない番号で `fallback`）。`length()` は UTF-16 の長さ（`String.prototype.length`）で、絵文字などのサロゲートペアは 2 と数える。
 - **束縛できる属性**: `bindAttr` に `aria-activedescendant`、`aria-selected`、`aria-controls`、`aria-label`、`tabindex`、`hidden` を足した。`hidden` は `disabled` と同じ真偽値の属性。`bindAttr` は真偽値でない属性を取り除けない。式が空文字列になると、属性は空の値のまま残る（`aria-activedescendant=""`）。
-- **`refs()`**: `attr(key)` で要素に key を付け、`focus(keyExpr)` が式の値の要素にフォーカスする。見つからない、または式が文字列でないときは何もしない。`focus()` と `focus(key)` は、予約済みの描き直しを先に済ませてからフォーカスする（同じ文の一覧で前の `set` が `hidden` を外した要素に届く）。
-- **`on.keydown(map)`**: `KeyboardEvent.key` の値でキーを書く。名前付きのキー（`Enter`、`Escape`、`Tab`、`" "`、矢印、`Home`、`End`、`PageUp`、`PageDown`、`Backspace`、`Delete`）、1 文字のキー、数のキーを受け付ける。修飾キーは `Control+`、`Alt+`、`Shift+`、`Meta+` の順に前へ付け、順序を間違えるか未知の名前なら型エラーと、`on.keydown` を呼んだときの例外になる。
+- **`refs()`**: `attr(key)` で要素に key を付け、`focus(keyExpr)` が式の値の要素にフォーカスする。`keyExpr` は文字列か文字列の式で、数や真偽値、配列の式は型エラーにする。見つからないときは何もしない。`ref()` と `refs()` の `attr` はどちらも `data-hs-ref` を書くので、1 つの要素にはどちらか一方だけを付ける（両方を展開すると後のほうだけが残る）。`focus()` と `focus(key)` は、予約済みの描き直しを先に済ませてからフォーカスする（同じ文の一覧で前の `set` が `hidden` を外した要素に届く）。
+- **`on.keydown(map)`**: `KeyboardEvent.key` の値でキーを書く。名前付きのキー（`Enter`、`Escape`、`Tab`、`" "`、矢印、`Home`、`End`、`PageUp`、`PageDown`、`Backspace`、`Delete`）、1 文字のキー、数のキーを受け付ける。数のキーは 1 桁（`"0"`〜`"9"`）だけで、`10` は型エラーと例外になる。修飾キーは `Control+`、`Alt+`、`Shift+`、`Meta+` の順に前へ付け、順序を間違えるか未知の名前なら型エラーと、`on.keydown` を呼んだときの例外になる。
   - 修飾キーは完全に一致したときだけ当てはまる（`Enter` は `Shift+Enter` に当てはまらない）。スペース以外の 1 文字のキーは Shift を照合に使わない。`"?"` や `"A"` は Shift の有無に関わらず当てはまり、`"Shift+?"` は型エラーと例外にする。
   - 押した要素から近い対応表を探し、キーがなければ外側の対応表を探す。当てはまったら `preventDefault()` して文を実行する。`Tab` と `Shift+Tab` は止めない。`isComposing` と `keyCode` 229 の `keydown` は無視する。
-  - 対応表を持つ要素で Action の送信が進行中なら、`preventDefault()` だけして文は実行しない（Enter の二重送信を防ぐ）。子を自分で描くカスタム要素の中の対応表は無視する。
+  - 対応表を持つ要素で Action の送信が進行中なら、`preventDefault()` だけして文は実行しない（Enter の二重送信を防ぐ）。子を自分で描くカスタム要素の中の対応表は無視する。中の要素（アイランドなど）がすでに `preventDefault()` したキーでは、どの対応表の文も実行しない。
   - 検査できない制約。macOS では Meta を押すと文字の `key` が小文字になるため、`Meta+z` は Cmd+Shift+Z にも当てはまる。Caps Lock が有効だと文字の大小が変わるので、`"a"` と `"A"` は別のキーとして扱われる。macOS の Option は文字を合成するので、`Alt+<文字>` は届かないことがある。容器に `Enter` や `" "` を割り当てると、中のボタンの押下による起動を止める。1 文字のキーを割り当てると、中の入力欄でその文字を打てなくなる。
 - **`on.focusEnter(文)` / `on.focusLeave(文)`**: フォーカスが要素の外から中へ入った、中から外へ出たときに走る。要素の中での移動では走らない。ランタイムは `focusin` / `focusout` を document で委譲し、`relatedTarget` と `document.hasFocus()` で判定する。ウィンドウやタブの切り替えでページがフォーカスを失ったときは、離れたとみなさず、フォーカスが戻って別の場所に入ったときに離れたものとして扱う。マウスで中の要素を押すとフォーカスが一度 `body` に移るので、押される要素には `tabindex="-1"` を付ける。送信が進行中の要素では実行しない。
 - **`timer({ name })`**: `after(ms, 文)` と `cancel()` を持つ。予約はページにタイマーの ID ごとに 1 つで、`after` は前の予約を取り消してから予約し直す（デバウンスになる）。Live View の更新で要素が消えても取り消さない。時間が来たとき、予約した要素で送信が進行中でも文を実行するので、同じ Action が並行して送られうる。予約した要素がページから外れていれば `call` は送らず、ほかの文だけを実行する。予約した時点の `output` と `detail` を、時間が来たときの文も読める。`ms` は 0 以上 2147483647 以下の整数で、型は `number`、実行時に `RangeError` にする。
 - **`when(condition, then, otherwise?)`**: 条件が真なら `then`、偽なら `otherwise` の文を実行する。真偽の判定は `choose` と同じ。文を書けるどこでも使え、分岐の中の `call` は `when` を実行した要素から送る。選択式のコンボボックスで、Enter が閉じた一覧では開き、開いた一覧では選んで保存するために足した。
+
+[部品のサンプル](../examples/widgets/server.tsx)のコンボボックスは、WAI-ARIA APG の select-only combobox のうち、文字を打って候補へ移る type-ahead と `PageUp` / `PageDown` を省いている。決定に使う Enter、Space、Tab、Shift+Tab は、保存の送信中は文を実行しない（矢印キー、Home、End、Escape は動く）。下書きはデバウンスで保存するが、保存の順序は守らないので、前の保存が遅れて後の保存より後に確定すると、古い本文が残りうる。
 
 ### カスタム要素
 
@@ -296,8 +298,8 @@ gzip での増分は目安の 4 KB 以下に収まった。
 | 時点                                 | minify 後 | gzip -9  |
 | ------------------------------------ | --------- | -------- |
 | 93a68e5（Signal の命令を足す前）     | 61,925 B  | 22,674 B |
-| キー、フォーカス、タイマー、条件の後 | 64,916 B  | 23,650 B |
-| 増分                                 | 2,991 B   | 976 B    |
+| キー、フォーカス、タイマー、条件の後 | 65,086 B  | 23,707 B |
+| 増分                                 | 3,161 B   | 1,033 B  |
 
 gzip での増分は目安の 4 KB 以下に収まった。
 

@@ -16,6 +16,7 @@ import {
   uuid,
   when,
 } from "./index.js";
+import type { StmtNode } from "./index.js";
 import type { SendResult } from "./signal-runtime.js";
 import { startSignals } from "./signal-runtime.js";
 
@@ -1838,6 +1839,13 @@ it("focuses the keyed ref whose key an expression computes", async () => {
   const tabs = refs({ name: "runtime-tab" });
   const s = signals({ key: "b" }, { name: "runtime-roving" });
   const odd = 'a.b "c"';
+  // The type rejects a number key, so a statement written by hand checks
+  // that the runtime ignores one.
+  const byKey = tabs.focus("");
+  const numberKey: StmtNode =
+    byKey[0] === "focus-key"
+      ? ["focus-key", byKey[1], s.key.length().node]
+      : byKey;
   const { page, find, click } = createPage(
     render("button", { id: "a", ...tabs.attr("a") }) +
       render("button", { id: "b", ...tabs.attr("b") }) +
@@ -1857,7 +1865,7 @@ it("focuses the keyed ref whose key an expression computes", async () => {
       render("button", { id: "go-missing", ...on.click(tabs.focus("zzz")) }) +
       render("button", {
         id: "go-number",
-        ...on.click(tabs.focus(s.key.length())),
+        ...on.click(numberKey),
       })
   );
   startSignals({ root: page });
@@ -2098,6 +2106,30 @@ function press(target: Element, init: KeyPress): boolean {
   target.dispatchEvent(event);
   return event.defaultPrevented;
 }
+
+it("runs no mapped key that an element inside already handled", () => {
+  const s = signals({ moves: 0 }, { name: "handled-key" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({ ArrowDown: s.moves.set(s.moves.add(1)) }),
+      children: [
+        element("button", { id: "island" }),
+        element("button", { id: "plain" }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+  // An island such as a custom element handles the key itself.
+  find("#island").addEventListener("keydown", (event) =>
+    event.preventDefault()
+  );
+
+  expect(press(find("#island"), { key: "ArrowDown" })).toBe(true);
+  expect(runtime.read(s.moves.path)).toBe(0);
+  expect(press(find("#plain"), { key: "ArrowDown" })).toBe(true);
+  expect(runtime.read(s.moves.path)).toBe(1);
+});
 
 it("runs the statements of a mapped key and prevents its default except for Tab", () => {
   const s = signals({ active: 0, tabs: 0, spaces: 0 }, { name: "keys" }).with(
@@ -2385,6 +2417,63 @@ it("treats focus going nowhere as leaving only while the page has focus", () => 
   expect(counts()).toEqual([2, 2]);
   focus("#option");
   expect(counts()).toEqual([3, 2]);
+});
+
+it("enters where a deferred leave moves focus, not where focus came back", () => {
+  const s = signals(
+    { bEntered: 0, bLeft: 0, outerEntered: 0, returnEntered: 0 },
+    { name: "deferred-leave" }
+  ).with({});
+  const back = ref({ name: "deferred-back" });
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      children: [
+        element("div", {
+          ...on.focusLeave(back.focus()),
+          children: element("button", { id: "a" }),
+        }),
+        element("div", {
+          ...on.focusEnter(s.outerEntered.set(s.outerEntered.add(1))),
+          children: [
+            element("div", {
+              ...on.focusEnter(s.bEntered.set(s.bEntered.add(1))),
+              ...on.focusLeave(s.bLeft.set(s.bLeft.add(1))),
+              children: element("button", { id: "b" }),
+            }),
+            element("div", {
+              ...on.focusEnter(s.returnEntered.set(s.returnEntered.add(1))),
+              children: element("button", { id: "back", ...back.attr() }),
+            }),
+          ],
+        }),
+      ],
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const hasFocus = vi.spyOn(page, "hasFocus");
+  const counts = () =>
+    [s.bEntered, s.bLeft, s.outerEntered, s.returnEntered].map((signal) =>
+      runtime.read(signal.path)
+    );
+
+  find("#a").focus();
+  hasFocus.mockReturnValue(false);
+  find("#a").blur();
+  hasFocus.mockReturnValue(true);
+  // Coming back to #b runs the leave skipped on #a, which moves focus to
+  // #back before #b's group is entered.
+  find("#b").focus();
+  expect(page.activeElement).toBe(find("#back"));
+  expect(counts()).toEqual([0, 0, 1, 1]);
+
+  // The page remembers #back, so losing focus and coming back to it runs
+  // nothing.
+  hasFocus.mockReturnValue(false);
+  find("#back").blur();
+  hasFocus.mockReturnValue(true);
+  find("#back").focus();
+  expect(counts()).toEqual([0, 0, 1, 1]);
 });
 
 it("runs no key or focus statements on an element while it is sending", async () => {

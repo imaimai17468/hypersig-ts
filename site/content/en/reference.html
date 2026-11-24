@@ -281,7 +281,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>length()</code>. A value of the wrong type does not throw:
       <code>length()</code> gives 0, <code>trim()</code> and
       <code>lower()</code> give an empty string, <code>includes</code> gives
-      false, <code>mod(0)</code> gives 0, and an out-of-range
+      false, <code>mod(0)</code> gives 0, <code>clamp</code> gives
+      <code>min</code> when the value or <code>max</code> is not a number and 0
+      when <code>min</code> is not a number, and an out-of-range
       <code>at</code> gives <code>fallback</code>. <code>length()</code> is the
       UTF-16 length, so an emoji counts as 2.
     </dd>
@@ -303,10 +305,12 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>Escape</code>, <code>Tab</code>, <code>" "</code>, the arrows,
       <code>Home</code>, <code>End</code>, <code>PageUp</code>,
       <code>PageDown</code>, <code>Backspace</code>, <code>Delete</code>), one
-      character, or a number. Modifiers go in front in the order
-      <code>Control+</code>, <code>Alt+</code>, <code>Shift+</code>,
-      <code>Meta+</code>. A wrong name or order is a type error, and a computed
-      name the type cannot check throws when <code>on.keydown</code> is called.
+      character, or a number. A number key is one digit, <code>"0"</code> to
+      <code>"9"</code>, so <code>10</code> is a type error and throws. Modifiers
+      go in front in the order <code>Control+</code>, <code>Alt+</code>,
+      <code>Shift+</code>, <code>Meta+</code>. A wrong name or order is a type
+      error, and a computed name the type cannot check throws when
+      <code>on.keydown</code> is called.
       <ul>
         <li>
           Modifiers must match exactly (<code>Enter</code> does not match
@@ -323,6 +327,11 @@ const e = editor.with({ base: draft.revision });</code></pre>
         <li>
           While an Action is sending from the element that holds the map, the
           key's default action is prevented but the statements do not run.
+        </li>
+        <li>
+          A key whose default an element inside already prevented, such as an
+          island that handles it, runs no map. A map inside a custom element
+          that renders its own children is ignored.
         </li>
         <li>
           Some limits are not checked by types. On macOS, holding Meta makes a
@@ -353,10 +362,13 @@ const e = editor.with({ base: draft.revision });</code></pre>
       Focuses the element for a computed key. Put
       <code>{...tabRefs.attr(key)}</code> on each element, and the statement
       <code>tabRefs.focus(keyExpr)</code> moves focus to the element whose key
-      is the expression's value. It does nothing when no element matches or the
-      value is not a string. <code>focus()</code> finishes a pending render
-      first, so it reaches an element that an earlier <code>set</code> in the
-      same statements un-hid.
+      is the expression's value. The key is a string or a string expression; a
+      number, boolean, or array expression is a type error. It does nothing when
+      no element matches. <code>ref()</code> and <code>refs()</code> both write
+      <code>data-hs-ref</code>, so give an element only one of them; when both
+      are spread, the later one wins. <code>focus()</code> finishes a pending
+      render first, so it reaches an element that an earlier <code>set</code> in
+      the same statements un-hid.
     </dd>
     <dt><code>when(condition, then, otherwise)</code></dt>
     <dd>

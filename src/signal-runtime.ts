@@ -713,6 +713,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (event.isComposing || event.keyCode === 229 || !isElement(target)) {
       return;
     }
+    // An element inside, such as an island, already handled the key.
+    if (event.defaultPrevented) return;
     const key = formatKeyCombination(event);
     for (
       let handler = findHandler(target, keySelector);
@@ -754,16 +756,29 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   // The element that last had focus, kept while the page loses focus to
   // another window or tab, so focus coming back to it is not entering.
   let lastFocused: Element | null = root.activeElement;
+  // Set while the leave skipped when the page lost focus runs. Focus that
+  // those statements move elsewhere goes from `from`, and `target` is never
+  // entered or left.
+  let deferredLeave: { target: Element; from: Element } | null = null;
   root.addEventListener("focusin", (event) => {
     const target = event.target;
     if (!isElement(target)) return;
     const related = event.relatedTarget;
     let from = lastFocused;
-    if (isElement(related)) from = related;
+    if (deferredLeave && related === deferredLeave.target) {
+      from = deferredLeave.from;
+    } else if (isElement(related)) from = related;
     else if (from?.isConnected) {
       // The leave skipped when the page lost focus happens now, when focus
       // comes back somewhere else.
-      runFocusHandlers(eventAttributes.focusLeave, from, target);
+      lastFocused = target;
+      deferredLeave = { target, from };
+      try {
+        runFocusHandlers(eventAttributes.focusLeave, from, target);
+      } finally {
+        deferredLeave = null;
+      }
+      if (lastFocused !== target) return;
     }
     lastFocused = target;
     runFocusHandlers(eventAttributes.focusEnter, target, from);
@@ -774,6 +789,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     const to = isElement(event.relatedTarget) ? event.relatedTarget : null;
     if (!to && !root.hasFocus()) return;
     lastFocused = to;
+    if (target === deferredLeave?.target) return;
     runFocusHandlers(eventAttributes.focusLeave, target, to);
   });
 
