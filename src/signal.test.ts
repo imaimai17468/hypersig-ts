@@ -2,15 +2,7 @@
 import { jsx } from "hono/jsx/jsx-runtime";
 import { expect, it } from "vite-plus/test";
 import type { Expr, Signal } from "./index.js";
-import {
-  insertTemplate,
-  lit,
-  on,
-  ref,
-  signalFamily,
-  signals,
-  uuid,
-} from "./index.js";
+import { lit, on, ref, signalFamily, signals, uuid } from "./index.js";
 import { exprOf } from "./signal.js";
 
 it("renders evaluated values for the request", () => {
@@ -256,60 +248,4 @@ it("serializes statements and checks types", () => {
   expect(() => signals({ with: 1 })).toThrow('"with"');
   const flag: Signal<boolean> = e.flag;
   expect(flag.path).toEqual(["stmt-group-1", "flag"]);
-});
-
-it("defines insert templates", () => {
-  const t = insertTemplate({ title: "" }, { name: "new-todo" });
-  expect(t.id).toBe("new-todo-1");
-  expect(t.template()).toEqual({ "data-hs-template": "new-todo-1" });
-  expect(t.slot()).toEqual({ "data-hs-insert": "new-todo-1" });
-  expect(t.item.title.node).toEqual(["sig", ["$item", "title"]]);
-  expect(t.bindText(t.item.title).children).toBe("");
-  expect(t.confirms("k1")).toEqual({
-    "data-hs-confirms": '["new-todo-1","k1"]',
-  });
-  expect(insertTemplate({ n: 1 }).id).toBe("insert-1");
-});
-
-it("renders an insert template's item with its initial values", () => {
-  const t = insertTemplate({ title: "draft", done: true, n: 2 });
-  expect(t.bindText(t.item.title.concat("!"))).toMatchObject({
-    "data-hs-text": JSON.stringify(t.item.title.concat("!").node),
-    children: "draft!",
-  });
-  expect(t.bindShow(t.item.done)).not.toHaveProperty("hidden");
-  expect(t.bindShow(t.item.done.not())).toHaveProperty("hidden", true);
-  expect(t.bindAttr({ "aria-pressed": t.item.done })).toMatchObject({
-    "aria-pressed": "true",
-  });
-  const other = signals({ x: "a" }, { name: "item-other" });
-  const scope = other.with({});
-  expect(scope.bindText(exprOf(["sig", ["$item", "x"]])).children).toBe(
-    "false"
-  );
-  expect(() =>
-    // @ts-expect-error A name cannot contain a space.
-    insertTemplate({ n: 1 }, { name: "bad name" })
-  ).toThrow("bad name");
-});
-
-it("serializes insert statements", () => {
-  const t = insertTemplate({ title: "" }, { name: "new-todo" });
-  const s = signals({ title: "", key: "" }, { name: "insert-source" });
-  expect(t.insert({ title: s.title }, s.key)).toEqual([
-    "insert",
-    t.id,
-    { title: ["sig", s.title.path] },
-    ["sig", s.key.path],
-  ]);
-  expect(t.insert({ title: "x" }, "k")).toEqual([
-    "insert",
-    t.id,
-    { title: ["lit", "x"] },
-    ["lit", "k"],
-  ]);
-  // @ts-expect-error The template has no field named "titel".
-  t.insert({ titel: "x" }, "k");
-  // @ts-expect-error A key is a string.
-  t.insert({ title: "x" }, 1);
 });

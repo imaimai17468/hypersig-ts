@@ -128,25 +128,21 @@ function updateViews(
         }
       }
       // Idiomorph is synchronous when head processing is non-blocking.
-      // Preview rows are kept out of the morph, so it cannot remove or
-      // rewrite them.
-      signalRuntime.morphView(node, () => {
-        void Idiomorph.morph(node, fragment, {
-          head: { style: "none" },
-          morphStyle: "innerHTML",
-          ignoreActiveValue: isTextControl(document.activeElement),
-          restoreFocus: true,
-          callbacks: {
-            beforeNodeMorphed(previous, next) {
-              return !(
-                previous instanceof HTMLElement &&
-                next instanceof HTMLElement &&
-                next.dataset.hsView &&
-                previous.dataset.hsView === next.dataset.hsView
-              );
-            },
+      void Idiomorph.morph(node, fragment, {
+        head: { style: "none" },
+        morphStyle: "innerHTML",
+        ignoreActiveValue: isTextControl(document.activeElement),
+        restoreFocus: true,
+        callbacks: {
+          beforeNodeMorphed(previous, next) {
+            return !(
+              previous instanceof HTMLElement &&
+              next instanceof HTMLElement &&
+              next.dataset.hsView &&
+              previous.dataset.hsView === next.dataset.hsView
+            );
           },
-        });
+        },
       });
       signalRuntime.applySnapshots(node);
       node.removeAttribute("data-hs-view-error");
@@ -234,9 +230,6 @@ function updateViews(
  */
 function createActionSender(stream: URL) {
   const actionPath = new URL("../actions/", stream).pathname;
-  // A form with submit statements can have several sends in flight, so the
-  // control stays pending until the last of them ends.
-  const sendingCounts = new Map<HTMLElement, number>();
   return async function send(
     control: HTMLElement,
     target: string,
@@ -250,7 +243,6 @@ function createActionSender(stream: URL) {
       ?.querySelectorAll<HTMLElement>("[data-hs-field-error]");
     if (outlet) outlet.textContent = "";
     for (const field of fields ?? []) field.textContent = "";
-    sendingCounts.set(control, (sendingCounts.get(control) ?? 0) + 1);
     control.setAttribute("data-hs-pending", "");
     let status = 0;
     let failure: unknown;
@@ -297,12 +289,7 @@ function createActionSender(stream: URL) {
     } catch {
       // A status of zero represents a network error.
     } finally {
-      const count = (sendingCounts.get(control) ?? 1) - 1;
-      if (count) sendingCounts.set(control, count);
-      else {
-        sendingCounts.delete(control);
-        control.removeAttribute("data-hs-pending");
-      }
+      control.removeAttribute("data-hs-pending");
     }
     let message = status
       ? `Action failed (${status}).`

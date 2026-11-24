@@ -97,15 +97,6 @@ it("validates nodes from untrusted attributes", () => {
   expect(isStmtNode(["call", "/a", { x: ["eval"] }, [], []])).toBe(false);
   expect(isStmtNode(["call", "/a", {}, [["bad"]], []])).toBe(false);
   expect(isStmtNode(["call", "/a", {}, [], [["bad"]]])).toBe(false);
-  expect(isStmtNode(["insert", "t", { a: ["lit", 1] }, ["lit", "k"]])).toBe(
-    true
-  );
-  expect(isStmtNode(["insert", "t", {}, ["lit", "k"]])).toBe(true);
-  expect(isStmtNode(["insert", "t", {}])).toBe(false);
-  expect(isStmtNode(["insert", "t", { a: 1 }, ["lit", "k"]])).toBe(false);
-  expect(isStmtNode(["insert", 1, {}, ["lit", "k"]])).toBe(false);
-  expect(isStmtNode(["insert", "t", [], ["lit", "k"]])).toBe(false);
-  expect(isStmtNode(["insert", "t", {}, ["eval"]])).toBe(false);
   expect(isStmtNode(["set", ["a"], ["lit", 1]])).toBe(true);
   expect(isStmtNode(["toggle", ["a"]])).toBe(true);
   expect(isStmtNode(["focus", "ref-1"])).toBe(true);

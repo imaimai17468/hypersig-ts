@@ -8,7 +8,6 @@ import {
   ActionError,
   createHypersig,
   createMemoryPubSub,
-  insertTemplate,
   live,
   on,
   signalFamily,
@@ -130,7 +129,6 @@ const rows = signalFamily(
   { completed: false, removed: false },
   { name: "todo-row" }
 );
-const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
 const composer = signals({ title: "", key: "" }, { name: "composer" });
 
 function TodoRow({ todo }: { todo: Todo }) {
@@ -142,7 +140,6 @@ function TodoRow({ todo }: { todo: Todo }) {
       {...r.init()}
       {...r.bindAttr({ "data-completed": r.completed })}
       {...r.bindShow(r.removed.not())}
-      {...newTodo.confirms(todo.key)}
     >
       <div class="row">
         <button
@@ -218,12 +215,11 @@ const list = live({
   authorize: () => true,
   load: ({ filter }) => ({ filter, visible: selectTodos(todos, filter) }),
   render: ({ filter, visible }) => {
-    // New tasks are active, so only the views that show them take previews.
     const acceptsNewTodos = filter !== "completed";
     return (
       <section aria-label="Task list">
         {(acceptsNewTodos || visible.length > 0) && (
-          <ul {...(acceptsNewTodos ? newTodo.slot() : {})}>
+          <ul>
             {visible.map((todo) => (
               <TodoRow todo={todo} />
             ))}
@@ -333,10 +329,7 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
             {...entry.init()}
             {...add.form({
               resetOnSuccess: true,
-              onSubmit: [
-                entry.key.set(uuid()),
-                newTodo.insert({ title: entry.title }, entry.key),
-              ],
+              onSubmit: [entry.key.set(uuid())],
             })}
           >
             <label for="new-todo">New task</label>
@@ -371,16 +364,6 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
           <p role="status" data-hs-connection-status=""></p>
           <p role="alert" data-hs-error=""></p>
         </main>
-        <template {...newTodo.template()}>
-          <li>
-            <div class="row">
-              <span class="toggle" aria-hidden="true">
-                ○
-              </span>
-              <span class="title" {...newTodo.bindText(newTodo.item.title)} />
-            </div>
-          </li>
-        </template>
       </body>
     </html>
   ));

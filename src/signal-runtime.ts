@@ -53,23 +53,8 @@ export interface SignalRuntime {
    * is the path of a focused bound text control (see `isTextControl`), so
    * typing is not overwritten. Every binding in the document is evaluated
    * again after a microtask.
-   *
-   * Snapshots inside preview rows are skipped.
-   *
-   * Then removes each preview row in `view` (not in a nested view) whose
-   * template ID and key match a `data-hs-confirms` element in `view`, also
-   * while its Action is in flight.
    */
   applySnapshots(view: HTMLElement): void;
-  /**
-   * Runs `morph`, which replaces the content of `view`, without letting it
-   * touch preview rows. The previews in `view` (not in a nested view) are
-   * taken out of their slots first and appended back, in order, to the end of
-   * the same slot element when it is still in `view` afterwards. A preview
-   * whose slot is gone is dropped: `isPreview` reports `false` for it and its
-   * Action's result no longer changes it. Call `applySnapshots` after this.
-   */
-  morphView(view: HTMLElement, morph: () => void): void;
   /**
    * Sends a form or a button's Action. While it is in flight,
    * `["$pending", url]` is `true`. A success sets `["$restored", url]` to
@@ -86,25 +71,16 @@ export interface SignalRuntime {
    * Submits `form` to `url`. Runs the form's `data-hs-on-submit` statements
    * like a click handler, renders bindings synchronously so a bound hidden
    * input carries a value they wrote, then sends `new FormData(form,
-   * submitter)` as `send` does. The send owns the writes and preview rows of
-   * those statements made after their last `call`.
-   *
-   * A form with `data-hs-on-submit` statements is sent again while an earlier
-   * send is in flight; each send owns its own writes and previews, and
-   * `["$pending", url]` stays `true` until the last of them ends. A form
-   * without them that has a request in flight is not sent and gets
-   * `{ ok: false }`.
+   * submitter)` as `send` does. The send owns the writes those statements
+   * made after their last `call`, and reverts them on failure. A form with a
+   * request in flight is not sent again: its statements do not run and it
+   * gets `{ ok: false }`.
    */
   sendForm(
     form: HTMLFormElement,
     url: string,
     submitter: HTMLElement | null
   ): Promise<SendResult>;
-  /**
-   * Reports a preview row that an `insert` statement added and that has not
-   * been removed or dropped yet.
-   */
-  isPreview(node: Node): boolean;
   write(path: SignalPath, value: JsonValue): void;
   read(path: SignalPath): JsonValue | undefined;
 }
@@ -124,25 +100,6 @@ interface OptimisticWrite {
   original: JsonValue | undefined;
 }
 
-/** A row an `insert` statement cloned from its template, until removed. */
-interface Preview {
-  templateId: string;
-  key: string;
-  /** The values the row was inserted with, which `["$item", field]` reads. */
-  values: Readonly<Record<string, JsonValue>>;
-}
-
-/**
- * What a `call` or a form send takes from the statements before it: the
- * optimistic writes to revert and the preview rows to remove on failure.
- */
-interface OwnedEffects {
-  writes: readonly OptimisticWrite[];
-  previews: readonly Element[];
-}
-
-const noEffects: OwnedEffects = { writes: [], previews: [] };
-
 /**
  * Counts the calls holding a path. `latest` is the newest snapshot value that
  * arrived while held, or `undefined` when none did.
@@ -153,7 +110,6 @@ interface Hold {
 }
 
 const viewSelector = "[data-hs-view]";
-const itemRoot = "$item";
 const booleanAttributeNames: ReadonlySet<string> = new Set(booleanAttributes);
 
 /** Checks by node type, so elements from another frame also pass. */
@@ -238,16 +194,6 @@ function isSnapshotEntry(entry: unknown): entry is SnapshotEntry {
   );
 }
 
-/** Reads `data-hs-confirms` as the `[templateId, key]` pair it names. */
-function readConfirmation(element: Element): string | undefined {
-  const value = parseAttribute(element, signalAttributes.confirms);
-  return Array.isArray(value) &&
-    value.length === 2 &&
-    value.every((part) => typeof part === "string")
-    ? JSON.stringify(value)
-    : undefined;
-}
-
 function readSnapshot(element: Element): SnapshotEntry[] {
   const value = parseAttribute(element, signalAttributes.signals);
   return Array.isArray(value) ? value.filter(isSnapshotEntry) : [];
@@ -295,7 +241,6 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     uuid: () => options.uuid?.() ?? crypto.randomUUID(),
   };
   const holds = new Map<string, Hold>();
-  const previews = new Map<Element, Preview>();
   const sendingControls = new Map<HTMLElement, number>();
   const sendingUrls = new Map<string, number>();
   let isRenderQueued = false;
@@ -318,27 +263,6 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       isRenderQueued = false;
       render();
     });
-  }
-
-  /**
-   * Resolves `["$item", field]` from the preview row that holds `element`, so
-   * bindings in it read the values it was inserted with. Outside a preview the
-   * runtime inserted, such as under a `data-hs-item` written in the HTML,
-   * `$item` has no value.
-   */
-  function contextFor(element: Element): EvaluationContext {
-    const preview = findPreview(element);
-    if (!preview) return context;
-    const { values } = preview;
-    return {
-      ...context,
-      read: (path) => {
-        const [root, field] = path;
-        if (root !== itemRoot || path.length !== 2 || field === undefined)
-          return read(path);
-        return Object.hasOwn(values, field) ? values[field] : undefined;
-      },
-    };
   }
 
   function writeFromApp(path: SignalPath, value: JsonValue) {
@@ -386,7 +310,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     for (const name of Object.keys(bindings)) {
       const node: unknown = Reflect.get(bindings, name);
       if (!isBindableAttribute(name) || !isExprNode(node)) continue;
-      const value = evaluate(node, contextFor(element));
+      const value = evaluate(node, context);
       if (booleanAttributeNames.has(name)) {
         element.toggleAttribute(name, isTruthy(value));
         // After the user clicks, only the property affects the display.
@@ -420,16 +344,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       if (codeElementNames.has(element.tagName)) continue;
       const node = readExpr(element, signalAttributes.text);
       if (!node) continue;
-      const text = formatText(evaluate(node, contextFor(element)));
+      const text = formatText(evaluate(node, context));
       if (element.textContent !== text) element.textContent = text;
     }
     for (const element of root.querySelectorAll(`[${signalAttributes.show}]`)) {
       const node = readExpr(element, signalAttributes.show);
       if (node) {
-        element.toggleAttribute(
-          "hidden",
-          !isTruthy(evaluate(node, contextFor(element)))
-        );
+        element.toggleAttribute("hidden", !isTruthy(evaluate(node, context)));
       }
     }
     for (const element of root.querySelectorAll(`[${signalAttributes.attr}]`)) {
@@ -466,7 +387,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     body: string | FormData,
     onSuccess: readonly StmtNode[],
     onError: readonly StmtNode[],
-    { writes, previews: ownedPreviews }: OwnedEffects = noEffects
+    writes: readonly OptimisticWrite[] = []
   ): Promise<SendResult> {
     const pendingPath = ["$pending", url];
     addCount(sendingControls, control, 1);
@@ -494,16 +415,6 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       if (!result.ok) write(path, latest !== undefined ? latest : original);
       else if (latest !== undefined) write(path, latest);
     }
-    for (const element of ownedPreviews) {
-      if (!previews.has(element)) continue;
-      if (!result.ok) {
-        removePreview(element);
-        continue;
-      }
-      element.removeAttribute(signalAttributes.pendingItem);
-      const view = element.closest<HTMLElement>(viewSelector);
-      if (view) removeConfirmedPreviews(view, [element]);
-    }
     if (result.ok) {
       write(["$restored", url], false);
       run(onSuccess, control, result.data);
@@ -513,97 +424,18 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     return result;
   }
 
-  /** Finds the preview row that holds `element`, or is `element`. */
-  function findPreview(element: Element): Preview | undefined {
-    const selector = `[${signalAttributes.itemKey}]`;
-    for (
-      let item = element.closest(selector);
-      item;
-      item = item.parentElement?.closest(selector) ?? null
-    ) {
-      const preview = previews.get(item);
-      if (preview) return preview;
-    }
-    return undefined;
-  }
-
-  function removePreview(element: Element) {
-    previews.delete(element);
-    element.remove();
-  }
-
-  /**
-   * Removes the given previews in `view` (not in a nested view) that a
-   * `data-hs-confirms` element in `view` confirms.
-   */
-  function removeConfirmedPreviews(
-    view: HTMLElement,
-    candidates: Iterable<Element>
-  ) {
-    let confirmations: Set<string> | undefined;
-    for (const element of candidates) {
-      const preview = previews.get(element);
-      if (!preview || element.closest(viewSelector) !== view) continue;
-      confirmations ??= new Set(
-        [...view.querySelectorAll(`[${signalAttributes.confirms}]`)]
-          .filter((confirmed) => confirmed.closest(viewSelector) === view)
-          .map(readConfirmation)
-          .filter((pair) => pair !== undefined)
-      );
-      if (confirmations.has(JSON.stringify([preview.templateId, preview.key])))
-        removePreview(element);
-    }
-  }
-
-  /**
-   * Clones the template's root element into every slot for `templateId`, and
-   * returns the clones. Only a template outside Live Views counts.
-   */
-  function insertPreviews(
-    templateId: string,
-    values: Record<string, JsonValue>,
-    key: string
-  ): Element[] {
-    const template = [
-      ...root.querySelectorAll<HTMLTemplateElement>(
-        `template[${signalAttributes.template}]`
-      ),
-    ].find(
-      (element) =>
-        element.getAttribute(signalAttributes.template) === templateId &&
-        !element.closest(viewSelector)
-    );
-    const row = template?.content.firstElementChild;
-    if (!row) return [];
-    const inserted: Element[] = [];
-    for (const slot of root.querySelectorAll(`[${signalAttributes.insert}]`)) {
-      if (slot.getAttribute(signalAttributes.insert) !== templateId) continue;
-      const clone = root.importNode(row, true);
-      clone.setAttribute(signalAttributes.item, JSON.stringify(values));
-      clone.setAttribute(signalAttributes.itemKey, key);
-      clone.setAttribute(signalAttributes.pendingItem, "");
-      slot.append(clone);
-      previews.set(clone, { templateId, key, values });
-      inserted.push(clone);
-    }
-    if (inserted.length) scheduleRender();
-    return inserted;
-  }
-
   /**
    * `control` is the element whose handler runs, and sends its `call`
-   * statements. A `call` takes the paths written and the previews inserted
-   * since the previous one. Returns those made after the last `call`, for a
-   * form send to take.
+   * statements. A `call` takes the paths written since the previous one.
+   * Returns the writes made after the last `call`, for a form send to take.
    */
   function run(
     stmts: readonly StmtNode[],
     control: HTMLElement,
     output: JsonValue = null
-  ): OwnedEffects {
-    const runContext = { ...contextFor(control), output };
+  ): OptimisticWrite[] {
+    const runContext = { ...context, output };
     let writes = new Map<string, OptimisticWrite>();
-    let inserted: Element[] = [];
     const writeOptimistic = (path: SignalPath, value: JsonValue) => {
       if (!isAppPath(path)) return;
       const key = JSON.stringify(path);
@@ -621,18 +453,6 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         case "focus":
           focusRef(stmt[1]);
           break;
-        case "insert": {
-          const [, templateId, input, keyNode] = stmt;
-          const key = evaluate(keyNode, runContext);
-          // A key that is not a string cannot match a confirmed row.
-          if (typeof key !== "string") break;
-          const values: Record<string, JsonValue> = {};
-          for (const [field, node] of Object.entries(input)) {
-            values[field] = evaluate(node, runContext);
-          }
-          inserted.push(...insertPreviews(templateId, values, key));
-          break;
-        }
         case "call": {
           const [, url, input, onSuccess, onError] = stmt;
           const body: Record<string, JsonValue> = {};
@@ -645,15 +465,14 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
             JSON.stringify(body),
             onSuccess,
             onError,
-            { writes: [...writes.values()], previews: inserted }
+            [...writes.values()]
           );
           writes = new Map();
-          inserted = [];
           break;
         }
       }
     }
-    return { writes: [...writes.values()], previews: inserted };
+    return [...writes.values()];
   }
 
   for (const element of root.querySelectorAll(
@@ -707,17 +526,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       for (const element of view.querySelectorAll(
         `[${signalAttributes.signals}]`
       )) {
-        if (element.closest(viewSelector) === view && !findPreview(element)) {
+        if (element.closest(viewSelector) === view) {
           loadSnapshot(element, editingKey);
         }
       }
       // A morph resets bindings to the server HTML, so render them again even
       // when no snapshot changed the store.
       scheduleRender();
-      for (const element of previews.keys()) {
-        if (!element.isConnected) previews.delete(element);
-      }
-      removeConfirmedPreviews(view, [...previews.keys()]);
     },
     send(control, url, body) {
       if (isSending(control)) return Promise.resolve({ ok: false });
@@ -730,9 +545,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       );
     },
     sendForm(form, url, submitter) {
-      if (isSending(form) && !form.hasAttribute(signalAttributes.onSubmit))
-        return Promise.resolve({ ok: false });
-      const owned = run(readStmts(form, signalAttributes.onSubmit), form);
+      if (isSending(form)) return Promise.resolve({ ok: false });
+      const writes = run(readStmts(form, signalAttributes.onSubmit), form);
       render();
       return sendAction(
         form,
@@ -740,27 +554,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         new FormData(form, submitter),
         readStmts(form, signalAttributes.onSuccess),
         readStmts(form, signalAttributes.onError),
-        owned
+        writes
       );
-    },
-    morphView(view, morph) {
-      const detached: { element: Element; slot: Element | null }[] = [];
-      for (const element of previews.keys()) {
-        if (element.closest(viewSelector) !== view) continue;
-        detached.push({ element, slot: element.parentElement });
-        element.remove();
-      }
-      try {
-        morph();
-      } finally {
-        for (const { element, slot } of detached) {
-          if (slot?.isConnected && view.contains(slot)) slot.append(element);
-          else previews.delete(element);
-        }
-      }
-    },
-    isPreview(node) {
-      return isElement(node) && previews.has(node);
     },
     write,
     read,
