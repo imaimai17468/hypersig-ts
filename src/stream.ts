@@ -1,9 +1,11 @@
 import { report } from "./diagnostics.js";
 import type { LiveDiagnostic, RenderReason } from "./diagnostics.js";
 import type { Principal } from "./live.js";
+import { digestHtml } from "./page-token.js";
+import type { PageSnapshot } from "./page-token.js";
 import type { HtmlUpdate } from "./protocol.js";
 import { maxViews } from "./render.js";
-import type { LeafSnapshot, ViewInstance } from "./render.js";
+import type { ViewInstance } from "./render.js";
 import { topicKey } from "./topic.js";
 import type { PubSub, Topic } from "./topic.js";
 
@@ -27,7 +29,8 @@ type StreamAccess<User> =
 
 interface StreamPage<User, Event> {
   views: ReadonlyMap<string, ViewInstance<User, Event>>;
-  initialSnapshots: ReadonlyMap<string, LeafSnapshot>;
+  /** SSR snapshots of the views the browser still shows as SSR left them. */
+  initialSnapshots: ReadonlyMap<string, PageSnapshot>;
   refresh(): Promise<StreamAccess<User>>;
   nextVersion(): number;
 }
@@ -45,7 +48,8 @@ interface TrackedView<User, Event> {
   retryAt: number;
   denied: boolean;
   lastUpdate?: {
-    html: string;
+    /** From `digestHtml`. */
+    digest: string;
     children: string[];
     snapshotRevision: string | number | undefined;
   };
@@ -183,7 +187,7 @@ async function streamTree<User extends Principal, Event extends Topic>(
   },
   root: string,
   rootView: ViewInstance<User, Event>,
-  initialSnapshot: LeafSnapshot | undefined,
+  initialSnapshot: PageSnapshot | undefined,
   { pubsub, onDiagnostic, reconcileIntervalMs }: StreamOptions<Event>
 ): Promise<void> {
   const dirty = new Set<string>();
@@ -448,7 +452,7 @@ async function streamTree<User extends Principal, Event extends Topic>(
                   continue;
                 }
                 tracked.lastUpdate = {
-                  html: initial.html,
+                  digest: initial.digest,
                   children: [],
                   snapshotRevision: initial.revision,
                 };
@@ -493,20 +497,23 @@ async function streamTree<User extends Principal, Event extends Topic>(
           report(onDiagnostic, { type: "render", target, reason });
           const children = [...tracked.children];
           const last = tracked.lastUpdate;
+          const remember =
+            reconcileIntervalMs !== undefined || view.skipUnchanged;
+          const digest = remember ? await digestHtml(fragment.html) : undefined;
+          if (signal.aborted) return;
           const canSkip =
             reason === "reconcile" ||
             (reason === "topic" && view.skipUnchanged && children.length === 0);
-          if (
-            !canSkip ||
-            last?.html !== fragment.html ||
-            last.children.length !== children.length ||
-            children.some((key, index) => last.children[index] !== key)
-          ) {
+          const unchanged =
+            last !== undefined &&
+            last.digest === digest &&
+            last.children.length === children.length &&
+            children.every((key, index) => last.children[index] === key);
+          if (!canSkip || !unchanged)
             await writeUpdate(target, fragment.html, children);
-          }
-          if (reconcileIntervalMs !== undefined || view.skipUnchanged)
+          if (digest !== undefined)
             tracked.lastUpdate = {
-              html: fragment.html,
+              digest,
               children,
               snapshotRevision: fragment.snapshotRevision,
             };

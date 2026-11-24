@@ -5,6 +5,8 @@ import type {
   SharedLiveView,
   SharedValue,
 } from "./live.js";
+import { digestHtml } from "./page-token.js";
+import type { PageSnapshot } from "./page-token.js";
 import type { Topic } from "./topic.js";
 
 export interface LiveRenderer<Markup> {
@@ -22,17 +24,13 @@ export interface ViewInstance<User, Event> {
   authorize(user: User): boolean | Promise<boolean>;
   readSnapshotRevision?(user: User): string | number | Promise<string | number>;
   skipUnchanged: boolean;
-  initialSnapshot?: LeafSnapshot;
+  /** Set at SSR for a top-level view without children that has a snapshot revision. */
+  initialSnapshot?: PageSnapshot;
   render(
     user: User,
     mode: "initial" | "update",
     admit: () => void
   ): Promise<RenderedView<User, Event>>;
-}
-
-export interface LeafSnapshot {
-  html: string;
-  revision: string | number;
 }
 
 export interface RenderedView<User, Event> {
@@ -124,8 +122,8 @@ export function renderContext<
         result.snapshotRevision !== undefined
       )
         instance.initialSnapshot = {
-          html: result.html,
           revision: result.snapshotRevision,
+          digest: await digestHtml(result.html),
         };
       return renderer.boundary(target, result.html);
     },

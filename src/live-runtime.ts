@@ -11,7 +11,7 @@ import type {
   SharedValue,
 } from "./live.js";
 import { createPageSealer, maxTokenLength } from "./page-token.js";
-import type { PageClaims } from "./page-token.js";
+import type { PageClaims, PageSnapshot } from "./page-token.js";
 import { isJsonValue } from "./protocol.js";
 import type { JsonValue } from "./protocol.js";
 import {
@@ -215,6 +215,11 @@ export function createLiveRuntime<
         registry
       );
       const document = await renderer.serialize(render(context, placeholder));
+      const snapshots = Object.fromEntries(
+        [...views].flatMap(([target, view]) =>
+          view.initialSnapshot ? [[target, view.initialSnapshot]] : []
+        )
+      );
       const claims: PageClaims = {
         format: 1,
         sessionId: user.sessionId,
@@ -223,6 +228,7 @@ export function createLiveRuntime<
           name: view.definition.name,
           params: toJson(view.params),
         })),
+        ...(Object.keys(snapshots).length > 0 && { snapshots }),
       };
       const token = await sealer.seal(claims);
       if (token.length > maxTokenLength) {
@@ -237,7 +243,8 @@ export function createLiveRuntime<
      * Opens the page a token sealed. A token that is altered, sealed with a key
      * this runtime does not hold, past its lifetime, or names a view the
      * runtime no longer registers is `expired`, so the browser renders the page
-     * again. `request.pristine` is accepted but not yet used.
+     * again. A view in `request.pristine` that the token holds a snapshot for
+     * skips its first render when its snapshot revision has not moved since SSR.
      */
     async openPage(
       token: string,
@@ -262,6 +269,12 @@ export function createLiveRuntime<
         if (!view) return { status: "unknown-view" };
         views.set(key, view);
       }
+      const snapshots = new Map(Object.entries(claims.snapshots ?? {}));
+      const initialSnapshots = new Map<string, PageSnapshot>();
+      for (const key of request.pristine) {
+        const snapshot = snapshots.get(key);
+        if (snapshot) initialSnapshots.set(key, snapshot);
+      }
       return {
         status: "open",
         async connect(connection, refreshUser) {
@@ -275,7 +288,7 @@ export function createLiveRuntime<
               connection,
               {
                 views,
-                initialSnapshots: new Map(),
+                initialSnapshots,
                 async refresh() {
                   const current = await refreshUser();
                   if (current?.sessionId !== claims.sessionId)

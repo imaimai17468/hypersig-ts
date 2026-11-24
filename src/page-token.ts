@@ -8,7 +8,15 @@ export interface PageClaims {
   /** Milliseconds since the UNIX epoch. */
   expiresAt: number;
   views: { name: string; params: JsonValue }[];
-  snapshots?: Record<string, { revision: string | number; digest: string }>;
+  /** What each leaf view showed at SSR, by key. */
+  snapshots?: Record<string, PageSnapshot>;
+}
+
+/** A view's snapshot revision and the digest of the HTML rendered from it. */
+export interface PageSnapshot {
+  revision: string | number;
+  /** From `digestHtml`. */
+  digest: string;
 }
 
 export type PageTokenResult =
@@ -75,7 +83,14 @@ export function createPageSealer(keys: readonly string[] | undefined) {
 async function decrypt(keys: readonly CryptoKey[], token: string) {
   if (token.length > maxTokenLength || !tokenPattern.test(token)) return;
   const sealed = decodeBase64(token);
-  if (!sealed || sealed.length < ivLength + tagLength) return;
+  // Unused trailing bits would let several strings name one token, and one
+  // connection is kept per token string.
+  if (
+    !sealed ||
+    sealed.length < ivLength + tagLength ||
+    encodeBase64Url(sealed) !== token
+  )
+    return;
   const iv = sealed.subarray(0, ivLength);
   const ciphertext = sealed.subarray(ivLength);
   for (const key of keys) {
@@ -126,6 +141,15 @@ function isPageClaims(value: unknown): value is PageClaims {
       (isRecord(value.snapshots) &&
         Object.values(value.snapshots).every(isSnapshot)))
   );
+}
+
+/** The SHA-256 of HTML in base64url, to compare HTML without keeping it. */
+export async function digestHtml(html: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(html)
+  );
+  return encodeBase64Url(new Uint8Array(digest));
 }
 
 function decodeKey(key: string) {

@@ -565,7 +565,7 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
   );
   const registered = await runtime.openPage(
     token,
-    { views: ["snapshot"], pristine: [] },
+    { views: ["snapshot"], pristine: ["snapshot"] },
     user
   );
   if (registered.status !== "open")
@@ -573,13 +573,10 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
   const connection = createConnection();
   const live = registered.connect(connection, () => user);
   try {
-    await expect(connection.read()).resolves.toMatchObject({
-      type: "update",
-      update: { html: "first", version: 1 },
-    });
     await expect(connection.read()).resolves.toEqual({ type: "ready" });
+    expect(diagnostics).toContain("initial-sync-skipped");
     await firstSkip.promise;
-    expect(snapshotReads).toBe(2);
+    expect(snapshotReads).toBe(1);
 
     // No Topic was delivered for these commits.
     snapshot = { revision: 1, text: "second" };
@@ -588,19 +585,19 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
     releaseSecond.resolve();
     await expect(connection.read()).resolves.toMatchObject({
       type: "update",
-      update: { html: "second", version: 2 },
+      update: { html: "second", version: 1 },
     });
     await sameHtmlSkip.promise;
-    expect(snapshotReads).toBe(4);
+    expect(snapshotReads).toBe(3);
 
     failProbe = true;
     snapshot = { revision: 3, text: "third" };
     await expect(connection.read()).resolves.toMatchObject({
       type: "update",
-      update: { html: "third", version: 3 },
+      update: { html: "third", version: 2 },
     });
     expect(diagnostics).toContain("revision-error");
-    expect(snapshotReads).toBe(5);
+    expect(snapshotReads).toBe(4);
   } finally {
     releaseSecond.resolve();
     connection.close();
@@ -795,6 +792,203 @@ it("renders the current snapshot on each connection and counts versions per conn
   } finally {
     next.close();
     await resumed;
+  }
+});
+
+const leafChanged = topic("change", () => "leaf");
+
+/** A runtime with a leaf view whose snapshot revision is its value. */
+function snapshotPage(
+  store: { value: number; reads: number },
+  options: {
+    onDiagnostic?: (
+      event: LiveDiagnostic<ReturnType<typeof leafChanged>>
+    ) => void;
+    readRevision?: () => number | Promise<number>;
+  } = {}
+) {
+  const runtime = createLiveRuntime<
+    Principal,
+    ReturnType<typeof leafChanged>,
+    string
+  >({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    ...(options.onDiagnostic && { onDiagnostic: options.onDiagnostic }),
+  });
+  const view = runtime.live({
+    name: "leaf",
+    authorize: () => true,
+    subscribe: () => [leafChanged()],
+    load() {
+      store.reads++;
+      return store.value;
+    },
+    snapshotRevision: {
+      read: options.readRevision ?? (() => store.value),
+      from: (data) => data,
+    },
+    render: String,
+  });
+  async function render() {
+    return readToken(
+      await runtime.renderPage(
+        viewer,
+        async (page, key) => streamToken(key) + (await page.view(view, {}))
+      )
+    );
+  }
+  return { runtime, render };
+}
+
+it("renders a pristine-less view even when its revision is unchanged", async () => {
+  const store = { value: 0, reads: 0 };
+  const diagnostics: string[] = [];
+  const { runtime, render } = snapshotPage(store, {
+    onDiagnostic: (event) => diagnostics.push(event.type),
+  });
+  const token = await render();
+  const page = await runtime.openPage(
+    token,
+    { views: ["leaf"], pristine: [] },
+    viewer
+  );
+  if (page.status !== "open") throw new Error("Expected an open page");
+  const connection = createConnection();
+  const live = page.connect(connection, () => viewer);
+  try {
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: "leaf", html: "0", version: 1 },
+    });
+    await expect(connection.read()).resolves.toEqual({ type: "ready" });
+    expect(diagnostics).not.toContain("initial-sync-skipped");
+    expect(store.reads).toBe(2);
+  } finally {
+    connection.close();
+    await live;
+  }
+});
+
+it("skips an unchanged topic update after the initial sync", async () => {
+  const store = { value: 0, reads: 0 };
+  const renderedSame = deferred();
+  const diagnostics: string[] = [];
+  const { runtime, render } = snapshotPage(store, {
+    onDiagnostic(event) {
+      diagnostics.push(event.type);
+      if (event.type === "render" && event.reason === "topic")
+        renderedSame.resolve();
+    },
+  });
+  const token = await render();
+  const page = await runtime.openPage(
+    token,
+    { views: ["leaf"], pristine: ["leaf"] },
+    viewer
+  );
+  if (page.status !== "open") throw new Error("Expected an open page");
+  const connection = createConnection();
+  const live = page.connect(connection, () => viewer);
+  try {
+    await expect(connection.read()).resolves.toEqual({ type: "ready" });
+    expect(diagnostics).toContain("initial-sync-skipped");
+    await runtime.publish(leafChanged());
+    await renderedSame.promise;
+    store.value = 1;
+    await runtime.publish(leafChanged());
+    // The first frame on the connection is the changed value.
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: "leaf", html: "1", version: 1 },
+    });
+    expect(store.reads).toBe(3);
+  } finally {
+    connection.close();
+    await live;
+  }
+});
+
+it("uses the SSR snapshot only for a pristine view and processes updates during its revision check", async () => {
+  const store = { value: 0, reads: 0 };
+  const checking = deferred();
+  const release = deferred();
+  const { runtime, render } = snapshotPage(store, {
+    async readRevision() {
+      const captured = store.value;
+      checking.resolve();
+      await release.promise;
+      return captured;
+    },
+  });
+  const token = await render();
+  const pristine = await runtime.openPage(
+    token,
+    { views: ["leaf"], pristine: ["leaf"] },
+    viewer
+  );
+  if (pristine.status !== "open") throw new Error("Expected an open page");
+  const first = createConnection();
+  const initial = pristine.connect(first, () => viewer);
+  try {
+    await checking.promise;
+    store.value = 1;
+    await runtime.publish(leafChanged());
+    release.resolve();
+    await expect(first.read()).resolves.toEqual({ type: "ready" });
+    await expect(first.read()).resolves.toMatchObject({
+      type: "update",
+      update: { html: "1", version: 1 },
+    });
+    expect(store.reads).toBe(2);
+  } finally {
+    release.resolve();
+    first.close();
+    await initial;
+  }
+
+  // The browser morphed the view, so it no longer names it as pristine.
+  const morphed = await runtime.openPage(
+    token,
+    { views: ["leaf"], pristine: [] },
+    viewer
+  );
+  if (morphed.status !== "open") throw new Error("Expected an open page");
+  const next = createConnection();
+  const resumed = morphed.connect(next, () => viewer);
+  try {
+    await expect(next.read()).resolves.toMatchObject({
+      type: "update",
+      update: { html: "1", version: 1 },
+    });
+    await expect(next.read()).resolves.toEqual({ type: "ready" });
+    expect(store.reads).toBe(3);
+  } finally {
+    next.close();
+    await resumed;
+  }
+
+  const later = await render();
+  store.value = 2;
+  const changedBeforeConnect = await runtime.openPage(
+    later,
+    { views: ["leaf"], pristine: ["leaf"] },
+    viewer
+  );
+  if (changedBeforeConnect.status !== "open")
+    throw new Error("Expected an open page");
+  const late = createConnection();
+  const connected = changedBeforeConnect.connect(late, () => viewer);
+  try {
+    await expect(late.read()).resolves.toMatchObject({
+      type: "update",
+      update: { html: "2", version: 1 },
+    });
+    await expect(late.read()).resolves.toEqual({ type: "ready" });
+    expect(store.reads).toBe(5);
+  } finally {
+    late.close();
+    await connected;
   }
 });
 
@@ -1204,6 +1398,41 @@ it("rejects tampered, foreign-key and expired tokens as expired", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("rejects a token whose base64url is not canonical", async () => {
+  const diagnostics: LiveDiagnostic<CounterEvent>[] = [];
+  const store = { count: 0 };
+  const counter = counterRuntime(store, {
+    onDiagnostic: (event) => diagnostics.push(event),
+  });
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  // Sessions of different lengths make tokens of different lengths, and a
+  // token whose length is not a multiple of 4 ends in unused bits.
+  for (const sessionId of ["viewer", "viewer-1", "viewer-12"]) {
+    const user = { sessionId };
+    const token = readToken(
+      await counter.runtime.renderPage(
+        user,
+        async (page, key) =>
+          streamToken(key) + (await page.view(counter.view, {}))
+      )
+    );
+    if (token.length % 4 === 0) continue;
+    const last = alphabet.indexOf(token.at(-1) ?? "");
+    const variant = token.slice(0, -1) + alphabet[last ^ 1];
+    expect(
+      (await counter.runtime.openPage(token, counterKeys, user)).status
+    ).toBe("open");
+    diagnostics.length = 0;
+    expect(
+      (await counter.runtime.openPage(variant, counterKeys, user)).status
+    ).toBe("expired");
+    expect(diagnostics).toEqual([{ type: "page-token-invalid" }]);
+    return;
+  }
+  throw new Error("Expected a token with unused trailing bits");
 });
 
 it("accepts a token sealed with a rotated-out key", async () => {
