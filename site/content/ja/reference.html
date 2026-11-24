@@ -210,6 +210,52 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>form({ draft: true })</code> に復元されると true になり、その Action
       が成功すると false に戻ります。
     </dd>
+    <dt><code>action.form({ onSubmit })</code></dt>
+    <dd>
+      フォームの送信時、リクエストを送る前にブラウザで文を実行します。ここで書いた値は、<code
+        >call</code
+      >
+      より前の書き込みと同じく、その送信リクエストが持ちます。
+    </dd>
+    <dt>
+      <code>insertTemplate(initial, { name })</code>
+    </dt>
+    <dd>
+      楽観的な一覧への挿入に使う行のテンプレートを定義します。ID
+      <code>name-番号</code>
+      は呼び出したときに割り当てられるので、モジュールの直下で定義します。<code
+        >initial</code
+      >
+      で項目の型を決め、<code>item.項目名</code>
+      は挿入する行のその項目を表す式です。部品は次のとおりです。
+      <ul>
+        <li>
+          <code>template()</code> は <code>&lt;template&gt;</code>
+          要素に付けます。中身のルート要素はちょうど一つにし、すべての Live View
+          の外に置きます。DOMPurify が Fragment 内の
+          <code>&lt;template&gt;</code> を取り除くためです。束縛
+          (<code>bindText</code>、<code>bindShow</code>、<code>bindAttr</code>)
+          は、サーバーでは <code>initial</code> の値で、ブラウザでは挿入した値で
+          <code>item</code> を描画します。
+        </li>
+        <li>
+          <code>slot()</code>
+          は、ブラウザが行を挿入する一覧の要素に付けます。項目が加わる一覧にだけ置いてください。確定した行が届かない一覧に置くと、仮の行が残り続けます。
+        </li>
+        <li>
+          <code>insert(values, key)</code>
+          は文です。そのテンプレートのすべてのスロットの末尾に仮の行を足します。値はリテラルか式、<code
+            >key</code
+          >
+          は文字列か文字列の式です。項目名の誤りは型でだけ検査するので、型のない呼び出し元は、未知の項目名を書いてもエラーになりません。
+        </li>
+        <li>
+          <code>confirms(key)</code> は確定した行に付けます。スロット内に
+          <code>confirms(key)</code> を持つ要素が現れると、その key
+          の仮の行を取り除きます。
+        </li>
+      </ul>
+    </dd>
   </dl>
   <pre><code>&lt;button
   type="button"
@@ -221,6 +267,53 @@ const e = editor.with({ base: draft.revision });</code></pre>
 &gt;
   &lt;span {...r.bindText(r.completed.choose("✓", "○"))} /&gt;
 &lt;/button&gt;</code></pre>
+  <p>
+    楽観的な追加は、これらをつなげて作ります。ブラウザが key
+    を作り、仮の行を表示し、Action の入力で key を送ります。サーバーは key
+    の形式を検証し、すでにある key は拒否し、確定した行を
+    <code>confirms(key)</code> 付きで描画します。
+  </p>
+  <pre><code>const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
+const composer = signals({ title: "", key: "" }, { name: "composer" });
+const entry = composer.with({});
+
+&lt;form
+  {...entry.init()}
+  {...add.form({
+    resetOnSuccess: true,
+    onSubmit: [
+      entry.key.set(uuid()),
+      newTodo.insert({ title: entry.title }, entry.key),
+    ],
+  })}
+&gt;
+  &lt;input type="hidden" name={add.field("todoKey")} {...entry.bindValue(entry.key)} /&gt;
+  &lt;input name={add.field("todoTitle")} {...entry.bindValue(entry.title)} /&gt;
+&lt;/form&gt;
+
+&lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
+
+&lt;template {...newTodo.template()}&gt;
+  &lt;li&gt;&lt;span {...newTodo.bindText(newTodo.item.title)} /&gt;&lt;/li&gt;
+&lt;/template&gt;</code></pre>
+  <p>
+    確定した一覧は Live View が持ち、ブラウザが描くのは仮の行だけです。Live View
+    を morph するあいだ、仮の行はいったん外し、morph
+    のあとでスロットの末尾に付け直します。morph
+    でスロットがなくなった仮の行は捨てます。仮の行の中にあるフォーカスは、morph
+    で失われます。Action
+    が失敗すると仮の行を取り除きます。仮の行の並べ替えと編集はできません。
+  </p>
+  <p>
+    削除に新しい API は要りません。行の Signal に
+    <code>removed</code> 項目を持たせ、<code>bindShow(r.removed.not())</code>
+    で隠し、<code>call</code>
+    より前に立てます。
+    <code
+      >on.click([r.removed.set(true), remove.call({ todoKey: todo.key })])</code
+    >。呼び出しが失敗すると、<code>removed</code>
+    が元に戻って行が再び表示されます。
+  </p>
   <p><strong>既知の制約</strong></p>
   <ul>
     <li>

@@ -69,10 +69,12 @@
   </p>
   <ul>
     <li>
-      Adding an item to a list waits for the server. Signals update elements
-      that are already on the page, and the browser does not render new list
-      items. In the TodoMVC example, toggling a task shows at once, and adding
-      one appears when the list's Live View updates.
+      An added item shows at once as a preview, and the confirmed list still
+      comes from the server. A preview comes from a template and shows only the
+      fields the template binds. It cannot be reordered or edited, and it goes
+      away only when the confirmed row carrying the same key arrives, so the key
+      the browser sends must round-trip through the Action. In the TodoMVC
+      example, toggling, adding, and deleting a task all show at once.
     </li>
     <li>
       Pages need a connection to the server. Committed data arrives over SSE,

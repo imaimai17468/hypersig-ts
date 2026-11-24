@@ -137,6 +137,16 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 - 同じパスに対する別々のコントロールからの呼び出しが重なると、先に失敗した呼び出しが、もう一方の呼び出しの楽観的な値に戻すことがある。次のスナップショットで直る。
 - `hypersig:action-success` イベントの `detail.data` は、応答に `data` がないとき `undefined` ではなく `null` になる。
 
+### 仮の行による楽観的な追加
+
+確定した一覧は Live View だけが持ち、ブラウザは仮の行だけを描く。`insertTemplate` は Live View の外の `<template data-hs-template>` と、挿入先の `slot()`、確定した行の `confirms(key)` を型付きで作る。テンプレートの中身はルート要素を一つにし、ランタイムは `template.content.firstElementChild` を複製する。Live View の中に置くと、DOMPurify が `template` を取り除く。`form({ onSubmit })` の文で `insert(values, key)` が走り、仮の行がそのテンプレートのすべてのスロットの末尾に付く。値と表示は既存の束縛を通り、出力先は `textContent` と許可した属性だけである。key は文字列に評価できないときは挿入しない。
+
+ブラウザが `uuid()` で key を作り、Action の入力で送る。サーバーは key の形式を検証し、重複を拒否し、確定した行に `confirms(key)` を付ける。スロット内にその行が現れると仮の行を取り除く。Action が失敗した場合も取り除く。確定した行が届かないスロットでは、仮の行が残り続ける。
+
+Live View の morph のあいだ、仮の行はスロットから外し、morph のあとに同じスロットの末尾へ付け直す。Idiomorph が仮の行と確定した行を対応づけることはない。morph でスロットがなくなった仮の行は捨て、仮の行の中のフォーカスは失われる。仮の行の `data-hs-signals` はサーバーのデータではないので、スナップショットとして読まない。
+
+削除に専用の仕組みはない。行の Signal の `removed` を `bindShow` で隠し、`call` の前に立てる。
+
 ### ランタイムの大きさ
 
 `dist/runtime.js` を `bun build src/browser.ts --target=browser --minify` で作り、設計の計画を書いたコミット（dd55741）と Signal の実装後で比べた。
@@ -148,6 +158,14 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 | 増分                   | 8,097 B   | 2,701 B  |
 
 gzip での増分は目安の 4 KB 以下に収まった。
+
+仮の行の追加では、計画を書いたコミット（6445c3a）と実装後で同じ方法で比べた。
+
+| 時点                  | minify 後 | gzip -9  |
+| --------------------- | --------- | -------- |
+| 6445c3a（仮の行の前） | 58,168 B  | 21,306 B |
+| 仮の行の実装後        | 60,849 B  | 22,118 B |
+| 増分                  | 2,681 B   | 812 B    |
 
 ## 独立した View の描画
 

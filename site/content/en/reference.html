@@ -213,6 +213,51 @@ const e = editor.with({ base: draft.revision });</code></pre>
       draft was restored into the Action's <code>form({ draft: true })</code>,
       and false again once that Action succeeds.
     </dd>
+    <dt><code>action.form({ onSubmit })</code></dt>
+    <dd>
+      Runs statements in the browser when the form is submitted, before the
+      request is sent. Writes made there are owned by the submit request, like
+      the writes before a <code>call</code>.
+    </dd>
+    <dt>
+      <code>insertTemplate(initial, { name })</code>
+    </dt>
+    <dd>
+      Defines a row template for an optimistic list insert. Define it at module
+      level, because the ID <code>name-number</code> is assigned when it is
+      called. <code>initial</code> sets the field types, and
+      <code>item.<em>field</em></code> is the expression for a field of the
+      inserted row. The template has these parts:
+      <ul>
+        <li>
+          <code>template()</code> goes on a <code>&lt;template&gt;</code>
+          element. Its content must have exactly one root element, and the
+          template must sit outside every Live View, because DOMPurify strips
+          <code>&lt;template&gt;</code> elements from a fragment. The bind
+          methods (<code>bindText</code>, <code>bindShow</code>,
+          <code>bindAttr</code>) render <code>item</code> with the
+          <code>initial</code> values on the server and with the inserted values
+          in the browser.
+        </li>
+        <li>
+          <code>slot()</code> goes on the list element the browser inserts into.
+          Put it only on lists the item will join. If a slot's list never
+          receives the confirmed row, the preview stays forever.
+        </li>
+        <li>
+          <code>insert(values, key)</code> is a statement. It appends a preview
+          row to every slot of the template. A value is a literal or an
+          expression, and <code>key</code> is a string or a string expression.
+          The compiler checks the field names only through types, so a caller
+          without types gets no error for an unknown field.
+        </li>
+        <li>
+          <code>confirms(key)</code> goes on the confirmed row. When an element
+          with <code>confirms(key)</code> appears in the slot, the preview for
+          that key is removed.
+        </li>
+      </ul>
+    </dd>
   </dl>
   <pre><code>&lt;button
   type="button"
@@ -224,6 +269,50 @@ const e = editor.with({ base: draft.revision });</code></pre>
 &gt;
   &lt;span {...r.bindText(r.completed.choose("✓", "○"))} /&gt;
 &lt;/button&gt;</code></pre>
+  <p>
+    An optimistic add chains these. The browser creates the key, shows the
+    preview, and sends the key in the Action input. The server validates the key
+    format, rejects a key that already exists, and renders the confirmed row
+    with <code>confirms(key)</code>.
+  </p>
+  <pre><code>const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
+const composer = signals({ title: "", key: "" }, { name: "composer" });
+const entry = composer.with({});
+
+&lt;form
+  {...entry.init()}
+  {...add.form({
+    resetOnSuccess: true,
+    onSubmit: [
+      entry.key.set(uuid()),
+      newTodo.insert({ title: entry.title }, entry.key),
+    ],
+  })}
+&gt;
+  &lt;input type="hidden" name={add.field("todoKey")} {...entry.bindValue(entry.key)} /&gt;
+  &lt;input name={add.field("todoTitle")} {...entry.bindValue(entry.title)} /&gt;
+&lt;/form&gt;
+
+&lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
+
+&lt;template {...newTodo.template()}&gt;
+  &lt;li&gt;&lt;span {...newTodo.bindText(newTodo.item.title)} /&gt;&lt;/li&gt;
+&lt;/template&gt;</code></pre>
+  <p>
+    The confirmed list belongs to the Live View, and the browser draws only the
+    preview. During a Live View morph, previews are detached and appended again
+    at the end of their slot. A preview whose slot disappeared in the morph is
+    dropped, and focus inside a preview is lost. If the Action fails, the
+    preview is removed. A preview cannot be reordered or edited.
+  </p>
+  <p>
+    Deleting needs no new API. Give the row a signal with a
+    <code>removed</code> field, hide it with
+    <code>bindShow(r.removed.not())</code>, and set it before the call:
+    <code
+      >on.click([r.removed.set(true), remove.call({ todoKey: todo.key })])</code
+    >. A failed call restores the field and shows the row again.
+  </p>
   <p><strong>Known limitations</strong></p>
   <ul>
     <li>
