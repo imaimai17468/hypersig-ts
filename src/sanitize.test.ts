@@ -23,6 +23,16 @@ it("keeps custom elements and their safe attributes", () => {
   expect(element?.hasAttribute("data-hs-stream")).toBe(false);
 });
 
+it("checks custom element attribute names beyond the default allowlist", () => {
+  const container = serialize(
+    sanitizeFragment(`<star-rating stars-max="5" onrate="x()"></star-rating>`)
+  );
+  const element = container.querySelector("star-rating");
+
+  expect(element?.getAttribute("stars-max")).toBe("5");
+  expect(element?.hasAttribute("onrate")).toBe(false);
+});
+
 it("does not admit customized built-in elements", () => {
   const container = serialize(
     sanitizeFragment(`<div is="x-y">text</div><p>kept</p>`)

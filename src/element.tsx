@@ -78,7 +78,9 @@ export interface CustomElement<Spec extends CustomElementSpec> {
    * Runs the statements when the element dispatches the event, with `detail`
    * standing for the event's `detail`. To handle several events on one
    * element, pass them in one object: spreading two results keeps only the
-   * later one. A handler left `undefined` adds nothing.
+   * later one. A handler left `undefined` adds nothing. The browser runtime
+   * starts listening on the next render after the element is inserted, so an
+   * event dispatched synchronously in `connectedCallback` runs nothing.
    */
   on<Name extends keyof Spec["events"] & string>(
     event: Name,

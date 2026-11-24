@@ -381,7 +381,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   /**
    * Custom events may not bubble, so each custom element gets its own
    * listener per declared event. A listener reads the attribute when the
-   * event fires, so a morph that changes it takes effect.
+   * event fires, so a morph that changes it takes effect. Listeners attach
+   * on the next render after the element is inserted, so an event it
+   * dispatches synchronously in `connectedCallback` is not seen.
    */
   function listenToCustomEvents(element: HTMLElement) {
     const events = listenedEvents.get(element) ?? new Set<string>();

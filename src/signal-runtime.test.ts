@@ -1416,3 +1416,25 @@ it("renders bindAttr by name and bindElement by value type on one custom element
   expect(find("#rating").getAttribute("aria-pressed")).toBe("false");
   expect(find("#rating").hasAttribute("open")).toBe(false);
 });
+
+it("applies the name list to data-hs-attr on a custom element", async () => {
+  const stars = signals({ count: 3 }, { name: "custom-name-list" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...stars.init(),
+      children: element("star-rating", {
+        id: "rating",
+        "data-hs-attr": JSON.stringify({
+          value: ["sig", stars.count.path],
+          "data-count": ["sig", stars.count.path],
+        }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+
+  runtime.write(stars.count.path, 5);
+  await settle();
+  expect(find("#rating").hasAttribute("value")).toBe(false);
+  expect(find("#rating").getAttribute("data-count")).toBe("5");
+});
