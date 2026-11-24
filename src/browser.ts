@@ -134,7 +134,15 @@ function updateViews(
         ignoreActiveValue: isTextControl(document.activeElement),
         restoreFocus: true,
         callbacks: {
+          // Only the signal runtime removes a preview row.
+          beforeNodeRemoved: (node) => !signalRuntime.isPreview(node),
           beforeNodeMorphed(previous, next) {
+            if (signalRuntime.isPreview(previous)) {
+              // Idiomorph matched an incoming row to the preview. Insert the
+              // row before the preview so it is not lost, and keep the preview.
+              previous.before(document.importNode(next, true));
+              return false;
+            }
             return !(
               previous instanceof HTMLElement &&
               next instanceof HTMLElement &&
@@ -350,9 +358,8 @@ function handleActions(runtime: SignalRuntime) {
     target: string,
     submitter: HTMLElement | null
   ) {
-    const body = new FormData(form, submitter);
     if (!form.hasAttribute("data-hs-reset-on-success")) {
-      await runtime.send(form, target, body);
+      await runtime.sendForm(form, target, submitter);
       return;
     }
 
@@ -364,7 +371,7 @@ function handleActions(runtime: SignalRuntime) {
     form.addEventListener("input", markEdited, { signal: listeners.signal });
     form.addEventListener("change", markEdited, { signal: listeners.signal });
     try {
-      if ((await runtime.send(form, target, body)).ok && !edited) {
+      if ((await runtime.sendForm(form, target, submitter)).ok && !edited) {
         HTMLFormElement.prototype.reset.call(form);
       }
     } finally {

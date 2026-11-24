@@ -5,6 +5,7 @@ import { expect, it, vi } from "vite-plus/test";
 import {
   createHypersig,
   createMemoryPubSub,
+  insertTemplate,
   on,
   ref,
   signals,
@@ -1075,4 +1076,361 @@ it("ignores a pathologically nested binding and keeps rendering the others", asy
   click("#rename");
   await settle();
   expect(find("#label").textContent).toBe("renamed");
+});
+
+const addTodo = hypersig.action("add-todo", {
+  input: v.object({ todoKey: v.string(), todoTitle: v.string() }),
+  output: v.null(),
+  authorize: () => true,
+  execute: () => null,
+});
+const newTodo = insertTemplate({ title: "" }, { name: "runtime-new-todo" });
+const todoEditor = signals(
+  { newKey: "", newTitle: "" },
+  { name: "runtime-todo-editor" }
+);
+
+const previewTemplate = () =>
+  element("template", {
+    ...newTodo.template(),
+    children: element("li", {
+      class: "preview",
+      children: element("span", {
+        class: "title",
+        ...newTodo.bindText(newTodo.item.title.concat("!")),
+      }),
+    }),
+  });
+
+/**
+ * A Live View list of todos and a button that inserts a preview before
+ * calling `add-todo`. `slots` lists the slots inside the view.
+ */
+function createInsertPage(
+  options: {
+    template?: "outside" | "inside" | "missing";
+    slot?: boolean;
+  } = {}
+) {
+  const { template = "outside", slot = true } = options;
+  const e = todoEditor.with({});
+  const created = createPage(
+    (template === "outside" ? String(previewTemplate()) : "") +
+      render("div", {
+        "data-hs-view": "todos",
+        children: [
+          element("p", { id: "snapshot", ...e.init() }),
+          template === "inside" ? previewTemplate() : null,
+          element("ul", {
+            id: "list",
+            ...(slot ? newTodo.slot() : {}),
+            children: element("li", { class: "todo", children: "old" }),
+          }),
+        ],
+      }) +
+      render("input", { id: "title", ...e.bindValue(e.newTitle) }) +
+      render("button", {
+        id: "add",
+        ...on.click([
+          e.newKey.set(uuid()),
+          newTodo.insert({ title: e.newTitle }, e.newKey),
+          addTodo.call({ todoKey: e.newKey, todoTitle: e.newTitle }),
+        ]),
+      })
+  );
+  const sender = createSend();
+  let next = 0;
+  const runtime = startSignals({
+    root: created.page,
+    send: sender.send,
+    uuid: () => `k${++next}`,
+  });
+  const view = created.find("[data-hs-view]");
+  const previews = () => [
+    ...created.page.querySelectorAll<HTMLElement>("[data-hs-item-key]"),
+  ];
+  /** Adds a confirmed row for `key` to the list, as a morph would. */
+  const confirm = (key: string) => {
+    const row = created.page.createElement("li");
+    row.className = "todo";
+    row.setAttribute(
+      "data-hs-confirms",
+      newTodo.confirms(key)["data-hs-confirms"]
+    );
+    created.find("#list").prepend(row);
+    runtime.applySnapshots(view);
+  };
+  const type = (title: string) => {
+    created.input("#title").value = title;
+    created.dispatch("#title", "input");
+  };
+  return { ...created, ...sender, runtime, e, view, previews, confirm, type };
+}
+
+it("inserts a preview from a template outside views and fills its bindings", async () => {
+  const { find, click, type, previews, request } = createInsertPage();
+
+  type("Buy milk");
+  click("#add");
+  const [preview] = previews();
+  expect(previews()).toHaveLength(1);
+  expect(preview?.parentElement).toBe(find("#list"));
+  expect(find("#list").lastElementChild).toBe(preview);
+  expect(preview?.className).toBe("preview");
+  expect(preview?.getAttribute("data-hs-item-key")).toBe("k1");
+  expect(preview?.hasAttribute("data-hs-pending-item")).toBe(true);
+  expect(JSON.parse(preview?.getAttribute("data-hs-item") ?? "null")).toEqual({
+    title: "Buy milk",
+  });
+  expect(request(0).body).toBe(
+    JSON.stringify({ todoKey: "k1", todoTitle: "Buy milk" })
+  );
+  await settle();
+  expect(preview?.querySelector(".title")?.textContent).toBe("Buy milk!");
+});
+
+it("ignores an insert whose template is missing or inside a Live View", () => {
+  for (const template of ["missing", "inside"] as const) {
+    const { click, previews, requests } = createInsertPage({ template });
+    click("#add");
+    expect(previews()).toHaveLength(0);
+    expect(requests).toHaveLength(1);
+  }
+});
+
+it("does nothing when no slot is on the page but still sends the call", () => {
+  const { click, previews, requests } = createInsertPage({ slot: false });
+  click("#add");
+  expect(previews()).toHaveLength(0);
+  expect(requests).toHaveLength(1);
+});
+
+it("removes a preview when its call fails", async () => {
+  const { find, click, previews, request } = createInsertPage();
+
+  click("#add");
+  expect(previews()).toHaveLength(1);
+  request(0).respond({ ok: false });
+  await settle();
+  expect(previews()).toHaveLength(0);
+  expect(find("#list").children).toHaveLength(1);
+});
+
+it("removes a preview as soon as its confirmed row arrives, even while pending", async () => {
+  const { click, previews, confirm, request, runtime } = createInsertPage();
+
+  click("#add");
+  click("#add");
+  expect(previews()).toHaveLength(1);
+  const [first] = previews();
+  if (!first) throw new Error("No preview");
+  confirm("other");
+  expect(previews()).toEqual([first]);
+  confirm("k1");
+  expect(previews()).toHaveLength(0);
+  expect(runtime.isPreview(first)).toBe(false);
+
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  expect(previews()).toHaveLength(0);
+});
+
+it("keeps a preview after success until its confirmed row arrives", async () => {
+  const { find, click, previews, confirm, request } = createInsertPage();
+
+  click("#add");
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  const [preview] = previews();
+  expect(previews()).toHaveLength(1);
+  expect(preview?.hasAttribute("data-hs-pending-item")).toBe(false);
+
+  confirm("k1");
+  expect(previews()).toHaveLength(0);
+
+  // A confirmed row that is already there when the call succeeds removes the
+  // preview at once.
+  click("#add");
+  const row = find("#list").firstElementChild;
+  row?.setAttribute(
+    "data-hs-confirms",
+    newTodo.confirms("k2")["data-hs-confirms"]
+  );
+  request(1).respond({ ok: true, data: null });
+  await settle();
+  expect(previews()).toHaveLength(0);
+});
+
+it("keeps a preview without a call until its confirmed row arrives", async () => {
+  const { page, click, find } = createPage(
+    String(previewTemplate()) +
+      render("div", {
+        "data-hs-view": "todos",
+        children: element("ul", { id: "list", ...newTodo.slot() }),
+      }) +
+      render("button", {
+        id: "add",
+        ...on.click(newTodo.insert({ title: "solo" }, "s1")),
+      })
+  );
+  const runtime = startSignals({ root: page });
+  click("#add");
+  await settle();
+  const preview = find("[data-hs-item-key]");
+  expect(preview.textContent).toBe("solo!");
+  expect(runtime.isPreview(preview)).toBe(true);
+  find("#list").setAttribute(
+    "data-hs-confirms",
+    newTodo.confirms("other")["data-hs-confirms"]
+  );
+  runtime.applySnapshots(find("[data-hs-view]"));
+  expect(runtime.isPreview(preview)).toBe(true);
+  const row = page.createElement("li");
+  row.setAttribute(
+    "data-hs-confirms",
+    newTodo.confirms("s1")["data-hs-confirms"]
+  );
+  find("#list").prepend(row);
+  runtime.applySnapshots(find("[data-hs-view]"));
+  expect(runtime.isPreview(preview)).toBe(false);
+  expect(preview.isConnected).toBe(false);
+});
+
+/** A form that inserts a preview on submit, as the TodoMVC add form does. */
+function createSubmitPage() {
+  const e = todoEditor.with({});
+  const created = createPage(
+    String(previewTemplate()) +
+      render("div", {
+        "data-hs-view": "todos",
+        children: element("ul", { id: "list", ...newTodo.slot() }),
+      }) +
+      render("form", {
+        id: "add",
+        ...e.init(),
+        ...addTodo.form({
+          onSubmit: [
+            e.newKey.set(uuid()),
+            newTodo.insert({ title: e.newTitle }, e.newKey),
+          ],
+        }),
+        children: [
+          element("input", {
+            id: "key",
+            type: "hidden",
+            name: addTodo.field("todoKey"),
+            ...e.bindValue(e.newKey),
+          }),
+          element("input", {
+            id: "title",
+            name: addTodo.field("todoTitle"),
+            ...e.bindValue(e.newTitle),
+          }),
+          element("button", { id: "submit", name: "via", value: "button" }),
+        ],
+      })
+  );
+  const sender = createSend();
+  let next = 0;
+  const runtime = startSignals({
+    root: created.page,
+    send: sender.send,
+    uuid: () => `f${++next}`,
+  });
+  const form = created.find<HTMLFormElement>("#add");
+  return { ...created, ...sender, runtime, e, form };
+}
+
+it("runs submit statements and sends the bound values they wrote", async () => {
+  const { find, input, dispatch, form, request, runtime, e, page } =
+    createSubmitPage();
+
+  input("#title").value = "Walk";
+  dispatch("#title", "input");
+  const sent = runtime.sendForm(form, addTodo.url, find("#submit"));
+  const body = request(0).body;
+  if (typeof body === "string") throw new Error("Expected form data");
+  expect(body.get("todoKey")).toBe("f1");
+  expect(body.get("todoTitle")).toBe("Walk");
+  expect(body.get("via")).toBe("button");
+  expect(request(0).control).toBe(form);
+  expect(runtime.read(["$pending", addTodo.url])).toBe(true);
+  const preview = find("[data-hs-item-key]");
+  expect(preview.getAttribute("data-hs-item-key")).toBe("f1");
+
+  request(0).respond({ ok: false });
+  expect(await sent).toEqual({ ok: false });
+  expect(runtime.read(e.newKey.path)).toBe("");
+  expect(page.querySelector("[data-hs-item-key]")).toBeNull();
+});
+
+it("skips submit statements while the form is pending", async () => {
+  const { form, request, requests, runtime, e, page } = createSubmitPage();
+
+  void runtime.sendForm(form, addTodo.url, null);
+  expect(await runtime.sendForm(form, addTodo.url, null)).toEqual({
+    ok: false,
+  });
+  expect(requests).toHaveLength(1);
+  expect(runtime.read(e.newKey.path)).toBe("f1");
+  expect(page.querySelectorAll("[data-hs-item-key]")).toHaveLength(1);
+
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  expect(runtime.read(e.newKey.path)).toBe("f1");
+  expect(page.querySelectorAll("[data-hs-item-key]")).toHaveLength(1);
+});
+
+it("reports previews for the morph callbacks", async () => {
+  const { find, click, previews, request, runtime } = createInsertPage();
+
+  click("#add");
+  const [preview] = previews();
+  if (!preview) throw new Error("No preview");
+  expect(runtime.isPreview(preview)).toBe(true);
+  expect(runtime.isPreview(find("#list li.todo"))).toBe(false);
+  expect(runtime.isPreview(find("[data-hs-item-key] .title"))).toBe(false);
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.isPreview(preview)).toBe(false);
+});
+
+it("ignores an insert without a string key or a template root element", () => {
+  const empty = insertTemplate({ title: "" }, { name: "runtime-empty" });
+  const { page, click } = createPage(
+    render("template", { ...empty.template(), children: "text only" }) +
+      String(previewTemplate()) +
+      render("ul", { children: [], ...newTodo.slot() }) +
+      render("ol", { ...empty.slot() }) +
+      render("button", {
+        id: "empty",
+        ...on.click(empty.insert({ title: "a" }, "e1")),
+      }) +
+      render("button", {
+        id: "unkeyed",
+        ...on.click(["insert", newTodo.id, {}, ["lit", 1]]),
+      })
+  );
+  startSignals({ root: page });
+  click("#empty");
+  click("#unkeyed");
+  expect(page.querySelector("[data-hs-item-key]")).toBeNull();
+});
+
+it("confirms a preview only from a row in its own Live View", () => {
+  const { find, page, click, previews, runtime, view } = createInsertPage();
+  click("#add");
+  const nested = page.createElement("div");
+  nested.setAttribute("data-hs-view", "todos/child");
+  const row = page.createElement("li");
+  row.setAttribute(
+    "data-hs-confirms",
+    newTodo.confirms("k1")["data-hs-confirms"]
+  );
+  nested.append(row);
+  find("#list").append(nested);
+  runtime.applySnapshots(view);
+  expect(previews()).toHaveLength(1);
+  runtime.applySnapshots(nested);
+  expect(previews()).toHaveLength(1);
 });
