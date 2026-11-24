@@ -216,7 +216,7 @@ const e = editor.with({ base: draft.revision });</code></pre>
       に束縛した hidden input は文が書いた値を送ります。ここで書いた値は、<code
         >call</code
       >
-      より前の書き込みと同じく、その送信リクエストが持ちます。リクエストが送信中のフォームは再び送信せず、文も実行しません。
+      より前の書き込みと同じく、リクエストが失敗しても残ります。リクエストが送信中のフォームは再び送信せず、文も実行しません。
     </dd>
   </dl>
   <p>
@@ -242,35 +242,30 @@ li:has(.row [data-hs-pending]) {
     セレクタは行の <code>.row</code>
     要素の中だけを見るので、行のポップオーバーにある編集フォームが送信中でも行は薄くなりません。
   </p>
+  <p><strong>確定前の値を表示する</strong></p>
   <p>
-    <code>call</code> より前に Signal
-    に書き込むのは例外で、サーバーが確定する前の値を表示します。同じハンドラーで
     <code>call</code>
-    より前に書いた変更は、すぐに画面に出ます。Action が失敗し、その後に Live
-    View
-    がそのパスの値を書いていなければ、ランタイムは元の値に戻します。送信中に
-    Live View
-    からそのパスの値が届いた場合は、送信が終わるまで適用を待ちます。ほかの人が同時に編集しうる値、サーバーが決める値
-    (key、順序、合計など)、検証で失敗しうる入力には使わず、処理中の表示にしてください。
+    より前の書き込みは通常の書き込みです。すぐに画面に出て、Action
+    が失敗してもそのまま残ります。サーバーが確定する前に値を表示したいときは、<code
+      >onError</code
+    >
+    で自分で書き込みを戻します。
   </p>
-  <pre><code>&lt;button
-  type="button"
-  {...r.bindAttr({ "aria-pressed": r.open })}
-  {...on.click([r.open.toggle(), setOpen.call({ open: r.open })])}
-&gt;
-  Details
-&lt;/button&gt;</code></pre>
+  <pre><code>on.click([
+  r.completed.toggle(),
+  toggle.call(
+    { todoKey: key, completed: r.completed },
+    { onError: [r.completed.toggle()] }
+  ),
+])</code></pre>
+  <p>
+    送信中に Live View
+    の更新が届くと、サーバーの値が先に表示した値を上書きし、<code>onError</code>
+    はその値をもとに動きます。ほかの人が同時に編集しうる値、サーバーが決める値
+    (key、順序、合計など)、検証で失敗しうる入力は先に表示せず、処理中の表示にしてください。
+  </p>
   <p><strong>既知の制約</strong></p>
   <ul>
-    <li>
-      楽観的な表示が一瞬戻ることがあります。送信中に、commit 前の値を持つ Live
-      View の更新が届き、次に応答が届き、そのあとに commit
-      後の更新が届く順序のときです。
-    </li>
-    <li>
-      同じパスに対する別々のコントロールからの呼び出しが重なると、片方が失敗したときに、もう一方の呼び出しの楽観的な値に戻ることがあります。次の
-      Live View の更新で直ります。
-    </li>
     <li>
       <code>hypersig:action-success</code> イベントの
       <code>detail.data</code> は、応答に data がないとき、以前の

@@ -222,7 +222,7 @@ const e = editor.with({ base: draft.revision });</code></pre>
       Runs statements in the browser when the form is submitted, before the
       request is sent. Bindings are rendered again before the form data is
       built, so a hidden input bound to a signal sends a value the statements
-      wrote. Writes made there are owned by the submit request, like the writes
+      wrote. Writes made there stay when the request fails, like the writes
       before a <code>call</code>. A form whose request is in flight is not
       submitted again, and its statements do not run.
     </dd>
@@ -251,35 +251,28 @@ li:has(.row [data-hs-pending]) {
     The selector looks only inside the row's <code>.row</code> element, so a
     pending edit form in the row's popover does not dim the row.
   </p>
+  <p><strong>Showing a value before it is confirmed</strong></p>
   <p>
-    Writing a signal before a <code>call</code> is the exception: it shows a
-    value before the server has confirmed it. Writes made before the
-    <code>call</code> in the same handler show at once. If the Action fails and
-    no Live View update has written the path since, the runtime restores the
-    previous value. While the call is in flight, a Live View value for those
-    paths waits until the call ends. Do not use it for values other people may
-    edit at the same time, values the server decides (such as keys, order, or
-    totals), or input that may fail validation; show the pending state instead.
+    A write before a <code>call</code> is an ordinary write: it shows at once
+    and stays when the Action fails. To show a value before the server confirms
+    it, undo the write yourself in <code>onError</code>:
   </p>
-  <pre><code>&lt;button
-  type="button"
-  {...r.bindAttr({ "aria-pressed": r.open })}
-  {...on.click([r.open.toggle(), setOpen.call({ open: r.open })])}
-&gt;
-  Details
-&lt;/button&gt;</code></pre>
+  <pre><code>on.click([
+  r.completed.toggle(),
+  toggle.call(
+    { todoKey: key, completed: r.completed },
+    { onError: [r.completed.toggle()] }
+  ),
+])</code></pre>
+  <p>
+    A Live View update that arrives while the request is in flight writes the
+    server's value over the early one, and <code>onError</code> then works from
+    that value. Do not show values early that other people may edit at the same
+    time, values the server decides (such as keys, order, or totals), or input
+    that may fail validation; show the pending state instead.
+  </p>
   <p><strong>Known limitations</strong></p>
   <ul>
-    <li>
-      An optimistic value can flash back. This happens when a Live View update
-      with the value from before the commit arrives while the call is pending,
-      then the response arrives, then the update after the commit arrives.
-    </li>
-    <li>
-      Calls from different controls that overlap on the same path can restore
-      the other call's optimistic value when one of them fails. The next Live
-      View update corrects it.
-    </li>
     <li>
       The <code>detail.data</code> of the
       <code>hypersig:action-success</code> event is <code>null</code> when the
