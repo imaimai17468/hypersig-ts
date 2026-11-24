@@ -433,3 +433,13 @@ test("adds a task with JavaScript disabled", async ({ browser, baseURL }) => {
     await context.close();
   }
 });
+
+test("derives the title input constraints from the action schema", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const input = page.locator("#new-todo");
+  await expect(input).toHaveAttribute("required", "");
+  await expect(input).toHaveAttribute("minlength", "1");
+  await expect(input).toHaveAttribute("maxlength", "200");
+});

@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { Database } from "bun:sqlite";
+import { toStandardJsonSchema } from "@valibot/to-json-schema";
 import { Context, Hono } from "hono";
 import { hc } from "hono/client";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
@@ -59,6 +60,8 @@ const hypersig = createHypersig({
   origin,
   pubsub: createMemoryPubSub<ReturnType<typeof memoChanged>>(),
   reconcileIntervalMs: 30_000,
+  // `v.trim()` has no JSON Schema form; control() reads the rest.
+  jsonSchema: { libraryOptions: { errorMode: "ignore" } },
   ...(Bun.env.HYPERSIG_TRACE === "1" && {
     onDiagnostic: (event) => console.info(JSON.stringify(event)),
   }),
@@ -78,16 +81,18 @@ flushOutbox();
 setInterval(flushOutbox, 5000).unref();
 
 const save = hypersig.action("save-memo", {
-  input: v.object({
-    operationId: operationSchema,
-    memoText: v.pipe(
-      v.string(),
-      v.trim(),
-      v.minLength(1, "本文を入力してください。"),
-      v.maxLength(maxLength, "本文は1000文字以内で入力してください。")
-    ),
-    baseRevision: revisionSchema,
-  }),
+  input: toStandardJsonSchema(
+    v.object({
+      operationId: operationSchema,
+      memoText: v.pipe(
+        v.string(),
+        v.trim(),
+        v.minLength(1, "本文を入力してください。"),
+        v.maxLength(maxLength, "本文は1000文字以内で入力してください。")
+      ),
+      baseRevision: revisionSchema,
+    })
+  ),
   output: v.object({ revision: v.number() }),
   authorize: () => true,
   execute({ memoText, baseRevision, operationId }, { sessionId }) {
@@ -266,11 +271,10 @@ async function renderEditor(
                 <textarea
                   id="memo-text"
                   {...save.draft("memoText")}
+                  {...save.control("memoText")}
                   {...draftRef.attr()}
                   aria-describedby="memo-text-error"
                   rows={7}
-                  required
-                  maxLength={maxLength}
                 >
                   {draft.text}
                 </textarea>

@@ -102,6 +102,31 @@ const href = links.counters[":counterKey"].$path({
     <code>action.field(name)</code>
     は、送信する名前が入力スキーマの最上位の項目にあるかを型で確認し、その名前を返します。入力値の検証は送信時にサーバーで行います。
   </p>
+  <p>
+    <code>action.control(name)</code>
+    は、項目名と、入力スキーマから読み取った制約属性（<code>required</code>、<code>minLength</code>、<code>maxLength</code>、<code>pattern</code>、<code>min</code>、<code>max</code>）を返します。入力欄に展開して使います。<code
+      >&lt;input {...add.control("title")} /&gt;</code
+    >
+    入力スキーマが Standard JSON Schema も実装しているとき（たとえば
+    <code>@valibot/to-json-schema</code> の
+    <code>toStandardJsonSchema()</code>
+    で包んだとき）だけ型に現れ、それ以外のスキーマでは型エラーになります。JSON
+    Schema への変換は最初の呼び出しで一度だけ行います。<code>required</code>
+    は、スキーマが必須とする項目に付きます（真偽値を除く）。<code>pattern</code>
+    は、式が <code>^</code> で始まり
+    <code>$</code> で終わるときだけ付きます。<code>type</code>
+    は出しません。変換後のスキーマに記述がない項目は、名前だけを返します。
+  </p>
+  <p>
+    変換に失敗すると、<code>control()</code> は Action
+    名を含む例外を投げます。JSON Schema にできない部分は、<code
+      >createHypersig</code
+    >
+    に <code>jsonSchema: { libraryOptions }</code> を渡して飛ばせます（Valibot
+    の <code>v.trim()</code> なら
+    <code>{ errorMode: "ignore" }</code
+    >）。送信前に表示される文言はブラウザ標準のもので、スキーマのメッセージが表示されるのはサーバーが検証した後です。
+  </p>
 </section>
 
 <section id="signals">

@@ -1,3 +1,4 @@
+import { toStandardJsonSchema } from "@valibot/to-json-schema";
 /// <reference types="bun" />
 import { Context, Hono } from "hono";
 import { hc } from "hono/client";
@@ -35,6 +36,8 @@ type TodoEvent =
 const hypersig = createHypersig({
   origin,
   pubsub: createMemoryPubSub<TodoEvent>(),
+  // `v.trim()` has no JSON Schema form; control() reads the rest.
+  jsonSchema: { libraryOptions: { errorMode: "ignore" } },
   authenticate(request) {
     const sessionId = getCookie(new Context(request), cookie);
     return sessionId && sessions.has(sessionId) ? { sessionId } : null;
@@ -65,7 +68,7 @@ const todoKey = v.pipe(v.string(), v.uuid());
 const sharedAction = { authorize: () => true, output: v.literal(true) };
 const add = hypersig.action("add-todo", {
   ...sharedAction,
-  input: v.object({ todoTitle: title }),
+  input: toStandardJsonSchema(v.object({ todoTitle: title })),
   execute: ({ todoTitle }) =>
     commit({ kind: "add", key: crypto.randomUUID(), title: todoTitle }),
   // Without JavaScript the browser posts the form itself, so send it back to
@@ -89,7 +92,7 @@ const add = hypersig.action("add-todo", {
 });
 const edit = hypersig.action("edit-todo", {
   ...sharedAction,
-  input: v.object({ todoKey, todoTitle: title }),
+  input: toStandardJsonSchema(v.object({ todoKey, todoTitle: title })),
   execute: ({ todoKey, todoTitle }) =>
     commit({ kind: "edit", key: todoKey, title: todoTitle }),
 });
@@ -151,10 +154,8 @@ function TodoRow({ todo }: { todo: Todo }) {
           <label>
             Task title
             <input
-              name={edit.field("todoTitle")}
+              {...edit.control("todoTitle")}
               value={todo.title}
-              required
-              maxLength={200}
               autoFocus
             />
           </label>
@@ -289,12 +290,7 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
           <form class="composer" {...add.form({ resetOnSuccess: true })}>
             <label for="new-todo">New task</label>
             <div>
-              <input
-                id="new-todo"
-                name={add.field("todoTitle")}
-                required
-                maxLength={200}
-              />
+              <input id="new-todo" {...add.control("todoTitle")} />
               <button type="submit">Add</button>
             </div>
           </form>

@@ -96,6 +96,31 @@ const href = links.counters[":counterKey"].$path({
     field in the input schema and returns it as an HTML field name. The server
     validates submitted values when it receives the form.
   </p>
+  <p>
+    <code>action.control(name)</code> returns the field name together with
+    constraint attributes read from the input schema: <code>required</code>,
+    <code>minLength</code>, <code>maxLength</code>, <code>pattern</code>,
+    <code>min</code>, and <code>max</code>. Spread it onto the control:
+    <code>&lt;input {...add.control("title")} /&gt;</code>. It appears in the
+    type only when the input schema also implements Standard JSON Schema, for
+    example when it is wrapped with <code>toStandardJsonSchema()</code> from
+    <code>@valibot/to-json-schema</code>; for any other schema it is a type
+    error. The schema is converted to JSON Schema once, on the first call.
+    <code>required</code> is set for fields the schema requires, except
+    booleans. <code>pattern</code> is set only when the expression starts with
+    <code>^</code> and ends with <code>$</code>. No <code>type</code> is
+    emitted. A field the converted schema does not describe returns only its
+    name.
+  </p>
+  <p>
+    If conversion fails, <code>control()</code> throws an error that names the
+    Action. Pass <code>jsonSchema: { libraryOptions }</code> to
+    <code>createHypersig</code> to skip parts that have no JSON Schema form,
+    such as <code>{ errorMode: "ignore" }</code> for Valibot's
+    <code>v.trim()</code>. The message a user sees before submission is the
+    browser's own; the server's schema messages appear only after the server
+    validates.
+  </p>
 </section>
 
 <section id="live-views">

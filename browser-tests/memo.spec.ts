@@ -321,3 +321,13 @@ test("retries a committed save once when the HTTP response is lost", async ({
   );
   await expect(token).not.toHaveValue(original);
 });
+
+test("derives the memo textarea constraints from the action schema", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const memo = page.getByRole("textbox", { name: "本文" });
+  await expect(memo).toHaveAttribute("required", "");
+  await expect(memo).toHaveAttribute("minlength", "1");
+  await expect(memo).toHaveAttribute("maxlength", "1000");
+});
