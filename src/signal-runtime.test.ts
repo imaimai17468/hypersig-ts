@@ -992,6 +992,22 @@ it("does not write bound text into script or style elements", async () => {
   expect(find("#span").textContent).toBe("alert(1)");
 });
 
+it("does not write bound text into SVG script or style elements", async () => {
+  const code = signals({ text: "alert(1)" }, { name: "svg-script-text" });
+  const c = code.with({});
+  const { page, find } = createPage(
+    render("div", { ...c.init() }) +
+      `<svg><script id="script" data-hs-text='${JSON.stringify(c.text.node)}'></script>` +
+      `<style id="style" data-hs-text='${JSON.stringify(c.text.node)}'></style></svg>`
+  );
+  startSignals({ root: page });
+  await settle();
+
+  expect(find("#script").namespaceURI).toBe("http://www.w3.org/2000/svg");
+  expect(find("#script").textContent).toBe("");
+  expect(find("#style").textContent).toBe("");
+});
+
 it("binds the checked property so a clicked checkbox follows the signal", async () => {
   const filter = signals({ all: true }, { name: "checked-attr" });
   const f = filter.with({});
