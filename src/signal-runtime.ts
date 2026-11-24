@@ -209,11 +209,6 @@ function isSnapshotEntry(entry: unknown): entry is SnapshotEntry {
 
 type CustomEventHandler = [event: string, stmts: StmtNode[]];
 
-/**
- * Sets an attribute only when its value changes, so a custom element's
- * `attributeChangedCallback` does not run for writes to other signals.
- * `toggleAttribute` already leaves an attribute in the requested state alone.
- */
 /** Reads a JSON array of names, ignoring entries that are not strings. */
 function readNames(element: Element, name: string): ReadonlySet<string> {
   const names = parseAttribute(element, name);
@@ -221,6 +216,11 @@ function readNames(element: Element, name: string): ReadonlySet<string> {
   return new Set(names.filter((entry) => typeof entry === "string"));
 }
 
+/**
+ * Sets an attribute only when its value changes, so a custom element's
+ * `attributeChangedCallback` does not run for writes to other signals.
+ * `toggleAttribute` already leaves an attribute in the requested state alone.
+ */
 function writeAttribute(element: Element, name: string, value: string) {
   if (element.getAttribute(name) !== value) element.setAttribute(name, value);
 }

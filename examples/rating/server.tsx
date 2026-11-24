@@ -18,7 +18,8 @@ import { rating } from "./elements.js";
 const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
-const ratingScript = Bun.file(new URL("./rating.js", import.meta.url));
+// Built from rating.ts by `bun run example:rating:browser`.
+const ratingScript = Bun.file(new URL("./dist/rating.js", import.meta.url));
 const sessions = new Set<string>();
 const cookie = "rating-session";
 const maxScore = 5;

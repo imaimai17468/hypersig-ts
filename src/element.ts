@@ -141,6 +141,10 @@ export type AttributeValues<E extends AnyCustomElement> = {
   >;
 };
 
+/** The names of the declared events. */
+export type EventName<E extends AnyCustomElement> =
+  keyof DeclaredTypes<E>["events"] & string;
+
 /** The `detail` type of the declared event `Name`. */
 export type EventDetail<
   E extends AnyCustomElement,
@@ -151,6 +155,14 @@ type InvalidAttributeName<Attributes extends AttributeSpecs> = {
   [K in keyof Attributes & string]: IsCustomAttributeName<K> extends true
     ? never
     : K;
+}[keyof Attributes & string];
+
+type JsonDataAttributeName<Attributes extends AttributeSpecs> = {
+  [K in keyof Attributes & string]: K extends `data-${string}`
+    ? KindOf<Attributes[K]> extends "json"
+      ? K
+      : never
+    : never;
 }[keyof Attributes & string];
 
 type InvalidEventName<Events extends EventSpecs> = {
@@ -167,11 +179,13 @@ type CheckedTag<
   Attributes extends AttributeSpecs,
   Events extends EventSpecs,
 > = [InvalidAttributeName<Attributes>] extends [never]
-  ? [InvalidEventName<Events>] extends [never]
-    ? Tag extends CustomTagName
-      ? Tag
-      : "A custom element name starts with a lowercase letter, holds a -, and has no uppercase letter"
-    : `Event "${InvalidEventName<Events>}" needs a lowercase letter followed by lowercase letters, digits, -, ., : or _, and cannot be click, input, change or submit`
+  ? [JsonDataAttributeName<Attributes>] extends [never]
+    ? [InvalidEventName<Events>] extends [never]
+      ? Tag extends CustomTagName
+        ? Tag
+        : "A custom element name starts with a lowercase letter, holds a -, and has no uppercase letter"
+      : `Event "${InvalidEventName<Events>}" needs a lowercase letter followed by lowercase letters, digits, -, ., : or _, and cannot be click, input, change or submit`
+    : `Attribute "${JsonDataAttributeName<Attributes>}" is a data-* attribute, which holds a string, number or boolean, not json`
   : `Attribute "${InvalidAttributeName<Attributes>}" needs a lowercase name that is not on*, style, id or data-hs-*`;
 
 type HandlerEntry = [string, EventHandler<JsonValue> | undefined];
@@ -221,7 +235,15 @@ function readAttributeKinds(
         `Custom element attribute name "${name}" is not valid`
       );
     }
-    kinds[name] = kindOf(name, spec);
+    const kind = kindOf(name, spec);
+    // `CustomTag` passes every data-* prop through as a string, number or
+    // boolean, so it cannot render a json value under that name.
+    if (kind === "json" && name.startsWith("data-")) {
+      throw new TypeError(
+        `Attribute "${name}" is a data-* attribute, which cannot be json`
+      );
+    }
+    kinds[name] = kind;
   }
   return kinds;
 }
@@ -247,7 +269,7 @@ function readEventNames(events: Readonly<Record<string, unknown>>): string[] {
  * and is not `click`, `input`, `change` or `submit`. TypeScript checks what it
  * can on literal names; characters other than letters, the names HTML
  * reserves such as `font-face`, and an attribute kind other than the four
- * throw when this is called.
+ * throw when this is called. A `data-*` attribute cannot be `json`.
  *
  * With `ownsChildren`, the element's JavaScript renders its children, and a
  * Live View update keeps them while it updates the element's attributes. The
@@ -293,3 +315,10 @@ export function customElement(
     }),
   };
 }
+
+export { defineElement } from "./define-element.js";
+export type {
+  ElementImplementation,
+  Emit,
+  MountedElement,
+} from "./define-element.js";

@@ -1041,6 +1041,7 @@ it("lists the names hypersig.ts/element exports and shares them with hypersig.ts
   const index = await import("./index.js");
   expect(Object.keys(element).sort()).toEqual([
     "customElement",
+    "defineElement",
     "event",
     "json",
   ]);

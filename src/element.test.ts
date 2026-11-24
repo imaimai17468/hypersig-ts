@@ -269,6 +269,20 @@ it("checks declared attribute and event names", () => {
       { attributes: { size: "integer" } }
     )
   ).toThrow("integer");
+  expect(() =>
+    customElement(
+      // @ts-expect-error A data-* attribute cannot be json.
+      "data-json-box",
+      { attributes: { "data-items": json<string[]>() } }
+    )
+  ).toThrow("data-items");
+  expect(() =>
+    customElement(
+      // @ts-expect-error A data-* attribute cannot be json, even untyped.
+      "data-any-box",
+      { attributes: { "data-any": "json" } }
+    )
+  ).toThrow("data-any");
 });
 
 it("leaves out handlers passed as undefined", () => {

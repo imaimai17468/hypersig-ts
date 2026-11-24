@@ -42,7 +42,8 @@ export default defineConfig({
       url: memo + "/health",
     },
     {
-      command: "bun examples/rating/server.tsx",
+      command:
+        "bun run example:rating:browser && bun examples/rating/server.tsx",
       env: { PORT: String(ratingPort) },
       url: rating + "/health",
     },
