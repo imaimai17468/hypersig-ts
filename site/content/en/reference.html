@@ -212,9 +212,10 @@ const e = editor.with({ base: draft.revision });</code></pre>
     <dt><code>data-hs-pending</code></dt>
     <dd>
       The runtime sets this attribute on the form or button that sent a request
-      and removes it when the request ends, whether it succeeded or failed. A
-      control with a request in flight is not sent again. CSS can use the
-      attribute to show progress without JavaScript.
+      and removes it when the last request that control sent ends, whether it
+      succeeded or failed. A Live View update does not remove it while a request
+      is in flight. A control with a request in flight is not sent again. CSS
+      can use the attribute to show progress without JavaScript.
     </dd>
     <dt><code>action.form({ onSubmit })</code></dt>
     <dd>
@@ -243,9 +244,13 @@ const e = editor.with({ base: draft.revision });</code></pre>
 &lt;/button&gt;
 
 /* style.css */
-li:has([data-hs-pending]) {
+li:has(.row [data-hs-pending]) {
   opacity: 0.55;
 }</code></pre>
+  <p>
+    The selector looks only inside the row's <code>.row</code> element, so a
+    pending edit form in the row's popover does not dim the row.
+  </p>
   <p>
     Writing a signal before a <code>call</code> is the exception: it shows a
     value before the server has confirmed it. Writes made before the

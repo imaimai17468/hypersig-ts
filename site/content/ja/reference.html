@@ -205,7 +205,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
     </dd>
     <dt><code>data-hs-pending</code></dt>
     <dd>
-      ランタイムは、リクエストを送ったフォームやボタンにこの属性を付け、リクエストが終わると成功でも失敗でも外します。送信中のコントロールは再び送信しません。CSS
+      ランタイムは、リクエストを送ったフォームやボタンにこの属性を付け、そのコントロールが送った最後のリクエストが終わると成功でも失敗でも外します。送信中は
+      Live View
+      の更新でも外れません。送信中のコントロールは再び送信しません。CSS
       でこの属性を使うと、JavaScript なしで処理中であることを表示できます。
     </dd>
     <dt><code>action.form({ onSubmit })</code></dt>
@@ -233,9 +235,13 @@ const e = editor.with({ base: draft.revision });</code></pre>
 &lt;/button&gt;
 
 /* style.css */
-li:has([data-hs-pending]) {
+li:has(.row [data-hs-pending]) {
   opacity: 0.55;
 }</code></pre>
+  <p>
+    セレクタは行の <code>.row</code>
+    要素の中だけを見るので、行のポップオーバーにある編集フォームが送信中でも行は薄くなりません。
+  </p>
   <p>
     <code>call</code> より前に Signal
     に書き込むのは例外で、サーバーが確定する前の値を表示します。同じハンドラーで
