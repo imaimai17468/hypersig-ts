@@ -381,12 +381,14 @@ li:has(.row [data-hs-pending]) {
     element's attributes and events as types, so the page sets the attributes
     and handles the events without string literals.
   </p>
-  <pre><code>const rating = customElement&lt;{
-  attributes: { value: number; max: number };
-  events: { rate: number };
-}&gt;("star-rating", { ownsChildren: true });
+  <pre><code>const rating = customElement("star-rating", {
+  attributes: { value: "number", max: "number" },
+  events: { rate: event&lt;number&gt;() },
+  ownsChildren: true,
+});
 
-&lt;rating.Element
+&lt;CustomTag
+  of={rating}
   id="rating"
   {...e.bindElement(rating, { value: e.score, max: 5 })}
   {...rating.on("rate", (detail) =&gt; [

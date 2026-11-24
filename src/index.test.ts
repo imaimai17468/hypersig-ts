@@ -1035,3 +1035,16 @@ it("limits top-level page props to JSON in the Hono adapter", () => {
     Promise<HtmlEscapedString>
   >();
 });
+
+it("lists the names hypersig.ts/element exports and shares them with hypersig.ts", async () => {
+  const element = await import("./element.js");
+  const index = await import("./index.js");
+  expect(Object.keys(element).sort()).toEqual([
+    "customElement",
+    "event",
+    "json",
+  ]);
+  expect(index.customElement).toBe(element.customElement);
+  expect(index.event).toBe(element.event);
+  expect(index.json).toBe(element.json);
+});

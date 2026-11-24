@@ -10,7 +10,7 @@ const serialize = (fragment: DocumentFragment) => {
 it("keeps custom elements and their safe attributes", () => {
   const container = serialize(
     sanitizeFragment(
-      `<star-rating value="3" onclick="x()" style="color:red" data-hs-stream="/s" data-hs-on-custom="[]"></star-rating>`
+      `<star-rating value="3" onclick="x()" style="color:red" data-hs-stream="/s" data-hs-on-custom="[]" data-hs-element-json="[]"></star-rating>`
     )
   );
   const element = container.querySelector("star-rating");
@@ -18,6 +18,7 @@ it("keeps custom elements and their safe attributes", () => {
   expect(element).not.toBeNull();
   expect(element?.getAttribute("value")).toBe("3");
   expect(element?.getAttribute("data-hs-on-custom")).toBe("[]");
+  expect(element?.getAttribute("data-hs-element-json")).toBe("[]");
   expect(element?.hasAttribute("onclick")).toBe(false);
   expect(element?.hasAttribute("style")).toBe(false);
   expect(element?.hasAttribute("data-hs-stream")).toBe(false);

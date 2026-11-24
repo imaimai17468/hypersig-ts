@@ -1,4 +1,4 @@
-import type { CustomElement, CustomElementSpec } from "./element.js";
+import type { AnyCustomElement, AttributeValues } from "./element.js";
 import type { EvaluationContext } from "./evaluate.js";
 import { evaluate, formatText, isTruthy } from "./evaluate.js";
 import type { Identifier } from "./identifier.js";
@@ -16,6 +16,7 @@ import {
   customElementAttributes,
   defaultMark,
   eventAttributes,
+  formatJsonAttribute,
   isBindableAttribute,
   isBindableCustomAttribute,
   rendersBooleanAsText,
@@ -107,11 +108,18 @@ type AttributeBindings<Attrs> = {
       : never;
 };
 
+/** A signal holds arrays as read-only arrays. */
+type ReadonlyJson<Value> = Value extends readonly (infer Item)[]
+  ? readonly ReadonlyJson<Item>[]
+  : Value extends JsonObject
+    ? { readonly [K in keyof Value]: ReadonlyJson<Value[K]> }
+    : Value;
+
 /** `id` is left out: an owned element whose `id` changed is replaced. */
-type ElementBindings<Attributes extends CustomElementSpec["attributes"]> = {
-  readonly [K in Exclude<keyof Attributes, "id">]?:
-    | Attributes[K]
-    | Expr<Attributes[K]>;
+type ElementBindings<Values extends Record<string, JsonValue>> = {
+  readonly [K in Exclude<keyof Values, "id">]?:
+    | Values[K]
+    | Expr<ReadonlyJson<Values[K]>>;
 };
 
 export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
@@ -139,18 +147,21 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
   ): Record<string, string | true> & { [signalAttributes.attr]: string };
   /**
    * Binds the attributes a custom element declares, each to a value or an
-   * expression of the declared type. A `true` value renders the attribute
-   * empty and `false` leaves it out; other values render as text. Throws for
+   * expression of the declared type. A `json` attribute renders with
+   * `JSON.stringify` and is named in `data-hs-element-json` so the browser
+   * runtime writes it the same way. Otherwise a `true` value renders the
+   * attribute empty and `false` leaves it out; other values render as text. Throws for
    * a name that is not lowercase, starts with `on` (including names such as
    * `once`), is `style` or `id`, or starts with `data-hs-`. Only the type checks
    * that a key is declared: an object from a variable with extra keys still
    * writes them.
    */
-  bindElement<Spec extends CustomElementSpec>(
-    element: CustomElement<Spec>,
-    values: ElementBindings<Spec["attributes"]>
+  bindElement<E extends AnyCustomElement>(
+    element: E,
+    values: ElementBindings<AttributeValues<E>>
   ): Record<string, string> & {
     [customElementAttributes.elementAttr]: string;
+    [customElementAttributes.elementJson]?: string;
   };
   bindValue(signal: Signal<string> | Signal<number> | Signal<boolean>): {
     [signalAttributes.bind]: string;
@@ -421,9 +432,9 @@ function createGroup(
     bindAttr: (attrs: Readonly<Record<string, ExprHandle | undefined>>) =>
       bindAttributes(attrs, valueOf),
     bindElement: (
-      _element: unknown,
+      element: AnyCustomElement,
       values: Readonly<Record<string, ExprInput | undefined>>
-    ) => bindElementAttributes(values, valueOf),
+    ) => bindElementAttributes(element, values, valueOf),
     bindValue: (signal: SignalHandle) => {
       const kind = inputKindOf(signal.path);
       const value = valueOf(signal);
@@ -470,11 +481,13 @@ function bindAttributes(
 }
 
 function bindElementAttributes(
+  element: AnyCustomElement,
   values: Readonly<Record<string, ExprInput | undefined>>,
   valueOf: (expr: ExprHandle) => JsonValue
 ): Record<string, string> {
   const rendered: Record<string, string> = {};
   const nodes: Record<string, ExprNode> = {};
+  const jsonNames: string[] = [];
   for (const [name, input] of Object.entries(values)) {
     if (input === undefined) continue;
     if (!isBindableCustomAttribute(name)) {
@@ -483,11 +496,20 @@ function bindElementAttributes(
     const node = nodeOf(input);
     nodes[name] = node;
     const value = valueOf(new ExprHandle(node));
-    if (typeof value !== "boolean" || rendersBooleanAsText(name)) {
+    if (
+      Object.hasOwn(element.attributes, name) &&
+      element.attributes[name] === "json"
+    ) {
+      rendered[name] = formatJsonAttribute(value);
+      jsonNames.push(name);
+    } else if (typeof value !== "boolean" || rendersBooleanAsText(name)) {
       rendered[name] = formatText(value);
     } else if (value) rendered[name] = "";
   }
   rendered[customElementAttributes.elementAttr] = JSON.stringify(nodes);
+  if (jsonNames.length > 0) {
+    rendered[customElementAttributes.elementJson] = JSON.stringify(jsonNames);
+  }
   return rendered;
 }
 

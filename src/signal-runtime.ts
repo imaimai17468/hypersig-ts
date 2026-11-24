@@ -12,6 +12,7 @@ import {
   customElementAttributes,
   defaultMark,
   eventAttributes,
+  formatJsonAttribute,
   isBindableAttribute,
   isBindableCustomAttribute,
   isCustomElementName,
@@ -213,6 +214,13 @@ type CustomEventHandler = [event: string, stmts: StmtNode[]];
  * `attributeChangedCallback` does not run for writes to other signals.
  * `toggleAttribute` already leaves an attribute in the requested state alone.
  */
+/** Reads a JSON array of names, ignoring entries that are not strings. */
+function readNames(element: Element, name: string): ReadonlySet<string> {
+  const names = parseAttribute(element, name);
+  if (!Array.isArray(names)) return new Set();
+  return new Set(names.filter((entry) => typeof entry === "string"));
+}
+
 function writeAttribute(element: Element, name: string, value: string) {
   if (element.getAttribute(name) !== value) element.setAttribute(name, value);
 }
@@ -403,14 +411,20 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     }
   }
 
-  /** Renders `bindElement` attributes by value type, as the server does. */
+  /**
+   * Renders `bindElement` attributes as the server does: the names in
+   * `data-hs-element-json` as JSON, the others by value type.
+   */
   function renderElementAttributes(element: Element) {
     if (!isCustomElement(element)) return;
     const bindings = readBindings(element, customElementAttributes.elementAttr);
+    const jsonNames = readNames(element, customElementAttributes.elementJson);
     for (const [name, node] of bindings ?? []) {
       if (!isBindableCustomAttribute(name)) continue;
       const value = evaluate(node, context);
-      if (typeof value === "boolean" && !rendersBooleanAsText(name)) {
+      if (jsonNames.has(name)) {
+        writeAttribute(element, name, formatJsonAttribute(value));
+      } else if (typeof value === "boolean" && !rendersBooleanAsText(name)) {
         element.toggleAttribute(name, value);
       } else writeAttribute(element, name, formatText(value));
     }

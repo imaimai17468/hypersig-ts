@@ -1,29 +1,86 @@
-import { expect, it } from "vite-plus/test";
-import { customElement, signals } from "./index.js";
+import { expect, expectTypeOf, it } from "vite-plus/test";
+import type { AttributeValues, EventDetail } from "./element.js";
+import { CustomTag, customElement, event, json, signals } from "./index.js";
+import type { JsonValue } from "./protocol.js";
 
-const rating = customElement<{
-  attributes: { value: number; max: number; label: string; readonly: boolean };
-  events: { rate: number; "hover:star": { star: number } };
-}>("star-rating", { ownsChildren: true });
+const rating = customElement("star-rating", {
+  attributes: {
+    value: "number",
+    max: "number",
+    label: "string",
+    readonly: "boolean",
+  },
+  events: { rate: event<number>(), "hover:star": event<{ star: number }>() },
+  ownsChildren: true,
+});
 
-const plain = customElement<{
-  attributes: { value: number };
-  events: Record<never, never>;
-}>("plain-box");
+const plain = customElement("plain-box", { attributes: { value: "number" } });
 
-it("declares a custom element and renders its tag", async () => {
-  expect(rating.tag).toBe("star-rating");
-  expect(rating.ownsChildren).toBe(true);
-  expect(String(await rating.Element({ id: "r", max: 5 }))).toContain(
+it("declares a custom element as a value", () => {
+  const declared = customElement("star-rating", {
+    attributes: { value: "number" },
+    events: { rate: event<number>() },
+    ownsChildren: true,
+  });
+  expect(declared.tag).toBe("star-rating");
+  expect(declared.ownsChildren).toBe(true);
+  expect(declared.attributes).toEqual({ value: "number" });
+  expect(declared.events).toEqual(["rate"]);
+  expectTypeOf(declared.tag).toEqualTypeOf<"star-rating">();
+  expectTypeOf(declared.ownsChildren).toEqualTypeOf<true>();
+
+  const bare = customElement("bare-box");
+  expect(bare.attributes).toEqual({});
+  expect(bare.events).toEqual([]);
+  expect(bare.ownsChildren).toBe(false);
+});
+
+it("records each attribute kind and infers the value types", () => {
+  const typed = customElement("typed-box", {
+    attributes: {
+      name: "string",
+      size: "number",
+      open: "boolean",
+      any: "json",
+      items: json<string[]>(),
+    },
+    events: { pick: event<{ index: number }>(), clear: event() },
+  });
+  expect(typed.attributes).toEqual({
+    name: "string",
+    size: "number",
+    open: "boolean",
+    any: "json",
+    items: "json",
+  });
+  expect(typed.events).toEqual(["pick", "clear"]);
+  expectTypeOf<AttributeValues<typeof typed>>().toEqualTypeOf<{
+    name: string;
+    size: number;
+    open: boolean;
+    any: JsonValue;
+    items: string[];
+  }>();
+  expectTypeOf<EventDetail<typeof typed, "pick">>().toEqualTypeOf<{
+    index: number;
+  }>();
+  expectTypeOf<EventDetail<typeof typed, "clear">>().toEqualTypeOf<null>();
+});
+
+it("renders the declared tag with CustomTag", async () => {
+  expect(String(await CustomTag({ of: rating, id: "r", max: 5 }))).toContain(
     '<star-rating id="r" max="5" data-hs-owns-children="">'
   );
-  expect(String(await plain.Element({ value: 1, children: "x" }))).toBe(
+  expect(String(await CustomTag({ of: rating, id: "r", value: 3 }))).toContain(
+    '<star-rating id="r" value="3" data-hs-owns-children="">'
+  );
+  expect(String(await CustomTag({ of: plain, value: 1, children: "x" }))).toBe(
     '<plain-box value="1">x</plain-box>'
   );
-  expect(plain.ownsChildren).toBe(false);
   expect(
     String(
-      await plain.Element({
+      await CustomTag({
+        of: plain,
         class: "box",
         role: "img",
         "aria-label": "Box",
@@ -33,10 +90,73 @@ it("declares a custom element and renders its tag", async () => {
   ).toBe(
     '<plain-box class="box" role="img" aria-label="Box" data-row="2"></plain-box>'
   );
+  // @ts-expect-error ownsChildren elements need an id
+  void CustomTag({ of: rating, value: 3 });
   // @ts-expect-error The value attribute is a number.
-  void plain.Element({ value: "x" });
+  void CustomTag({ of: plain, value: "x" });
   // @ts-expect-error The element declares no attribute "size".
-  void plain.Element({ size: 1 });
+  void CustomTag({ of: plain, size: 1 });
+});
+
+const list = customElement("todo-list", {
+  attributes: {
+    items: json<string[]>(),
+    label: json<string>(),
+    empty: json<null>(),
+  },
+});
+
+it("writes JSON attributes with JSON.stringify, strings and null included", async () => {
+  expect(
+    String(
+      await CustomTag({ of: list, items: ["a"], label: "abc", empty: null })
+    )
+  ).toBe(
+    '<todo-list items="[&quot;a&quot;]" label="&quot;abc&quot;" empty="null"></todo-list>'
+  );
+  // @ts-expect-error The items attribute is a list of strings.
+  void CustomTag({ of: list, items: [1] });
+});
+
+it("binds JSON attributes in the same format and names them for the runtime", async () => {
+  const todos = signals(
+    { items: ["a"], label: "abc" },
+    { name: "todo-json" }
+  ).with({});
+  const bound = todos.bindElement(list, {
+    items: todos.items,
+    label: todos.label,
+    empty: null,
+  });
+  expect(bound).toEqual({
+    items: '["a"]',
+    label: '"abc"',
+    empty: "null",
+    "data-hs-element-attr": JSON.stringify({
+      items: ["sig", ["todo-json-1", "items"]],
+      label: ["sig", ["todo-json-1", "label"]],
+      empty: ["lit", null],
+    }),
+    "data-hs-element-json": JSON.stringify(["items", "label", "empty"]),
+  });
+  expect(todos.bindElement(list, { items: todos.items })).toEqual({
+    items: '["a"]',
+    "data-hs-element-attr": JSON.stringify({
+      items: ["sig", ["todo-json-1", "items"]],
+    }),
+    "data-hs-element-json": JSON.stringify(["items"]),
+  });
+  // CustomTag keeps the values bindElement already wrote as JSON.
+  expect(
+    String(
+      await CustomTag({
+        of: list,
+        ...todos.bindElement(list, { items: todos.items }),
+      })
+    )
+  ).toContain('items="[&quot;a&quot;]"');
+  // @ts-expect-error The items attribute is a list of strings, not a string.
+  todos.bindElement(list, { items: todos.label });
 });
 
 it("rejects a tag that is not a custom element name", () => {
@@ -121,26 +241,34 @@ it("serializes custom event handlers", () => {
 });
 
 it("checks declared attribute and event names", () => {
-  const handlerAttribute = customElement<{
-    attributes: { onrate: number };
-    events: {};
-  }>(
-    // @ts-expect-error An attribute name cannot start with "on".
-    "bad-attr"
-  );
-  // The declaration exists only as a type, so binding checks the name.
   expect(() =>
-    signals({ n: 0 }).with({}).bindElement(handlerAttribute, { onrate: 1 })
+    customElement(
+      // @ts-expect-error An attribute name cannot start with "on".
+      "bad-attr",
+      { attributes: { onrate: "number" } }
+    )
   ).toThrow("onrate");
-  const uppercaseEvent = customElement<{
-    attributes: {};
-    events: { Rate: number };
-  }>(
-    // @ts-expect-error An event name must be lowercase.
-    "bad-event"
-  );
-  // The declaration exists only as a type, so serializing checks the name.
-  expect(() => uppercaseEvent.on("Rate", () => [])).toThrow("Rate");
+  expect(() =>
+    customElement(
+      // @ts-expect-error An event name must be lowercase.
+      "bad-event",
+      { events: { Rate: event<number>() } }
+    )
+  ).toThrow("Rate");
+  expect(() =>
+    customElement(
+      // @ts-expect-error A declared attribute cannot be id.
+      "id-box",
+      { attributes: { id: "string", size: "number" } }
+    )
+  ).toThrow("id");
+  expect(() =>
+    customElement(
+      // @ts-expect-error An attribute kind is string, number, boolean or json.
+      "kind-box",
+      { attributes: { size: "integer" } }
+    )
+  ).toThrow("integer");
 });
 
 it("leaves out handlers passed as undefined", () => {
@@ -149,47 +277,50 @@ it("leaves out handlers passed as undefined", () => {
 
 it("renders shadow part attributes", async () => {
   expect(
-    String(await plain.Element({ part: "box", exportparts: "star" }))
+    String(await CustomTag({ of: plain, part: "box", exportparts: "star" }))
   ).toBe('<plain-box part="box" exportparts="star"></plain-box>');
 });
 
-const box = customElement<{
-  attributes: { compact: boolean; size: number };
-  events: Record<never, never>;
-}>("x-box");
+const box = customElement("x-box", {
+  attributes: { compact: "boolean", size: "number" },
+});
 
 it("renders a declared boolean attribute empty when true and leaves it out when false", async () => {
-  expect(String(await box.Element({ compact: true }))).toBe(
+  expect(String(await CustomTag({ of: box, compact: true }))).toBe(
     '<x-box compact=""></x-box>'
   );
-  expect(String(await box.Element({ compact: false, size: 2 }))).toBe(
+  expect(String(await CustomTag({ of: box, compact: false, size: 2 }))).toBe(
     '<x-box size="2"></x-box>'
   );
 
   const flags = signals({ on: true }, { name: "box-compact" });
   const shown = flags.with({});
   const bound = shown.bindElement(box, { compact: shown.on });
-  expect(String(await box.Element(bound))).toBe(
+  expect(String(await CustomTag({ of: box, ...bound }))).toBe(
     `<x-box compact="" data-hs-element-attr="${JSON.stringify({
       compact: ["sig", ["box-compact-1", "on"]],
     }).replaceAll('"', "&quot;")}"></x-box>`
   );
   const hidden = flags.with({ on: false });
   expect(
-    String(await box.Element(hidden.bindElement(box, { compact: hidden.on })))
+    String(
+      await CustomTag({
+        of: box,
+        ...hidden.bindElement(box, { compact: hidden.on }),
+      })
+    )
   ).not.toContain("compact=");
 });
 
 it("rejects the event names the runtime delegates", () => {
   for (const name of ["click", "input", "change", "submit"] as const) {
-    const delegated = customElement<{
-      attributes: {};
-      events: Record<typeof name, number>;
-    }>(
-      // @ts-expect-error A custom event cannot take a name the runtime delegates.
-      "delegated-event"
-    );
-    expect(() => delegated.on(name, () => [])).toThrow(name);
+    expect(() =>
+      customElement(
+        // @ts-expect-error A custom event cannot take a name the runtime delegates.
+        "delegated-event",
+        { events: { [name]: event<number>() } }
+      )
+    ).toThrow(name);
   }
 });
 
@@ -201,34 +332,27 @@ it("rejects the reserved custom element names", () => {
 });
 
 it("does not bind id through bindElement", () => {
-  const withId = customElement<{
-    attributes: { id: string; size: number };
-    events: {};
-  }>(
-    // @ts-expect-error A declared attribute cannot be id.
-    "id-box"
-  );
   const scope = signals({ name: "a" }, { name: "box-id" }).with({});
   expect(() =>
-    // @ts-expect-error bindElement takes no id even when the spec declares it.
-    scope.bindElement(withId, { id: scope.name, size: 1 })
+    // @ts-expect-error bindElement takes no id.
+    scope.bindElement(box, { id: scope.name, size: 1 })
   ).toThrow("id");
 });
 
-const flagged = customElement<{
+const flagged = customElement("flag-box", {
   attributes: {
-    "data-open": boolean;
-    "aria-checked": boolean;
-    open: boolean;
-    draggable: boolean;
-  };
-  events: Record<never, never>;
-}>("flag-box");
+    "data-open": "boolean",
+    "aria-checked": "boolean",
+    open: "boolean",
+    draggable: "boolean",
+  },
+});
 
 it("renders a data-* or aria-* boolean as true or false text on every path", async () => {
   expect(
     String(
-      await flagged.Element({
+      await CustomTag({
+        of: flagged,
         "data-open": true,
         "aria-checked": false,
         open: false,

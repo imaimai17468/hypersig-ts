@@ -16,10 +16,14 @@
     "./core": {
       "types": "./dist/core.d.ts",
       "import": "./dist/core.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "import": "./dist/element.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig.ts/core\"); await import(\"hypersig.ts\")'",
+    "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig.ts/core\"); await import(\"hypersig.ts\"); await import(\"hypersig.ts/element\")'",
     "check": "vp check",
     "format": "vp fmt --check",
     "format:fix": "vp fmt",

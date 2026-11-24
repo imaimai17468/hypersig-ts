@@ -112,7 +112,18 @@ export const customElementAttributes = {
   ownsChildren: "data-hs-owns-children",
   /** The declared attributes `bindElement` binds, rendered by value type. */
   elementAttr: "data-hs-element-attr",
+  /** The names among the bound attributes whose kind is `json`. */
+  elementJson: "data-hs-element-json",
 } as const;
+
+/**
+ * Writes the value of a custom element attribute whose kind is `json`. Every
+ * value goes through `JSON.stringify`, so a string or `null` reads back as
+ * itself. The server and the runtime both follow it.
+ */
+export function formatJsonAttribute(value: JsonValue): string {
+  return JSON.stringify(value);
+}
 
 export const bindableAttributes = [
   "disabled",

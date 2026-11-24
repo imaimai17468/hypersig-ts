@@ -6,6 +6,8 @@ import {
   createHypersig,
   createMemoryPubSub,
   customElement,
+  event,
+  json,
   on,
   ref,
   signals,
@@ -1166,10 +1168,11 @@ it("keeps data-hs-pending on a control until its last send ends", async () => {
   expect(form.hasAttribute("data-hs-pending")).toBe(false);
 });
 
-const rating = customElement<{
-  attributes: { value: number; open: boolean };
-  events: { rate: number };
-}>("star-rating", { ownsChildren: true });
+const rating = customElement("star-rating", {
+  attributes: { value: "number", open: "boolean" },
+  events: { rate: event<number>() },
+  ownsChildren: true,
+});
 
 /** Dispatches a `CustomEvent` that does not bubble, created in the page's frame. */
 function dispatchCustom(target: Element, type: string, detail: unknown) {
@@ -1723,14 +1726,13 @@ it("runs the nearest handler outside owned children for a click inside them", as
 });
 
 it("renders a bound data-* or aria-* boolean as true or false text", async () => {
-  const flagged = customElement<{
+  const flagged = customElement("flag-box", {
     attributes: {
-      "data-open": boolean;
-      "aria-checked": boolean;
-      open: boolean;
-    };
-    events: Record<never, never>;
-  }>("flag-box");
+      "data-open": "boolean",
+      "aria-checked": "boolean",
+      open: "boolean",
+    },
+  });
   const s = signals({ on: true }, { name: "runtime-flag-text" }).with({});
   const { page, find } = createPage(
     render("div", {
@@ -1779,4 +1781,52 @@ it("ignores hand-written delegated event names and id bindings on a custom eleme
   expect(runtime.read(s.count.path)).toBe(0);
   expect(find("#rating").id).toBe("rating");
   expect(runtime.boundElementAttributes(find("#rating")).size).toBe(0);
+});
+
+it("writes the bound JSON attributes as JSON and leaves an unchanged one alone", async () => {
+  const list = customElement("json-list", {
+    attributes: { items: json<string[]>(), label: json<string>() },
+  });
+  const s = signals(
+    { items: ["a"], label: "abc", other: 0 },
+    { name: "runtime-json" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      children: element("json-list", {
+        id: "list",
+        ...s.bindElement(list, { items: s.items, label: s.label }),
+        ...s.bindAttr({ "data-other": s.other }),
+      }),
+    })
+  );
+  const view = page.defaultView;
+  if (!view) throw new Error("The frame has no window");
+  const changes: string[] = [];
+  view.customElements.define(
+    "json-list",
+    class extends view.HTMLElement {
+      static observedAttributes = ["items", "label"];
+      attributeChangedCallback(name: string) {
+        changes.push(name);
+      }
+    }
+  );
+  changes.length = 0;
+  const runtime = startSignals({ root: page });
+  await settle();
+  expect(changes).toEqual([]);
+
+  runtime.write(s.other.path, 1);
+  await settle();
+  expect(find("#list").getAttribute("data-other")).toBe("1");
+  expect(changes).toEqual([]);
+
+  runtime.write(s.items.path, ["a", "b"]);
+  runtime.write(s.label.path, "");
+  await settle();
+  expect(find("#list").getAttribute("items")).toBe('["a","b"]');
+  expect(find("#list").getAttribute("label")).toBe('""');
+  expect(changes).toEqual(["items", "label"]);
 });

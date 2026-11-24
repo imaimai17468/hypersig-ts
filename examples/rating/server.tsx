@@ -7,12 +7,13 @@ import {
   connectionStatusOutlet,
   createHypersig,
   createMemoryPubSub,
-  customElement,
+  CustomTag,
   errorOutlet,
   on,
   signals,
   topic,
 } from "../../src/index.js";
+import { rating } from "./elements.js";
 
 const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
@@ -34,12 +35,6 @@ const hypersig = createHypersig({
     return sessionId && sessions.has(sessionId) ? { sessionId } : null;
   },
 });
-
-// Defined by rating.js, which renders the star buttons inside the element.
-const rating = customElement<{
-  attributes: { value: number; max: number };
-  events: { rate: number };
-}>("star-rating", { ownsChildren: true });
 
 const vote = signals({ score: 0 }, { name: "vote" });
 
@@ -77,7 +72,8 @@ const summary = hypersig.live({
           <output id="rating-count">{count}</output>{" "}
           {count === 1 ? "rating" : "ratings"}
         </p>
-        <rating.Element
+        <CustomTag
+          of={rating}
           id="rating"
           aria-label="Your rating"
           {...e.bindElement(rating, { value: e.score, max: maxScore })}
