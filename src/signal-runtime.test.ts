@@ -1393,6 +1393,28 @@ it("keeps children only for matching owned elements", () => {
   expect(runtime.keepsChildren(owned, find("other-rating"))).toBe(false);
 });
 
+it("lists the bindElement attributes the runtime renders", () => {
+  const bindings = JSON.stringify({
+    value: ["lit", 3],
+    onclick: ["lit", "x"],
+    style: ["lit", "x"],
+    "data-hs-view": ["lit", "x"],
+    max: "not an expression",
+  });
+  const { page, find } = createPage(`
+    <star-rating data-hs-element-attr='${bindings}'></star-rating>
+    <div data-hs-element-attr='${bindings}'></div>
+    <star-rating class="unbound"></star-rating>
+  `);
+  const runtime = startSignals({ root: page });
+
+  expect([...runtime.boundElementAttributes(find("star-rating"))]).toEqual([
+    "value",
+  ]);
+  expect(runtime.boundElementAttributes(find("div")).size).toBe(0);
+  expect(runtime.boundElementAttributes(find(".unbound")).size).toBe(0);
+});
+
 it("renders bindAttr by name and bindElement by value type on one custom element", async () => {
   const stars = signals(
     { pressed: true, open: true },

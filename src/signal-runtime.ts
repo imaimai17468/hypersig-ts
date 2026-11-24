@@ -98,6 +98,12 @@ export interface SignalRuntime {
    * the same `id`, where two elements without an `id` also match.
    */
   keepsChildren(previous: Element, next: Element): boolean;
+  /**
+   * Lists the attributes the runtime renders from the `bindElement` bindings
+   * of `element`, so a morph that keeps an element leaves them to the next
+   * render instead of writing the server's values first.
+   */
+  boundElementAttributes(element: Element): ReadonlySet<string>;
   write(path: SignalPath, value: JsonValue): void;
   read(path: SignalPath): JsonValue | undefined;
 }
@@ -612,6 +618,18 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         next.hasAttribute(mark) &&
         previous.tagName === next.tagName &&
         previous.getAttribute("id") === next.getAttribute("id")
+      );
+    },
+    boundElementAttributes(element) {
+      if (!isCustomElement(element)) return new Set();
+      const bindings = readBindings(
+        element,
+        customElementAttributes.elementAttr
+      );
+      return new Set(
+        (bindings ?? [])
+          .map(([name]) => name)
+          .filter((name) => isBindableCustomAttribute(name))
       );
     },
     write,

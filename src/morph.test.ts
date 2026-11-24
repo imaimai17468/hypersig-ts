@@ -47,6 +47,39 @@ it("updates the attributes of an owned element and keeps its children", () => {
   view.remove();
 });
 
+it("leaves the bound attributes of a kept element to the runtime", () => {
+  const bindings = JSON.stringify({
+    value: ["sig", ["vote-1", "score"]],
+    readonly: ["sig", ["vote-1", "locked"]],
+  });
+  const view = createView(
+    `<star-rating id="r" value="3" readonly class="old" data-hs-owns-children data-hs-element-attr='${bindings}'></star-rating>`
+  );
+  const owned = view.querySelector("star-rating");
+  if (!owned) throw new Error("Missing star-rating");
+  renderOwnedChildren(owned);
+  const observer = new MutationObserver(() => {});
+  observer.observe(owned, { attributeFilter: ["value", "readonly"] });
+
+  // The server renders the initial signal values: value 0 and readonly false.
+  morphView(
+    view,
+    sanitizeFragment(
+      `<star-rating id="r" value="0" class="new" data-hs-owns-children data-hs-element-attr='${bindings}'></star-rating>`
+    ),
+    runtime
+  );
+
+  expect(observer.takeRecords()).toEqual([]);
+  observer.disconnect();
+  expect(view.querySelector("star-rating")).toBe(owned);
+  expect(owned.getAttribute("value")).toBe("3");
+  expect(owned.hasAttribute("readonly")).toBe(true);
+  expect(owned.getAttribute("class")).toBe("new");
+  expect(owned.querySelectorAll("button")).toHaveLength(2);
+  view.remove();
+});
+
 it("replaces an owned element whose id differs, rebuilding its children", () => {
   const view = createView(
     `<star-rating value="1" data-hs-owns-children></star-rating><p>tail</p>`

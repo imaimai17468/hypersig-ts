@@ -13,19 +13,24 @@ const pendingAttribute = "data-hs-pending";
 type ElementMorph =
   | { kind: "morph" }
   | { kind: "skip" }
-  | { kind: "keepChildren" }
+  | { kind: "keepChildren"; boundAttributes: ReadonlySet<string> }
   | { kind: "replace" };
 
 function chooseElementMorph(
   previous: Element,
   next: Element,
-  runtime: Pick<SignalRuntime, "keepsChildren">
+  runtime: Pick<SignalRuntime, "keepsChildren" | "boundElementAttributes">
 ): ElementMorph {
   const view = next.getAttribute("data-hs-view");
   if (view && previous.getAttribute("data-hs-view") === view) {
     return { kind: "skip" };
   }
-  if (runtime.keepsChildren(previous, next)) return { kind: "keepChildren" };
+  if (runtime.keepsChildren(previous, next)) {
+    return {
+      kind: "keepChildren",
+      boundAttributes: runtime.boundElementAttributes(next),
+    };
+  }
   const mark = customElementAttributes.ownsChildren;
   if (previous.hasAttribute(mark) && next.hasAttribute(mark)) {
     return { kind: "replace" };
@@ -33,14 +38,23 @@ function chooseElementMorph(
   return { kind: "morph" };
 }
 
-/** Removes attributes `next` lacks, except `data-hs-pending` while sending. */
-function copyAttributes(previous: Element, next: Element, isSending: boolean) {
+/**
+ * Gives `previous` the attributes of `next`, except `data-hs-pending` while
+ * sending and the bound attributes, which the runtime renders after the morph
+ * from the browser's signal values.
+ */
+function copyAttributes(
+  previous: Element,
+  next: Element,
+  kept: { isSending: boolean; boundAttributes: ReadonlySet<string> }
+) {
   for (const name of previous.getAttributeNames()) {
-    if (next.hasAttribute(name)) continue;
-    if (name === pendingAttribute && isSending) continue;
+    if (next.hasAttribute(name) || kept.boundAttributes.has(name)) continue;
+    if (name === pendingAttribute && kept.isSending) continue;
     previous.removeAttribute(name);
   }
   for (const { name, value } of next.attributes) {
+    if (kept.boundAttributes.has(name)) continue;
     if (previous.getAttribute(name) !== value)
       previous.setAttribute(name, value);
   }
@@ -51,13 +65,16 @@ function copyAttributes(previous: Element, next: Element, isSending: boolean) {
  * content, and a control whose request is in flight keeps `data-hs-pending`.
  * An element with `data-hs-owns-children` keeps its children when
  * `runtime.keepsChildren` matches it with the new element, and only takes the
- * new attributes; otherwise it is replaced after the morph, so its children
+ * new attributes other than its bound ones; otherwise it is replaced after the morph, so its children
  * and JavaScript state start over.
  */
 export function morphView(
   view: HTMLElement,
   fragment: DocumentFragment,
-  runtime: Pick<SignalRuntime, "isSending" | "keepsChildren">
+  runtime: Pick<
+    SignalRuntime,
+    "isSending" | "keepsChildren" | "boundElementAttributes"
+  >
 ): void {
   // Replacing an element during the morph would detach the node Idiomorph
   // continues from, so replacements wait until it ends.
@@ -80,7 +97,10 @@ export function morphView(
           case "skip":
             return false;
           case "keepChildren":
-            copyAttributes(previous, next, runtime.isSending(previous));
+            copyAttributes(previous, next, {
+              isSending: runtime.isSending(previous),
+              boundAttributes: morph.boundAttributes,
+            });
             return false;
           case "replace":
             replacements.push([previous, next.cloneNode(true)]);
