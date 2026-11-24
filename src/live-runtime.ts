@@ -83,7 +83,9 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * the runtime makes one at startup, and only this process can open its pages.
    * Each token takes a random 96-bit AES-GCM nonce, which stays safe for about
    * 2^32 tokens per key, so put a new key in front well before a key seals
-   * that many pages: at least once a year for a busy service.
+   * that many pages: at least once a year for a busy service. A key that is
+   * not a string, such as an unset environment variable, throws the same
+   * `RangeError` as a key of the wrong length.
    */
   pageKeys?: readonly string[];
   /**

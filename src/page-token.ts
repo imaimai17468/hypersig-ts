@@ -40,7 +40,7 @@ const tokenPattern = /^[A-Za-z0-9_-]+$/;
  * valid. Without keys, the sealer makes a random key that only this process
  * holds. `context` is authenticated with every token, so a token opens only
  * where it was sealed with the same context. Throws a `RangeError` for a key
- * that is not 32 bytes of base64 or base64url, or for an empty list.
+ * that is not a string of 32 bytes in base64 or base64url, or for an empty list.
  */
 export function createPageSealer(
   keys: readonly string[] | undefined,
@@ -172,8 +172,9 @@ export async function digestHtml(html: string): Promise<string> {
   return encodeBase64Url(new Uint8Array(digest));
 }
 
-function decodeKey(key: string) {
-  const secret = decodeBase64(key);
+/** Takes `unknown` because a key read from a missing environment variable is `undefined` at runtime. */
+function decodeKey(key: unknown) {
+  const secret = typeof key === "string" ? decodeBase64(key) : undefined;
   if (secret?.length !== keyLength)
     throw new RangeError("Expected a page key of 32 bytes in base64");
   return secret;

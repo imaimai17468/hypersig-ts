@@ -1885,6 +1885,13 @@ it("rejects page keys that are not 32 bytes", () => {
   expect(() => create(["!".repeat(44)])).toThrow(RangeError);
   expect(() => create([btoa("x".repeat(33))])).toThrow(RangeError);
   expect(() => create([key1, "short"])).toThrow(RangeError);
+  // A secret missing from the environment reads as undefined at runtime.
+  const unset = process.env.HYPERSIG_TEST_UNSET_PAGE_KEY;
+  expect(unset).toBeUndefined();
+  // @ts-expect-error An unset environment variable is not a page key, and plain JavaScript can still pass it.
+  expect(() => create([unset])).toThrow(
+    new RangeError("Expected a page key of 32 bytes in base64")
+  );
   expect(() => counterRuntime({ count: 0 }, { pageLifetimeMs: 0 })).toThrow(
     RangeError
   );
