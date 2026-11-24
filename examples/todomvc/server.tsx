@@ -57,6 +57,14 @@ async function commit(action: TodoAction): Promise<true> {
   return true;
 }
 
+/** The same-origin page that posted a native form, or the list. */
+function returnPath(request: Request): string {
+  const referrer = URL.parse(request.headers.get("Referer") ?? "");
+  return referrer?.origin === origin
+    ? referrer.pathname + referrer.search
+    : "/";
+}
+
 const title = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(200));
 const todoKey = v.pipe(v.string(), v.uuid());
 // Every authenticated demo session can read and edit the shared list.
@@ -70,6 +78,24 @@ const add = hypersig.action("add-todo", {
       throw new ActionError(409, "A task with this key already exists.");
     }
     return commit({ kind: "add", key: todoKey, title: todoTitle });
+  },
+  // Without JavaScript the browser posts the form itself, so send it back to
+  // the list it came from.
+  formResponse(result, request) {
+    if (result.type === "success") {
+      return new Response(null, {
+        status: 303,
+        headers: { Location: returnPath(request) },
+      });
+    }
+    const message =
+      result.type === "rejected"
+        ? result.error.message
+        : result.issues.map((issue) => issue.message).join(" ");
+    return new Response(message, {
+      status: result.type === "rejected" ? result.error.status : 422,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   },
 });
 const edit = hypersig.action("edit-todo", {
@@ -287,7 +313,9 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
     "Content-Security-Policy",
     "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
   );
-  const entry = composer.with({});
+  // Without JavaScript the form posts this key, so each page gets its own.
+  // With JavaScript, the submit statements replace it before every send.
+  const entry = composer.with({ key: crypto.randomUUID() });
   return hypersig.page(c.req.raw, (page) => (
     <html lang="en">
       <head>

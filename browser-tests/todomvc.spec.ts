@@ -461,3 +461,102 @@ test("adds a second task in the same page after the first succeeds", async ({
   expect(keys).toHaveLength(2);
   expect(keys[0]).not.toBe(keys[1]);
 });
+
+test("sends a second add while the first is held and confirms both", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForLive(page);
+  const releases: (() => void)[] = [];
+  await page.route(addUrl, async (route) => {
+    await new Promise<void>((resolve) => releases.push(resolve));
+    await route.continue();
+  });
+  const form = page.locator("form.composer");
+  const responses: Promise<unknown>[] = [];
+  page.on("response", (response) => {
+    if (response.url().endsWith("/_hypersig/actions/add-todo"))
+      responses.push(response.finished());
+  });
+  try {
+    await submitTask(page, "Overlap A");
+    await submitTask(page, "Overlap B");
+    await expect.poll(() => releases.length).toBe(2);
+    const previews = page.locator("li[data-hs-pending-item]");
+    await expect(previews).toHaveCount(2);
+    await expect(previews.nth(0)).toHaveText(/Overlap A/);
+    await expect(previews.nth(1)).toHaveText(/Overlap B/);
+    await expect(form).toHaveAttribute("data-hs-pending", "");
+
+    releases[0]?.();
+    await expect.poll(() => responses.length).toBe(1);
+    await responses[0];
+    // The second send of the form is still in flight.
+    await expect(form).toHaveAttribute("data-hs-pending", "");
+  } finally {
+    for (const release of releases) release();
+  }
+  await expect.poll(() => responses.length).toBe(2);
+  await Promise.all(responses);
+  await expect(form).not.toHaveAttribute("data-hs-pending");
+  await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
+  for (const title of ["Overlap A", "Overlap B"]) {
+    await expect(row(page, title)).toHaveCount(1);
+  }
+});
+
+test("rejects a second add with the same key", async ({ page, baseURL }) => {
+  if (!baseURL) throw new Error("Missing TodoMVC base URL");
+  await page.goto("/");
+  await waitForLive(page);
+  const todoKey = "6f0d8f3e-4b8a-4c3e-9f5e-2a1b3c4d5e6f";
+  const post = () =>
+    page.request.post("/_hypersig/actions/add-todo", {
+      data: { todoKey, todoTitle: "Keyed once" },
+      headers: { Origin: new URL(baseURL).origin, Accept: "application/json" },
+    });
+  expect((await post()).status()).toBe(200);
+  const duplicate = await post();
+  expect(duplicate.status()).toBe(409);
+  expect(await duplicate.json()).toMatchObject({
+    message: "A task with this key already exists.",
+  });
+  await expect(row(page, "Keyed once")).toHaveCount(1);
+  await page.reload();
+  await waitForLive(page);
+  await expect(row(page, "Keyed once")).toHaveCount(1);
+});
+
+test("adds a task with JavaScript disabled", async ({ browser, baseURL }) => {
+  if (!baseURL) throw new Error("Missing TodoMVC base URL");
+  const context = await browser.newContext({
+    baseURL,
+    javaScriptEnabled: false,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    const key = page.locator('form.composer input[name="todoKey"]');
+    await expect(key).toHaveAttribute(
+      "value",
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+    const firstKey = await key.getAttribute("value");
+    await page.getByRole("textbox", { name: "New task" }).fill("Native add");
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response.url().endsWith("/_hypersig/actions/add-todo")
+      ),
+      page.getByRole("button", { name: "Add" }).click(),
+    ]);
+    expect(response.status()).toBe(303);
+    await expect(page).toHaveURL(baseURL + "/");
+    await expect(row(page, "Native add")).toHaveCount(1);
+    // Each page gets a new key, so the next native add is not a duplicate.
+    await expect(key).not.toHaveAttribute("value", firstKey ?? "");
+  } finally {
+    await context.close();
+  }
+});
