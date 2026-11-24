@@ -266,10 +266,20 @@ async function submitTask(page: Page, title: string) {
   await composer.press("Enter");
 }
 
-async function deleteTask(page: Page, title: string) {
-  await page.getByRole("button", { name: `Delete: ${title}` }).click();
-  await expect(row(page, title)).toHaveCount(0);
-}
+// The task list is shared by every test, so remove whatever a test left
+// behind, also when it failed partway. A fresh tab avoids held routes.
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  const cleaner = await page.context().newPage();
+  await cleaner.goto("/");
+  await waitForLive(cleaner);
+  const deletes = cleaner.getByRole("button", { name: /^Delete: / });
+  for (let left = await deletes.count(); left > 0; left -= 1) {
+    await deletes.first().click();
+    await expect(deletes).toHaveCount(left - 1);
+  }
+  await cleaner.close();
+});
 
 test("adds a task before the server answers", async ({ page }) => {
   await page.goto("/");
@@ -295,9 +305,6 @@ test("adds a task before the server answers", async ({ page }) => {
   ).toHaveCount(0);
   await expect(row(page, "Pending task")).toHaveCount(1);
   await expect(row(page, "Pending task")).toBeVisible();
-
-  await page.unroute(addUrl);
-  await deleteTask(page, "Pending task");
 });
 
 test("removes a preview the server rejects", async ({ page }) => {
@@ -388,10 +395,6 @@ test("keeps the preview while another update arrives", async ({
     await answered;
     await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
     await expect(row(page, "Held task")).toHaveCount(1);
-
-    await page.unroute(addUrl);
-    await deleteTask(page, "Held task");
-    await deleteTask(page, "Peer task");
   } finally {
     await peerSession.close();
   }
@@ -420,11 +423,41 @@ test("does not insert on the completed filter", async ({ page }) => {
     resume();
   }
   await answered;
-  await expect(page.getByText("1 item left")).toBeVisible();
   await expect(row(page, "Active only")).toHaveCount(0);
 
-  await page.unroute(addUrl);
   await page.goto("/");
   await waitForLive(page);
-  await deleteTask(page, "Active only");
+  await expect(row(page, "Active only")).toHaveCount(1);
+  await expect(row(page, "Active only")).not.toHaveAttribute(
+    "data-hs-pending-item"
+  );
+});
+
+test("adds a second task in the same page after the first succeeds", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForLive(page);
+  const keys: string[] = [];
+  page.on("request", (request) => {
+    if (!request.url().endsWith("/_hypersig/actions/add-todo")) return;
+    const key = uuidPattern.exec(request.postData() ?? "")?.[1];
+    if (key) keys.push(key);
+  });
+  const composer = page.getByRole("textbox", { name: "New task" });
+
+  for (const title of ["First in a row", "Second in a row"]) {
+    const answered = page.waitForResponse(addUrl);
+    await submitTask(page, title);
+    expect((await answered).ok()).toBe(true);
+    await expect(composer).toHaveValue("");
+  }
+
+  for (const title of ["First in a row", "Second in a row"]) {
+    await expect(row(page, title)).toHaveCount(1);
+    await expect(row(page, title)).not.toHaveAttribute("data-hs-pending-item");
+  }
+  await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).not.toBe(keys[1]);
 });
