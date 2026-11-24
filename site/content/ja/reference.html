@@ -245,7 +245,7 @@ const e = editor.with({ base: draft.revision });</code></pre>
       に展開する属性を返します。サーバーが式を評価して結果を描画するので、最初の表示から正しい値になります。<code
         >bindAttr</code
       >
-      に書けるのは、<code>disabled</code>、<code>checked</code>、<code>aria-pressed</code>、<code>aria-expanded</code>、<code>aria-current</code>、<code>aria-hidden</code>、<code>aria-invalid</code>、<code>aria-busy</code>、および
+      に書けるのは、<code>disabled</code>、<code>checked</code>、<code>aria-pressed</code>、<code>aria-expanded</code>、<code>aria-current</code>、<code>aria-hidden</code>、<code>aria-invalid</code>、<code>aria-busy</code>、<code>aria-activedescendant</code>、<code>aria-selected</code>、<code>aria-controls</code>、<code>aria-label</code>、<code>tabindex</code>、<code>hidden</code>、および
       <code>data-hs-*</code> 以外の
       <code>data-*</code>
       です。<code>href</code>、<code>src</code>、<code>on*</code>、<code
@@ -270,6 +270,22 @@ const e = editor.with({ base: draft.revision });</code></pre>
         >choose(whenTrue, whenFalse)</code
       >、文字列には <code>concat</code> があります。値は
       <code>lit(value)</code> と <code>uuid()</code> で作ります。
+      文字列には
+      <code>length()</code
+      >、<code>trim()</code>、<code>lower()</code>、<code>includes(other)</code>、数値には
+      <code>clamp(min, max)</code>、<code>mod(n)</code>、配列には
+      <code>at(index, fallback)</code>、<code>length()</code>
+      もあります。型が合わない値は例外にせず、<code>length()</code> は 0、<code
+        >trim()</code
+      >
+      と <code>lower()</code> は空文字列、<code>includes</code> は false、<code
+        >mod(0)</code
+      >
+      は 0、範囲外の <code>at</code> は <code>fallback</code> になります。<code
+        >length()</code
+      >
+      は UTF-16 の長さなので、絵文字などは 2 と数えます。<code>mod</code>
+      は 0 以上 n 未満に収めます。
     </dd>
     <dt><code>on.click(stmts)</code></dt>
     <dd>
@@ -282,6 +298,116 @@ const e = editor.with({ base: draft.revision });</code></pre>
         >{...draftRef.attr()}</code
       >
       を付けた要素に <code>draftRef.focus()</code> がフォーカスを移します。
+    </dd>
+    <dt><code>on.keydown(map)</code></dt>
+    <dd>
+      キーの対応表を受け取り、押されたキーの文を実行して既定の動作を止めます。キーは
+      <code>KeyboardEvent.key</code> の値で書きます。名前付きのキー
+      (<code>Enter</code>、<code>Escape</code>、<code>Tab</code>、<code
+        >" "</code
+      >、矢印、<code>Home</code>、<code>End</code>、<code>PageUp</code>、<code>PageDown</code>、<code>Backspace</code>、<code>Delete</code>)、1
+      文字のキー、数のキーを書けます。修飾キーは
+      <code>Control+</code>、<code>Alt+</code>、<code>Shift+</code>、<code
+        >Meta+</code
+      >
+      の順に前へ付けます。名前や順序が違えば型エラーになり、型で検査できない計算した名前は
+      <code>on.keydown</code> を呼んだときに例外になります。
+      <ul>
+        <li>
+          修飾キーは完全に一致したときだけ当てはまります (<code>Enter</code> は
+          <code>Shift+Enter</code> に当てはまりません)。スペース以外の 1
+          文字のキーは Shift を照合に使いません。<code>"?"</code> や
+          <code>"A"</code> は Shift の有無に関わらず当てはまり、<code
+            >"Shift+?"</code
+          >
+          は型エラーと例外になります。
+        </li>
+        <li>
+          押した要素にいちばん近い対応表から外側へ探し、キーがある最初の対応表を使います。<code
+            >Tab</code
+          >
+          と <code>Shift+Tab</code> は既定の動作を止めません。IME の変換中の
+          <code>keydown</code> は無視します。
+        </li>
+        <li>
+          対応表を持つ要素で Action
+          の送信が進行中なら、キーの既定の動作は止めますが文は実行しません。
+        </li>
+        <li>
+          型で検査できない制約があります。macOS では Meta を押すと文字の
+          <code>key</code> が小文字になるため、<code>Meta+z</code> は
+          Cmd+Shift+Z にも当てはまります。Caps Lock
+          が有効だと文字の大小が変わります。macOS の Option
+          は文字を合成するので、<code>Alt+&lt;文字&gt;</code>
+          は届かないことがあります。容器に <code>Enter</code> や
+          <code>" "</code>
+          を割り当てると、中のボタンの押下による起動を止めます。1
+          文字のキーを割り当てると、中の入力欄でその文字を打てなくなります。
+        </li>
+      </ul>
+    </dd>
+    <dt>
+      <code>on.focusEnter(stmts)</code> と <code>on.focusLeave(stmts)</code>
+    </dt>
+    <dd>
+      フォーカスが要素の外から中へ入ったとき、中から外へ出たときに文を実行します。要素の中での移動では実行しません。ウィンドウやタブの切り替えでページがフォーカスを失ったときは出たものとみなさず、フォーカスが戻って別の場所に入ったときに出たものとして扱います。マウスで中の要素を押すとフォーカスが一度
+      <code>body</code> に移るので、押される要素には
+      <code>tabindex="-1"</code>
+      を付けてください。付けないと <code>focusLeave</code>
+      が実行されます。送信が進行中の要素では実行しません。
+    </dd>
+    <dt><code>refs({ name })</code></dt>
+    <dd>
+      計算した key の要素にフォーカスします。要素に
+      <code>{...tabRefs.attr(key)}</code> を付け、文
+      <code>tabRefs.focus(keyExpr)</code>
+      が式の値の要素にフォーカスを移します。見つからないとき、式が文字列でないときは何もしません。<code
+        >focus()</code
+      >
+      は、予約済みの描き直しを先に済ませてから移すので、同じ文の一覧で前の
+      <code>set</code> が <code>hidden</code> を外した要素にも届きます。
+    </dd>
+    <dt><code>when(condition, then, otherwise)</code></dt>
+    <dd>
+      条件が真なら <code>then</code>、偽なら
+      <code>otherwise</code>
+      (省略すると何もしない) の文を実行します。真偽の判定は
+      <code>choose</code> と同じです。文を書けるどこでも使え、分岐の中の
+      <code>call</code> は <code>when</code> を実行した要素から送ります。
+    </dd>
+    <dt><code>timer({ name })</code></dt>
+    <dd>
+      名前付きのタイマーを作ります。モジュールの最上位で定義してください。<code
+        >t.after(ms, stmts)</code
+      >
+      は、前の予約を取り消してから
+      <code>ms</code>
+      ミリ秒後に文を実行するよう予約し直します。続けて呼ぶと最後の呼び出しから数え直すので、デバウンスになります。<code
+        >t.cancel()</code
+      >
+      は予約を取り消します。
+      <ul>
+        <li>
+          予約はページにタイマーごとに 1 つで、Live View
+          の更新で要素が消えても取り消しません。
+        </li>
+        <li>
+          <code>ms</code> は 0 以上 2147483647 以下の整数です。型は
+          <code>number</code> で、範囲外は <code>RangeError</code> になります。
+        </li>
+        <li>
+          予約した要素がページから外れていれば、<code>call</code>
+          は送らず、ほかの文だけを実行します。
+        </li>
+        <li>
+          時間が来たときは、予約した要素で送信が進行中でも文を実行します。同じ
+          Action が並行して送られることがあります。
+        </li>
+        <li>
+          時間が来たときの文は、予約したときの <code>output</code> と
+          <code>detail</code> を読めます。
+        </li>
+      </ul>
     </dd>
     <dt><code>action.call(input, options)</code></dt>
     <dd>
@@ -371,6 +497,11 @@ li:has(.row [data-hs-pending]) {
   </p>
   <p><strong>既知の制約</strong></p>
   <ul>
+    <li>
+      <code>bindAttr</code>
+      は真偽値でない属性を取り除けません。式が空文字列になると、属性は空の値で残ります
+      (<code>aria-activedescendant=""</code>)。
+    </li>
     <li>
       <code>hypersig:action-success</code> イベントの
       <code>detail.data</code> は、応答に data がないとき、以前の

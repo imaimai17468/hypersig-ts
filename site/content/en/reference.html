@@ -252,15 +252,18 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>bindAttr</code> accepts <code>disabled</code>, <code>checked</code>,
       <code>aria-pressed</code>, <code>aria-expanded</code>,
       <code>aria-current</code>, <code>aria-hidden</code>,
-      <code>aria-invalid</code>, <code>aria-busy</code>, and
-      <code>data-*</code> other than <code>data-hs-*</code>. It rejects
-      <code>href</code>, <code>src</code>, <code>on*</code>, and
-      <code>style</code> in the type and at run time.
-      <code>bindValue</code> binds a text, number, or checkbox input to a
-      <code>string</code>, <code>number</code>, or <code>boolean</code> signal.
-      It also binds a hidden input, so a signal can decide the value a form
-      submits. The runtime reads a bound hidden input when it starts, so a value
-      restored from a draft replaces the rendered one.
+      <code>aria-invalid</code>, <code>aria-busy</code>,
+      <code>aria-activedescendant</code>, <code>aria-selected</code>,
+      <code>aria-controls</code>, <code>aria-label</code>,
+      <code>tabindex</code>, <code>hidden</code>, and <code>data-*</code> other
+      than <code>data-hs-*</code>. It rejects <code>href</code>,
+      <code>src</code>, <code>on*</code>, and <code>style</code> in the type and
+      at run time. <code>bindValue</code> binds a text, number, or checkbox
+      input to a <code>string</code>, <code>number</code>, or
+      <code>boolean</code> signal. It also binds a hidden input, so a signal can
+      decide the value a form submits. The runtime reads a bound hidden input
+      when it starts, so a value restored from a draft replaces the rendered
+      one.
     </dd>
     <dt>Expressions</dt>
     <dd>
@@ -270,7 +273,17 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>le</code>. A boolean has <code>not</code>, <code>and</code>,
       <code>or</code>, and <code>choose(whenTrue, whenFalse)</code>. A string
       has <code>concat</code>. <code>lit(value)</code> and
-      <code>uuid()</code> create values.
+      <code>uuid()</code> create values. A string also has
+      <code>length()</code>, <code>trim()</code>, <code>lower()</code>, and
+      <code>includes(other)</code>. A number has
+      <code>clamp(min, max)</code> and <code>mod(n)</code>, which wraps into 0
+      up to n. An array has <code>at(index, fallback)</code> and
+      <code>length()</code>. A value of the wrong type does not throw:
+      <code>length()</code> gives 0, <code>trim()</code> and
+      <code>lower()</code> give an empty string, <code>includes</code> gives
+      false, <code>mod(0)</code> gives 0, and an out-of-range
+      <code>at</code> gives <code>fallback</code>. <code>length()</code> is the
+      UTF-16 length, so an emoji counts as 2.
     </dd>
     <dt><code>on.click(stmts)</code></dt>
     <dd>
@@ -281,6 +294,108 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>const draftRef = ref({ name })</code> creates a ref, and
       <code>{...draftRef.attr()}</code> names the element that
       <code>draftRef.focus()</code> moves focus to.
+    </dd>
+    <dt><code>on.keydown(map)</code></dt>
+    <dd>
+      Takes a map from keys to statements, runs the statements for the key that
+      was pressed, and prevents its default action. Write keys as
+      <code>KeyboardEvent.key</code> values: a named key (<code>Enter</code>,
+      <code>Escape</code>, <code>Tab</code>, <code>" "</code>, the arrows,
+      <code>Home</code>, <code>End</code>, <code>PageUp</code>,
+      <code>PageDown</code>, <code>Backspace</code>, <code>Delete</code>), one
+      character, or a number. Modifiers go in front in the order
+      <code>Control+</code>, <code>Alt+</code>, <code>Shift+</code>,
+      <code>Meta+</code>. A wrong name or order is a type error, and a computed
+      name the type cannot check throws when <code>on.keydown</code> is called.
+      <ul>
+        <li>
+          Modifiers must match exactly (<code>Enter</code> does not match
+          <code>Shift+Enter</code>). A one-character key other than Space
+          ignores Shift: <code>"?"</code> and <code>"A"</code> match with or
+          without Shift, and <code>"Shift+?"</code> is a type error and throws.
+        </li>
+        <li>
+          The runtime searches from the element that was pressed outward and
+          uses the first map that has the key. <code>Tab</code> and
+          <code>Shift+Tab</code> keep their default action. A
+          <code>keydown</code> during IME composition is ignored.
+        </li>
+        <li>
+          While an Action is sending from the element that holds the map, the
+          key's default action is prevented but the statements do not run.
+        </li>
+        <li>
+          Some limits are not checked by types. On macOS, holding Meta makes a
+          letter's <code>key</code> lowercase, so <code>Meta+z</code> also
+          matches Cmd+Shift+Z. Caps Lock changes a letter's case. macOS Option
+          composes characters, so <code>Alt+&lt;letter&gt;</code> may never
+          arrive. Mapping <code>Enter</code> or <code>" "</code> on a container
+          stops the buttons inside from activating, and mapping one character
+          stops that character from being typed in the inputs inside.
+        </li>
+      </ul>
+    </dd>
+    <dt>
+      <code>on.focusEnter(stmts)</code> and <code>on.focusLeave(stmts)</code>
+    </dt>
+    <dd>
+      Run statements when focus moves into the element from outside, or out of
+      it. Moves inside the element do not run them. When the page loses focus
+      because the window or tab switched, focus is not treated as having left;
+      it counts as leaving when focus returns somewhere else. Pressing the mouse
+      on an element inside moves focus to <code>body</code> first, so give the
+      elements that are pressed <code>tabindex="-1"</code>. Without it,
+      <code>focusLeave</code> runs. They do not run while the element is
+      sending.
+    </dd>
+    <dt><code>refs({ name })</code></dt>
+    <dd>
+      Focuses the element for a computed key. Put
+      <code>{...tabRefs.attr(key)}</code> on each element, and the statement
+      <code>tabRefs.focus(keyExpr)</code> moves focus to the element whose key
+      is the expression's value. It does nothing when no element matches or the
+      value is not a string. <code>focus()</code> finishes a pending render
+      first, so it reaches an element that an earlier <code>set</code> in the
+      same statements un-hid.
+    </dd>
+    <dt><code>when(condition, then, otherwise)</code></dt>
+    <dd>
+      Runs <code>then</code> when the condition is true and
+      <code>otherwise</code> (nothing when omitted) when it is false. Truth is
+      decided as in <code>choose</code>. It works wherever statements do, and a
+      <code>call</code> in a branch is sent from the element that ran
+      <code>when</code>.
+    </dd>
+    <dt><code>timer({ name })</code></dt>
+    <dd>
+      Creates a named timer. Define it at module scope.
+      <code>t.after(ms, stmts)</code> cancels the previous reservation and
+      reserves the statements to run after <code>ms</code> milliseconds. Calling
+      it again restarts the count, which makes a debounce.
+      <code>t.cancel()</code> cancels the reservation.
+      <ul>
+        <li>
+          There is one reservation per timer on the page, and it survives a Live
+          View update that removes the element.
+        </li>
+        <li>
+          <code>ms</code> is an integer from 0 to 2147483647. The type is
+          <code>number</code>, and a value outside that range throws a
+          <code>RangeError</code>.
+        </li>
+        <li>
+          If the element that scheduled it has left the page, a
+          <code>call</code> is not sent and the other statements still run.
+        </li>
+        <li>
+          The statements run when the time comes even while the scheduling
+          element is sending, so the same Action can be sent concurrently.
+        </li>
+        <li>
+          The statements read the <code>output</code> and <code>detail</code>
+          from the time they were scheduled.
+        </li>
+      </ul>
     </dd>
     <dt><code>action.call(input, options)</code></dt>
     <dd>
@@ -365,6 +480,11 @@ li:has(.row [data-hs-pending]) {
   </p>
   <p><strong>Known limitations</strong></p>
   <ul>
+    <li>
+      <code>bindAttr</code> cannot remove a non-boolean attribute. When the
+      expression becomes an empty string, the attribute stays with an empty
+      value (<code>aria-activedescendant=""</code>).
+    </li>
     <li>
       The <code>detail.data</code> of the
       <code>hypersig:action-success</code> event is <code>null</code> when the

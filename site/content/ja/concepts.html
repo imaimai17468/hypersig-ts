@@ -65,6 +65,18 @@
       >カスタム要素</a
     >
   </p>
+  <p>
+    コンボボックス、タブ、開閉パネルのような部品は、Signal
+    の文だけで書けます。キーは <code>on.keydown</code>、フォーカスの出入りは
+    <code>on.focusEnter</code> と
+    <code>on.focusLeave</code>、計算した要素へのフォーカスは
+    <code>refs()</code>、トーストやデバウンスは <code>timer()</code>、分岐は
+    <code>when</code>
+    で書きます。キーの名前とタイマーの時間は、型で検査できる範囲は型で、できない部分は実行時に検査します。<a
+      href="../reference/#signals"
+      >ブラウザ側の Signal</a
+    >
+  </p>
 </section>
 
 <section id="connections">
