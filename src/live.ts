@@ -1,4 +1,5 @@
 import type { Identifier } from "./identifier.js";
+import type { JsonValue } from "./protocol.js";
 import type { Topic } from "./topic.js";
 
 export interface Principal {
@@ -20,6 +21,27 @@ export interface LiveRenderContext<
   view<Params, Data extends SharedValue>(
     definition: SharedLiveView<Params, Data, User, Event, Markup>,
     params: NoInfer<Params>
+  ): Promise<Markup>;
+}
+
+/**
+ * Places the page's top-level views. Their params travel in the page token,
+ * so they must be JSON. A value TypeScript accepts as JSON but that does not
+ * survive `JSON.stringify`, such as `NaN` or a class instance, reaches the view
+ * changed when the page reconnects.
+ */
+export interface PageRenderContext<
+  User extends Principal,
+  Event extends Topic,
+  Markup,
+> {
+  view<Params, Data>(
+    definition: LiveView<Params, Data, User, Event, Markup>,
+    params: NoInfer<Params> & JsonValue
+  ): Promise<Markup>;
+  view<Params, Data extends SharedValue>(
+    definition: SharedLiveView<Params, Data, User, Event, Markup>,
+    params: NoInfer<Params> & JsonValue
   ): Promise<Markup>;
 }
 
@@ -110,8 +132,8 @@ export interface SharedLiveView<
 
 /**
  * Checks a literal `name` when a definition is written. A name typed as
- * `string`, such as one spread from another definition, is checked when the
- * view first renders.
+ * `string`, such as one spread from another definition, is checked when
+ * `live()` or `liveShared()` registers the definition.
  */
 export interface NamedView<Name extends string> {
   name: string extends Name ? string : Identifier<Name>;

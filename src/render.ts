@@ -14,7 +14,9 @@ export interface LiveRenderer<Markup> {
 }
 
 export interface ViewInstance<User, Event> {
-  definition: object;
+  definition: { readonly name: string };
+  /** The params the view was placed with. */
+  params: unknown;
   revision(user: User): string | number | undefined;
   topics(user: User): readonly Event[];
   authorize(user: User): boolean | Promise<boolean>;
@@ -54,8 +56,8 @@ export type RegisteredView<
   Event extends Topic,
   Markup,
 > =
-  | LiveView<never, unknown, User, Event, Markup>
-  | SharedLiveView<never, SharedValue, User, Event, Markup>;
+  | LiveView<unknown, unknown, User, Event, Markup>
+  | SharedLiveView<unknown, SharedValue, User, Event, Markup>;
 
 /** Runtime-wide state that every page render of the runtime shares. */
 export interface ViewRegistry<
@@ -93,75 +95,25 @@ export function renderContext<
       params: Params
     ) {
       if (!(await definition.authorize(params, user))) return renderer.empty();
-      const id = registry.identify(definition);
-      const key = definition.key?.(params);
-      const segment = key === undefined ? id : `${id}.${key}`;
-      const target = parent ? `${parent}/${segment}` : segment;
-      if (
-        (key !== undefined && !keyPattern.test(key)) ||
-        views.has(target) ||
-        target.split("/").length > maxDepth
-      ) {
+      const target = viewTarget(
+        registry.identify(definition),
+        definition,
+        params,
+        parent
+      );
+      if (views.has(target)) {
         throw new Error(
           `Invalid, duplicate or too-deep Live View key: ${target}`
         );
       }
       admit();
-      const revision =
-        "snapshotRevision" in definition
-          ? definition.snapshotRevision
-          : undefined;
-      const instance: ViewInstance<User, Event> = {
+      const instance = createViewInstance(
         definition,
-        revision: (current) => definition.revision?.(params, current),
-        topics: (current) => definition.subscribe(params, current),
-        authorize: (current) => definition.authorize(params, current),
-        skipUnchanged: Boolean(revision) || "renderShared" in definition,
-        async render(current, childMode, admitChild) {
-          const children = new Map<string, ViewInstance<User, Event>>();
-          const { shared } = registry;
-          if ("renderShared" in definition) {
-            const data = await definition.load(params, current);
-            const previous = childMode === "update" && shared.get(definition);
-            if (previous && Object.is(previous.data, data))
-              return { html: await previous.html, children };
-            const html = Promise.resolve(
-              renderer.serialize(definition.renderShared(data))
-            );
-            if (childMode === "update") shared.set(definition, { data, html });
-            try {
-              return { html: await html, children };
-            } catch (error) {
-              if (shared.get(definition)?.html === html)
-                shared.delete(definition);
-              throw error;
-            }
-          }
-          const data = await definition.load(params, current);
-          const snapshotRevision = definition.snapshotRevision?.from(data);
-          const context = renderContext(
-            renderer,
-            current,
-            children,
-            childMode,
-            admitChild,
-            registry,
-            target
-          );
-          const html = await renderer.serialize(
-            definition.render(data, params, context)
-          );
-          return {
-            html,
-            children,
-            ...(snapshotRevision !== undefined && { snapshotRevision }),
-          };
-        },
-      };
-      if (revision) {
-        instance.readSnapshotRevision = (current) =>
-          revision.read(params, current);
-      }
+        params,
+        target,
+        renderer,
+        registry
+      );
       views.set(target, instance);
       // Existing child DOM can stay in place while the stream reconciles its subscription.
       if (mode === "update") return renderer.boundary(target, "");
@@ -178,4 +130,98 @@ export function renderContext<
       return renderer.boundary(target, result.html);
     },
   };
+}
+
+/**
+ * Returns the key a view takes in the page: its name, followed by its `key()`
+ * when it has one, under its parent's key. Throws for a key that is invalid or
+ * nested too deeply.
+ */
+export function viewTarget<Params>(
+  name: string,
+  definition: { key?(params: Params): string },
+  params: Params,
+  parent?: string
+): string {
+  const key = definition.key?.(params);
+  const segment = key === undefined ? name : `${name}.${key}`;
+  const target = parent ? `${parent}/${segment}` : segment;
+  if (
+    (key !== undefined && !keyPattern.test(key)) ||
+    target.split("/").length > maxDepth
+  ) {
+    throw new Error(`Invalid, duplicate or too-deep Live View key: ${target}`);
+  }
+  return target;
+}
+
+/** Binds a definition to its params at a key in the page, ready to render. */
+export function createViewInstance<
+  User extends Principal,
+  Event extends Topic,
+  Markup,
+  Params,
+  Data,
+>(
+  definition:
+    | LiveView<Params, Data, User, Event, Markup>
+    | SharedLiveView<Params, Data & SharedValue, User, Event, Markup>,
+  params: Params,
+  target: string,
+  renderer: LiveRenderer<Markup>,
+  registry: ViewRegistry<User, Event, Markup>
+): ViewInstance<User, Event> {
+  const revision =
+    "snapshotRevision" in definition ? definition.snapshotRevision : undefined;
+  const instance: ViewInstance<User, Event> = {
+    definition,
+    params,
+    revision: (current) => definition.revision?.(params, current),
+    topics: (current) => definition.subscribe(params, current),
+    authorize: (current) => definition.authorize(params, current),
+    skipUnchanged: Boolean(revision) || "renderShared" in definition,
+    async render(current, childMode, admitChild) {
+      const children = new Map<string, ViewInstance<User, Event>>();
+      const { shared } = registry;
+      if ("renderShared" in definition) {
+        const data = await definition.load(params, current);
+        const previous = childMode === "update" && shared.get(definition);
+        if (previous && Object.is(previous.data, data))
+          return { html: await previous.html, children };
+        const html = Promise.resolve(
+          renderer.serialize(definition.renderShared(data))
+        );
+        if (childMode === "update") shared.set(definition, { data, html });
+        try {
+          return { html: await html, children };
+        } catch (error) {
+          if (shared.get(definition)?.html === html) shared.delete(definition);
+          throw error;
+        }
+      }
+      const data = await definition.load(params, current);
+      const snapshotRevision = definition.snapshotRevision?.from(data);
+      const context = renderContext(
+        renderer,
+        current,
+        children,
+        childMode,
+        admitChild,
+        registry,
+        target
+      );
+      const html = await renderer.serialize(
+        definition.render(data, params, context)
+      );
+      return {
+        html,
+        children,
+        ...(snapshotRevision !== undefined && { snapshotRevision }),
+      };
+    },
+  };
+  if (revision) {
+    instance.readSnapshotRevision = (current) => revision.read(params, current);
+  }
+  return instance;
 }

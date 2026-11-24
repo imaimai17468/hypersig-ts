@@ -9,7 +9,11 @@ import { identifierPattern } from "./identifier.js";
 import type { Identifier } from "./identifier.js";
 import type { LiveRuntimeOptions } from "./live-runtime.js";
 import { createLiveRuntime } from "./live-runtime.js";
-import type { LiveRenderContext, Principal } from "./live.js";
+import type {
+  LiveRenderContext,
+  PageRenderContext,
+  Principal,
+} from "./live.js";
 import { events } from "./protocol.js";
 import type { LiveRenderer } from "./render.js";
 import type { LiveConnection } from "./stream.js";
@@ -26,7 +30,7 @@ export type HonoLiveRenderContext<
 export interface Page<
   User extends Principal,
   Event extends Topic,
-> extends LiveRenderContext<User, Event, Markup> {
+> extends PageRenderContext<User, Event, Markup> {
   readonly user: User;
   runtime(src: string): Markup | Promise<Markup>;
 }
@@ -123,7 +127,11 @@ export function createHypersig<User extends Principal, Event extends Topic>(
       if (!user) return c.text("Authentication required", 401);
       const token = c.req.param("token");
       const keys = new URL(request.url).searchParams.getAll("view");
-      const page = runtime.openPage(token, keys, user);
+      const page = await runtime.openPage(
+        token,
+        { views: keys, pristine: [] },
+        user
+      );
       switch (page.status) {
         case "expired":
           return streamSSE(c, (stream) =>

@@ -2,33 +2,33 @@ import { report } from "./diagnostics.js";
 import type { LiveDiagnostic } from "./diagnostics.js";
 import { identifierPattern } from "./identifier.js";
 import type {
-  LiveRenderContext,
   LiveView,
   NamedView,
+  PageRenderContext,
   Principal,
   SharedLiveView,
   SharedLoadOptions,
   SharedValue,
 } from "./live.js";
-import { maxViews, renderContext } from "./render.js";
+import { createPageSealer, maxTokenLength } from "./page-token.js";
+import type { PageClaims } from "./page-token.js";
+import { isJsonValue } from "./protocol.js";
+import type { JsonValue } from "./protocol.js";
+import {
+  createViewInstance,
+  maxViews,
+  renderContext,
+  viewTarget,
+} from "./render.js";
 import type {
-  LeafSnapshot,
   LiveRenderer,
-  ViewInstance,
   RegisteredView,
+  ViewInstance,
   ViewRegistry,
 } from "./render.js";
 import { streamPage } from "./stream.js";
 import type { LiveConnection } from "./stream.js";
 import type { PubSub, Topic } from "./topic.js";
-
-interface PageSession<User, Event> {
-  sessionId: string;
-  views: Map<string, ViewInstance<User, Event>>;
-  touched: number;
-  version: number;
-  close?: () => void;
-}
 
 type RefreshUser<User> = () => User | null | Promise<User | null>;
 
@@ -51,10 +51,22 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   reconcileIntervalMs?: number;
   /** Close a connection when accepting one frame takes longer (default 30 seconds). */
   sendTimeoutMs?: number;
+  /**
+   * Keys that seal page tokens, each 32 bytes in base64 or base64url. The first
+   * key seals new tokens and every key opens them, so rotate by adding the new
+   * key in front and removing the old one after a page lifetime. Without keys,
+   * the runtime makes one at startup, and only this process can open its pages.
+   */
+  pageKeys?: readonly string[];
+  /** How long a rendered page can open a stream, counted from SSR (default 12 hours). */
+  pageLifetimeMs?: number;
 }
 
-const pageLifetime = 30 * 60_000;
-const maxPages = 1024;
+/** The views a browser asks to stream, and those it still shows as SSR left them. */
+export interface OpenPageRequest {
+  views: readonly string[];
+  pristine: readonly string[];
+}
 
 export function createLiveRuntime<
   User extends Principal,
@@ -66,6 +78,8 @@ export function createLiveRuntime<
   onDiagnostic,
   reconcileIntervalMs,
   sendTimeoutMs = 30_000,
+  pageKeys,
+  pageLifetimeMs = 12 * 60 * 60_000,
 }: LiveRuntimeOptions<Event, Markup>) {
   if (
     reconcileIntervalMs !== undefined &&
@@ -81,7 +95,11 @@ export function createLiveRuntime<
     sendTimeoutMs > 2_147_483_647
   )
     throw new RangeError("Invalid Live View send timeout");
-  const pages = new Map<string, PageSession<User, Event>>();
+  if (!Number.isSafeInteger(pageLifetimeMs) || pageLifetimeMs < 1)
+    throw new RangeError("Invalid Live View page lifetime");
+  const sealer = createPageSealer(pageKeys);
+  // Closes the connection streaming each token, so a page has one stream per process.
+  const connections = new Map<string, () => void>();
   const definitions = new Map<string, RegisteredView<User, Event, Markup>>();
   const registered = new WeakSet<object>();
   const registry: ViewRegistry<User, Event, Markup> = {
@@ -102,11 +120,6 @@ export function createLiveRuntime<
     },
     resolve: (name) => definitions.get(name),
   };
-
-  function evict(token: string, page: PageSession<User, Event>) {
-    pages.delete(token);
-    page.close?.();
-  }
 
   return {
     live<Params, Data, const Name extends string = never>(
@@ -174,14 +187,21 @@ export function createLiveRuntime<
       }
       report(onDiagnostic, { type: "publish", topic: event });
     },
+    /**
+     * Renders a page and seals its top-level views into a token. `render`
+     * receives a stand-in for the token, because the token holds every view
+     * the page places and is sealed only after rendering ends. The stand-in is
+     * replaced with the token wherever the document contains it. Throws when
+     * the token would be longer than a URL can safely carry.
+     */
     async renderPage(
       user: User,
       render: (
-        context: LiveRenderContext<User, Event, Markup>,
+        context: PageRenderContext<User, Event, Markup>,
         token: string
       ) => Markup | Promise<Markup>
     ): Promise<string> {
-      const token = crypto.randomUUID();
+      const placeholder = crypto.randomUUID();
       const views = new Map<string, ViewInstance<User, Event>>();
       let count = 0;
       const context = renderContext(
@@ -194,41 +214,51 @@ export function createLiveRuntime<
         },
         registry
       );
-      const document = await renderer.serialize(render(context, token));
-
-      const now = Date.now();
-      for (const [key, page] of pages) {
-        if (now - page.touched >= pageLifetime) evict(key, page);
-      }
-      if (pages.size >= maxPages) {
-        const oldest = Array.from(pages).reduce((a, b) =>
-          a[1].touched <= b[1].touched ? a : b
-        );
-        evict(...oldest);
-      }
-      pages.set(token, {
+      const document = await renderer.serialize(render(context, placeholder));
+      const claims: PageClaims = {
+        format: 1,
         sessionId: user.sessionId,
-        views,
-        touched: now,
-        version: 0,
-      });
-      return document;
+        expiresAt: Date.now() + pageLifetimeMs,
+        views: [...views.values()].map((view) => ({
+          name: view.definition.name,
+          params: toJson(view.params),
+        })),
+      };
+      const token = await sealer.seal(claims);
+      if (token.length > maxTokenLength) {
+        const names = [...new Set(claims.views.map(({ name }) => name))];
+        throw new Error(
+          `Live View page token is too long (${token.length} of ${maxTokenLength} characters). Pass smaller params to these views: ${names.join(", ")}`
+        );
+      }
+      return document.split(placeholder).join(token);
     },
-    openPage(
+    /**
+     * Opens the page a token sealed. A token that is altered, sealed with a key
+     * this runtime does not hold, past its lifetime, or names a view the
+     * runtime no longer registers is `expired`, so the browser renders the page
+     * again. `request.pristine` is accepted but not yet used.
+     */
+    async openPage(
       token: string,
-      keys: readonly string[],
+      request: OpenPageRequest,
       user: User
-    ): OpenPage<User> {
-      const page = pages.get(token);
-      if (!page || Date.now() - page.touched >= pageLifetime)
-        return { status: "expired" };
-      if (page.sessionId !== user.sessionId) return { status: "denied" };
+    ): Promise<OpenPage<User>> {
+      const opened = await sealer.open(token, Date.now());
+      if (opened.status === "invalid")
+        report(onDiagnostic, { type: "page-token-invalid" });
+      if (opened.status !== "valid") return { status: "expired" };
+      const { claims } = opened;
+      if (claims.sessionId !== user.sessionId) return { status: "denied" };
+      const keys = request.views;
       if (keys.length === 0 || keys.length > maxViews)
         return { status: "invalid-count" };
 
+      const placed = rebuildViews(claims);
+      if (!placed) return { status: "expired" };
       const views = new Map<string, ViewInstance<User, Event>>();
       for (const key of keys) {
-        const view = page.views.get(key);
+        const view = placed.get(key);
         if (!view) return { status: "unknown-view" };
         views.set(key, view);
       }
@@ -236,45 +266,60 @@ export function createLiveRuntime<
         status: "open",
         async connect(connection, refreshUser) {
           if (connection.signal.aborted) return;
-          if (
-            pages.get(token) !== page ||
-            Date.now() - page.touched >= pageLifetime
-          ) {
-            await connection.send({ type: "reset" });
-            return;
-          }
-          page.close?.();
+          connections.get(token)?.();
           const close = () => connection.close();
-          page.close = close;
-          const initialSnapshots = new Map<string, LeafSnapshot>();
-          for (const [key, view] of page.views) {
-            if (view.initialSnapshot && views.has(key))
-              initialSnapshots.set(key, view.initialSnapshot);
-            delete view.initialSnapshot;
-          }
+          connections.set(token, close);
+          let version = 0;
           try {
             await streamPage(
               connection,
               {
                 views,
-                initialSnapshots,
+                initialSnapshots: new Map(),
                 async refresh() {
                   const current = await refreshUser();
-                  if (pages.get(token) !== page) return { status: "expired" };
-                  if (current?.sessionId !== page.sessionId)
+                  if (current?.sessionId !== claims.sessionId)
                     return { status: "denied" };
-                  page.touched = Date.now();
                   return { status: "allowed", user: current };
                 },
-                nextVersion: () => ++page.version,
+                nextVersion: () => ++version,
               },
               { pubsub, onDiagnostic, reconcileIntervalMs, sendTimeoutMs }
             );
           } finally {
-            if (page.close === close) delete page.close;
+            if (connections.get(token) === close) connections.delete(token);
           }
         },
       };
     },
   };
+
+  /** Returns undefined when a view is no longer registered or no longer takes its key. */
+  function rebuildViews(claims: PageClaims) {
+    const views = new Map<string, ViewInstance<User, Event>>();
+    for (const { name, params } of claims.views) {
+      const definition = registry.resolve(name);
+      if (!definition) return;
+      let target: string;
+      try {
+        target = viewTarget(name, definition, params);
+      } catch {
+        return;
+      }
+      if (views.has(target)) return;
+      views.set(
+        target,
+        createViewInstance(definition, params, target, renderer, registry)
+      );
+    }
+    return views;
+  }
+}
+
+/** Reads params back as the token will carry them, dropping what JSON cannot hold. */
+function toJson(params: unknown): JsonValue {
+  const json: unknown = JSON.parse(JSON.stringify(params) ?? "null");
+  if (!isJsonValue(json))
+    throw new Error("Expected Live View params that JSON can hold");
+  return json;
 }

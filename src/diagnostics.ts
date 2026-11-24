@@ -2,6 +2,8 @@ import type { Topic } from "./topic.js";
 
 export type LiveDiagnostic<Event extends Topic> =
   | { type: "send-timeout" }
+  /** A page token was altered, or sealed with a key this runtime does not hold. */
+  | { type: "page-token-invalid" }
   | { type: "publish" | "publish-error"; topic: Event }
   | { type: "invalidate"; topic: Event; target: string }
   | {

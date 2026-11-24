@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vite-plus/test";
+import { expect, expectTypeOf, it, vi } from "vite-plus/test";
 import {
   createLiveRuntime,
   createMemoryPubSub,
@@ -9,6 +9,7 @@ import type {
   LiveDiagnostic,
   LiveMessage,
   LiveRenderer,
+  PageRenderContext,
   Principal,
 } from "./core.js";
 
@@ -25,6 +26,59 @@ const renderer: LiveRenderer<string> = {
   boundary: (target, html) => `<div data-target="${target}">${html}</div>`,
   serialize: async (value) => value,
 };
+
+/** Writes the page token into the document, as `page.runtime()` does in the Hono adapter. */
+const streamToken = (token: string) =>
+  `<script data-token="${token}"></script>`;
+
+function readToken(document: string) {
+  const token = /data-token="([^"]+)"/.exec(document)?.[1];
+  if (!token) throw new Error("Expected a page token in the document");
+  return token;
+}
+
+const bytes = (value: number) =>
+  btoa(String.fromCharCode(...new Uint8Array(32).fill(value)));
+// 0xfb bytes encode to "+/v7…", so the same key in base64url reads "-_v7…".
+const key1 = bytes(0xfb);
+const key2 = bytes(0x01);
+const viewer = { sessionId: "viewer" };
+const counterChanged = topic("counter", (scope: string) => scope);
+type CounterEvent = ReturnType<typeof counterChanged>;
+
+function counterRuntime(
+  store: { count: number },
+  options: Omit<
+    Parameters<typeof createLiveRuntime<Principal, CounterEvent, string>>[0],
+    "renderer" | "pubsub"
+  > = {}
+) {
+  const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    ...options,
+  });
+  const view = runtime.live({
+    name: "counter",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: () => store.count,
+    render: String,
+  });
+  return { runtime, view };
+}
+
+async function renderCounter({
+  runtime,
+  view,
+}: ReturnType<typeof counterRuntime>) {
+  return readToken(
+    await runtime.renderPage(
+      viewer,
+      async (page, token) => streamToken(token) + (await page.view(view, {}))
+    )
+  );
+}
 
 function createConnection() {
   const lifetime = new AbortController();
@@ -107,24 +161,40 @@ it("runs without an HTTP adapter and retains subscribed children across parent r
     },
   });
 
-  let token = "";
-  const initial = await runtime.renderPage(user, (page, pageToken) => {
-    token = pageToken;
-    return page.view(parent, {});
-  });
+  const initial = await runtime.renderPage(
+    user,
+    async (page, pageToken) =>
+      streamToken(pageToken) + (await page.view(parent, {}))
+  );
+  const token = readToken(initial);
   expect(initial).toContain("plain:0");
-  expect(runtime.openPage("missing-1", ["parent"], user).status).toBe(
-    "expired"
-  );
-  expect(runtime.openPage(token, [], user).status).toBe("invalid-count");
-  expect(runtime.openPage(token, ["parent/child"], user).status).toBe(
-    "unknown-view"
-  );
   expect(
-    runtime.openPage(token, ["parent"], { sessionId: "other" }).status
+    (await runtime.openPage(token, { views: [], pristine: [] }, user)).status
+  ).toBe("invalid-count");
+  expect(
+    (
+      await runtime.openPage(
+        token,
+        { views: ["parent/child"], pristine: [] },
+        user
+      )
+    ).status
+  ).toBe("unknown-view");
+  expect(
+    (
+      await runtime.openPage(
+        token,
+        { views: ["parent"], pristine: [] },
+        { sessionId: "other" }
+      )
+    ).status
   ).toBe("denied");
 
-  const page = runtime.openPage(token, ["parent"], user);
+  const page = await runtime.openPage(
+    token,
+    { views: ["parent"], pristine: [] },
+    user
+  );
   if (page.status !== "open") throw new Error("Expected a registered page");
   const connection = createConnection();
   const live = page.connect(connection, () => user);
@@ -315,12 +385,17 @@ it("reconciles a missed notification without sending unchanged HTML", async () =
     render: (count) => String(count),
   });
   const user = { sessionId: "viewer" };
-  let token = "";
-  await runtime.renderPage(user, (page, key) => {
-    token = key;
-    return page.view(view, {});
-  });
-  const registered = runtime.openPage(token, ["counter"], user);
+  const token = readToken(
+    await runtime.renderPage(
+      user,
+      async (page, key) => streamToken(key) + (await page.view(view, {}))
+    )
+  );
+  const registered = await runtime.openPage(
+    token,
+    { views: ["counter"], pristine: [] },
+    user
+  );
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -373,12 +448,17 @@ it("shares leaf HTML across equal snapshots while checking access for each viewe
     },
   });
   async function open(user: User) {
-    let token = "";
-    await runtime.renderPage(user, (page, key) => {
-      token = key;
-      return page.view(view, {});
-    });
-    const registered = runtime.openPage(token, ["status"], user);
+    const token = readToken(
+      await runtime.renderPage(
+        user,
+        async (page, key) => streamToken(key) + (await page.view(view, {}))
+      )
+    );
+    const registered = await runtime.openPage(
+      token,
+      { views: ["status"], pristine: [] },
+      user
+    );
     if (registered.status !== "open")
       throw new Error("Expected a registered page");
     const connection = createConnection();
@@ -477,21 +557,29 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
     render: (data) => data.text,
   });
   const user = { sessionId: "viewer" };
-  let token = "";
-  await runtime.renderPage(user, (page, key) => {
-    token = key;
-    return page.view(view, {});
-  });
-  const registered = runtime.openPage(token, ["snapshot"], user);
+  const token = readToken(
+    await runtime.renderPage(
+      user,
+      async (page, key) => streamToken(key) + (await page.view(view, {}))
+    )
+  );
+  const registered = await runtime.openPage(
+    token,
+    { views: ["snapshot"], pristine: [] },
+    user
+  );
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
   const live = registered.connect(connection, () => user);
   try {
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { html: "first", version: 1 },
+    });
     await expect(connection.read()).resolves.toEqual({ type: "ready" });
-    expect(diagnostics).toContain("initial-sync-skipped");
     await firstSkip.promise;
-    expect(snapshotReads).toBe(1);
+    expect(snapshotReads).toBe(2);
 
     // No Topic was delivered for these commits.
     snapshot = { revision: 1, text: "second" };
@@ -500,19 +588,19 @@ it("checks a cheap revision before re-reading a snapshot and falls back when the
     releaseSecond.resolve();
     await expect(connection.read()).resolves.toMatchObject({
       type: "update",
-      update: { html: "second", version: 1 },
+      update: { html: "second", version: 2 },
     });
     await sameHtmlSkip.promise;
-    expect(snapshotReads).toBe(3);
+    expect(snapshotReads).toBe(4);
 
     failProbe = true;
     snapshot = { revision: 3, text: "third" };
     await expect(connection.read()).resolves.toMatchObject({
       type: "update",
-      update: { html: "third", version: 2 },
+      update: { html: "third", version: 3 },
     });
     expect(diagnostics).toContain("revision-error");
-    expect(snapshotReads).toBe(4);
+    expect(snapshotReads).toBe(5);
   } finally {
     releaseSecond.resolve();
     connection.close();
@@ -568,12 +656,17 @@ it("merges overlapping authorized loads by scope and revision and releases both 
 
   async function open(sessionId: string, scope: string, revision: number) {
     const user = { sessionId, scope, revision, allowed: true };
-    let token = "";
-    await runtime.renderPage(user, (page, key) => {
-      token = key;
-      return page.view(view, {});
-    });
-    const registered = runtime.openPage(token, ["status"], user);
+    const token = readToken(
+      await runtime.renderPage(
+        user,
+        async (page, key) => streamToken(key) + (await page.view(view, {}))
+      )
+    );
+    const registered = await runtime.openPage(
+      token,
+      { views: ["status"], pristine: [] },
+      user
+    );
     if (registered.status !== "open")
       throw new Error("Expected registered page");
     const connection = createConnection();
@@ -635,12 +728,10 @@ it("merges overlapping authorized loads by scope and revision and releases both 
   }
 });
 
-it("reuses only the initial SSR snapshot and processes updates during its revision check", async () => {
+it("renders the current snapshot on each connection and counts versions per connection", async () => {
   const changed = topic("change", () => "leaf");
   let value = 0;
   let reads = 0;
-  const checking = deferred();
-  const release = deferred();
   const runtime = createLiveRuntime<
     Principal,
     ReturnType<typeof changed>,
@@ -657,40 +748,38 @@ it("reuses only the initial SSR snapshot and processes updates during its revisi
       reads++;
       return value;
     },
-    snapshotRevision: {
-      async read() {
-        const captured = value;
-        checking.resolve();
-        await release.promise;
-        return captured;
-      },
-      from: (data) => data,
-    },
+    snapshotRevision: { read: () => value, from: (data) => data },
     render: String,
   });
   const user = { sessionId: "viewer" };
-  let token = "";
-  await runtime.renderPage(user, (page, key) => {
-    token = key;
-    return page.view(view, {});
-  });
-  const registered = runtime.openPage(token, ["leaf"], user);
+  const token = readToken(
+    await runtime.renderPage(
+      user,
+      async (page, key) => streamToken(key) + (await page.view(view, {}))
+    )
+  );
+  const registered = await runtime.openPage(
+    token,
+    { views: ["leaf"], pristine: [] },
+    user
+  );
   if (registered.status !== "open") throw new Error("Expected registered page");
   const first = createConnection();
   const initial = registered.connect(first, () => user);
   try {
-    await checking.promise;
-    value = 1;
-    await runtime.publish(changed());
-    release.resolve();
-    await expect(first.read()).resolves.toEqual({ type: "ready" });
     await expect(first.read()).resolves.toMatchObject({
       type: "update",
-      update: { html: "1", version: 1 },
+      update: { html: "0", version: 1 },
     });
-    expect(reads).toBe(2);
+    await expect(first.read()).resolves.toEqual({ type: "ready" });
+    value = 1;
+    await runtime.publish(changed());
+    await expect(first.read()).resolves.toMatchObject({
+      type: "update",
+      update: { html: "1", version: 2 },
+    });
+    expect(reads).toBe(3);
   } finally {
-    release.resolve();
     first.close();
     await initial;
   }
@@ -699,35 +788,13 @@ it("reuses only the initial SSR snapshot and processes updates during its revisi
   try {
     await expect(next.read()).resolves.toMatchObject({
       type: "update",
-      update: { html: "1", version: 2 },
+      update: { html: "1", version: 1 },
     });
     await expect(next.read()).resolves.toEqual({ type: "ready" });
-    expect(reads).toBe(3);
+    expect(reads).toBe(4);
   } finally {
     next.close();
     await resumed;
-  }
-
-  await runtime.renderPage(user, (page, key) => {
-    token = key;
-    return page.view(view, {});
-  });
-  value = 2;
-  const changedBeforeConnect = runtime.openPage(token, ["leaf"], user);
-  if (changedBeforeConnect.status !== "open")
-    throw new Error("Expected registered page");
-  const late = createConnection();
-  const connected = changedBeforeConnect.connect(late, () => user);
-  try {
-    await expect(late.read()).resolves.toMatchObject({
-      type: "update",
-      update: { html: "2", version: 1 },
-    });
-    await expect(late.read()).resolves.toEqual({ type: "ready" });
-    expect(reads).toBe(5);
-  } finally {
-    late.close();
-    await connected;
   }
 });
 
@@ -758,12 +825,17 @@ it("omits an unchanged leaf frame and closes a stalled stream", async () => {
     renderShared: (value) => String(value),
   });
   const user = { sessionId: "viewer" };
-  let token = "";
-  await runtime.renderPage(user, (page, key) => {
-    token = key;
-    return page.view(view, {});
-  });
-  const registered = runtime.openPage(token, ["leaf"], user);
+  const token = readToken(
+    await runtime.renderPage(
+      user,
+      async (page, key) => streamToken(key) + (await page.view(view, {}))
+    )
+  );
+  const registered = await runtime.openPage(
+    token,
+    { views: ["leaf"], pristine: [] },
+    user
+  );
   if (registered.status !== "open") throw new Error("Expected registered page");
   const live = createConnection();
   const open = registered.connect(live, () => user);
@@ -886,12 +958,17 @@ it("rebinds a disconnected broker subscription and reads the changes missed duri
     render: (value) => String(value),
   });
   const user = { sessionId: "viewer" };
-  let token = "";
-  await runtime.renderPage(user, (page, key) => {
-    token = key;
-    return page.view(view, {});
-  });
-  const registered = runtime.openPage(token, ["counter"], user);
+  const token = readToken(
+    await runtime.renderPage(
+      user,
+      async (page, key) => streamToken(key) + (await page.view(view, {}))
+    )
+  );
+  const registered = await runtime.openPage(
+    token,
+    { views: ["counter"], pristine: [] },
+    user
+  );
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -971,12 +1048,19 @@ it("delivers a fast root update while another root loads and keeps the slow root
     render: (value) => String(value),
   });
   const user = { sessionId: "viewer" };
-  let token = "";
-  await runtime.renderPage(user, async (page, key) => {
-    token = key;
-    return (await page.view(slowView, {})) + (await page.view(fastView, {}));
-  });
-  const registered = runtime.openPage(token, ["slow", "fast"], user);
+  const token = readToken(
+    await runtime.renderPage(
+      user,
+      async (page, key) =>
+        streamToken(key) +
+        ((await page.view(slowView, {})) + (await page.view(fastView, {})))
+    )
+  );
+  const registered = await runtime.openPage(
+    token,
+    { views: ["slow", "fast"], pristine: [] },
+    user
+  );
   if (registered.status !== "open")
     throw new Error("Expected a registered page");
   const connection = createConnection();
@@ -1012,4 +1096,385 @@ it("delivers a fast root update while another root loads and keeps the slow root
     connection.close();
     await live;
   }
+});
+
+async function expectCounterUpdates(
+  page: Awaited<
+    ReturnType<ReturnType<typeof counterRuntime>["runtime"]["openPage"]>
+  >,
+  publisher: ReturnType<typeof counterRuntime>["runtime"],
+  store: { count: number }
+) {
+  if (page.status !== "open")
+    throw new Error(`Expected an open page, got ${page.status}`);
+  const connection = createConnection();
+  const live = page.connect(connection, () => viewer);
+  try {
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: "counter", version: 1, html: String(store.count) },
+    });
+    await expect(connection.read()).resolves.toEqual({ type: "ready" });
+    store.count++;
+    await publisher.publish(counterChanged("all"));
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: "counter", version: 2, html: String(store.count) },
+    });
+  } finally {
+    connection.close();
+    await live;
+  }
+}
+
+const counterKeys = { views: ["counter"], pristine: [] };
+
+it("serves a page rendered by another runtime that holds the same key", async () => {
+  const store = { count: 0 };
+  const origin = counterRuntime(store, { pageKeys: [key1] });
+  const receiver = counterRuntime(store, { pageKeys: [key1] });
+  const token = await renderCounter(origin);
+  const page = await receiver.runtime.openPage(token, counterKeys, viewer);
+  expect(page.status).toBe("open");
+  await expectCounterUpdates(page, receiver.runtime, store);
+});
+
+it("continues a page after the runtime is recreated", async () => {
+  const store = { count: 0 };
+  let current = counterRuntime(store, { pageKeys: [key1] });
+  const token = await renderCounter(current);
+  current = counterRuntime(store, { pageKeys: [key1] });
+  const page = await current.runtime.openPage(token, counterKeys, viewer);
+  expect(page.status).toBe("open");
+  await expectCounterUpdates(page, current.runtime, store);
+});
+
+it("rejects tampered, foreign-key and expired tokens as expired", async () => {
+  const store = { count: 0 };
+  const diagnostics: LiveDiagnostic<CounterEvent>[] = [];
+  const onDiagnostic = (event: LiveDiagnostic<CounterEvent>) => {
+    diagnostics.push(event);
+  };
+  const owner = counterRuntime(store, { pageKeys: [key1], onDiagnostic });
+  const foreign = counterRuntime(store, { pageKeys: [key2], onDiagnostic });
+  const start = Date.now();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(start);
+    const token = await renderCounter(owner);
+    const middle = Math.floor(token.length / 2);
+    const tampered =
+      token.slice(0, middle) +
+      (token[middle] === "A" ? "B" : "A") +
+      token.slice(middle + 1);
+
+    for (const [runtime, candidate] of [
+      [owner.runtime, tampered],
+      [owner.runtime, "not-a-token"],
+      [foreign.runtime, token],
+    ] as const) {
+      diagnostics.length = 0;
+      expect(
+        (await runtime.openPage(candidate, counterKeys, viewer)).status
+      ).toBe("expired");
+      expect(diagnostics).toEqual([{ type: "page-token-invalid" }]);
+    }
+
+    diagnostics.length = 0;
+    vi.setSystemTime(start + 12 * 60 * 60_000 - 1);
+    expect(
+      (await owner.runtime.openPage(token, counterKeys, viewer)).status
+    ).toBe("open");
+    vi.setSystemTime(start + 12 * 60 * 60_000 + 1);
+    expect(
+      (await owner.runtime.openPage(token, counterKeys, viewer)).status
+    ).toBe("expired");
+    expect(diagnostics).toEqual([]);
+
+    const brief = counterRuntime(store, {
+      pageKeys: [key1],
+      pageLifetimeMs: 1_000,
+    });
+    vi.setSystemTime(start);
+    const short = await renderCounter(brief);
+    vi.setSystemTime(start + 1_000);
+    expect(
+      (await brief.runtime.openPage(short, counterKeys, viewer)).status
+    ).toBe("expired");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("accepts a token sealed with a rotated-out key", async () => {
+  const store = { count: 0 };
+  const before = counterRuntime(store, { pageKeys: [key1] });
+  const rotated = counterRuntime(store, { pageKeys: [key2, key1] });
+  const token = await renderCounter(before);
+  expect(
+    (await rotated.runtime.openPage(token, counterKeys, viewer)).status
+  ).toBe("open");
+
+  // A rotated runtime seals with its first key only.
+  const sealed = await renderCounter(rotated);
+  const newKeyOnly = counterRuntime(store, { pageKeys: [key2] });
+  expect(
+    (await newKeyOnly.runtime.openPage(sealed, counterKeys, viewer)).status
+  ).toBe("open");
+  expect(
+    (await before.runtime.openPage(sealed, counterKeys, viewer)).status
+  ).toBe("expired");
+});
+
+it("accepts the same page key in base64 and base64url", async () => {
+  const store = { count: 0 };
+  const urlSafe = key1
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+  expect(urlSafe).not.toBe(key1);
+  const token = await renderCounter(
+    counterRuntime(store, { pageKeys: [key1] })
+  );
+  const receiver = counterRuntime(store, { pageKeys: [urlSafe] });
+  expect(
+    (await receiver.runtime.openPage(token, counterKeys, viewer)).status
+  ).toBe("open");
+});
+
+it("resets when a token names a view the runtime no longer has", async () => {
+  const store = { count: 0 };
+  const token = await renderCounter(
+    counterRuntime(store, { pageKeys: [key1] })
+  );
+  const redeployed = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    pageKeys: [key1],
+  });
+  expect((await redeployed.openPage(token, counterKeys, viewer)).status).toBe(
+    "expired"
+  );
+});
+
+it("denies another session and unknown keys", async () => {
+  const counter = counterRuntime({ count: 0 });
+  const token = await renderCounter(counter);
+  const { runtime } = counter;
+  expect(
+    (await runtime.openPage(token, counterKeys, { sessionId: "other" })).status
+  ).toBe("denied");
+  expect(
+    (
+      await runtime.openPage(
+        token,
+        { views: ["missing"], pristine: [] },
+        viewer
+      )
+    ).status
+  ).toBe("unknown-view");
+  expect(
+    (await runtime.openPage(token, { views: [], pristine: [] }, viewer)).status
+  ).toBe("invalid-count");
+  expect(
+    (
+      await runtime.openPage(
+        token,
+        { views: Array.from({ length: 33 }, () => "counter"), pristine: [] },
+        viewer
+      )
+    ).status
+  ).toBe("invalid-count");
+});
+
+it("replaces the earlier connection of the same token", async () => {
+  const store = { count: 0 };
+  const counter = counterRuntime(store);
+  const token = await renderCounter(counter);
+  const open = async () => {
+    const page = await counter.runtime.openPage(token, counterKeys, viewer);
+    if (page.status !== "open") throw new Error("Expected an open page");
+    const connection = createConnection();
+    const live = page.connect(connection, () => viewer);
+    await connection.read();
+    await expect(connection.read()).resolves.toEqual({ type: "ready" });
+    return { connection, live };
+  };
+  const first = await open();
+  const second = await open();
+  try {
+    await first.live;
+    expect(first.connection.signal.aborted).toBe(true);
+    expect(second.connection.signal.aborted).toBe(false);
+    store.count = 1;
+    await counter.runtime.publish(counterChanged("all"));
+    await expect(second.connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { html: "1", version: 2 },
+    });
+
+    // The first connection ended after the second took its place.
+    const third = await open();
+    try {
+      await second.live;
+      expect(second.connection.signal.aborted).toBe(true);
+    } finally {
+      third.connection.close();
+      await third.live;
+    }
+  } finally {
+    first.connection.close();
+    second.connection.close();
+    await Promise.all([first.live, second.live]);
+  }
+});
+
+it("throws when the page token is too long", async () => {
+  const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+  });
+  const bulky = runtime.live({
+    name: "bulky",
+    key: (params: { id: string; text: string }) => params.id,
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: () => "",
+    render: () => "",
+  });
+  const text = "x".repeat(200);
+  await expect(
+    runtime.renderPage(viewer, async (page) => {
+      let html = "";
+      for (let id = 0; id < 32; id++)
+        html += await page.view(bulky, { id: String(id), text });
+      return html;
+    })
+  ).rejects.toThrow(/Live View page token is too long.*bulky/);
+});
+
+it("keeps keys and subscriptions when optional props are omitted", async () => {
+  const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+  });
+  let count = 0;
+  const filtered = runtime.live({
+    name: "filtered",
+    key: (params: { filter?: string | undefined }) => params.filter ?? "all",
+    subscribe: (params) => [counterChanged(params.filter ?? "all")],
+    authorize: () => true,
+    load: () => count,
+    render: String,
+  });
+  const document = await runtime.renderPage(
+    viewer,
+    async (page, token) =>
+      streamToken(token) + (await page.view(filtered, { filter: undefined }))
+  );
+  expect(document).toContain('data-target="filtered.all"');
+  const page = await runtime.openPage(
+    readToken(document),
+    { views: ["filtered.all"], pristine: [] },
+    viewer
+  );
+  if (page.status !== "open") throw new Error("Expected an open page");
+  const connection = createConnection();
+  const live = page.connect(connection, () => viewer);
+  try {
+    await connection.read();
+    await expect(connection.read()).resolves.toEqual({ type: "ready" });
+    count = 1;
+    await runtime.publish(counterChanged("all"));
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: "filtered.all", html: "1" },
+    });
+  } finally {
+    connection.close();
+    await live;
+  }
+});
+
+it("rejects page keys that are not 32 bytes", () => {
+  const create = (pageKeys: readonly string[]) =>
+    createLiveRuntime<Principal, CounterEvent, string>({
+      renderer,
+      pubsub: createMemoryPubSub(),
+      pageKeys,
+    });
+  expect(() => create(["short"])).toThrow(RangeError);
+  expect(() => create([])).toThrow(RangeError);
+  expect(() => create(["!".repeat(44)])).toThrow(RangeError);
+  expect(() => create([btoa("x".repeat(33))])).toThrow(RangeError);
+  expect(() => create([key1, "short"])).toThrow(RangeError);
+  expect(() => counterRuntime({ count: 0 }, { pageLifetimeMs: 0 })).toThrow(
+    RangeError
+  );
+});
+
+it("places the real token wherever the runtime script is written", async () => {
+  const counter = counterRuntime({ count: 0 });
+  let placeholder = "";
+  const document = await counter.runtime.renderPage(
+    viewer,
+    async (page, token) => {
+      placeholder = token;
+      const script = streamToken(token);
+      return script + (await page.view(counter.view, {})) + script;
+    }
+  );
+  expect(document).not.toContain(placeholder);
+  const tokens = [...document.matchAll(/data-token="([^"]+)"/g)].map(
+    (match) => match[1]
+  );
+  expect(tokens).toHaveLength(2);
+  expect(tokens[0]).toBe(tokens[1]);
+  expect(tokens[0]).toMatch(/^[A-Za-z0-9_-]+$/);
+  expect(
+    (await counter.runtime.openPage(readToken(document), counterKeys, viewer))
+      .status
+  ).toBe("open");
+
+  // A page that never writes the token comes back as rendered.
+  await expect(
+    counter.runtime.renderPage(viewer, () => "static")
+  ).resolves.toBe("static");
+});
+
+it("limits top-level props to JSON while child props stay unconstrained", () => {
+  const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+  });
+  const dated = runtime.live({
+    name: "dated",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: { at: Date }) => params.at.toISOString(),
+    render: String,
+  });
+  runtime.live({
+    name: "parent",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: () => null,
+    render: (_data, _params, context) =>
+      context.view(dated, { at: new Date() }),
+  });
+  const stamped = runtime.live({
+    name: "stamped",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: { at: string; zone?: string | undefined }) => params.at,
+    render: String,
+  });
+  const placeViews = async (
+    page: PageRenderContext<Principal, CounterEvent, string>
+  ) => {
+    // @ts-expect-error Date is not JSON, so it cannot travel in the page token.
+    await page.view(dated, { at: new Date() });
+    return page.view(stamped, { at: "2026-11-24", zone: undefined });
+  };
+  expectTypeOf(placeViews).returns.toEqualTypeOf<Promise<string>>();
 });

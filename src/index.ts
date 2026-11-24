@@ -22,6 +22,7 @@ export type {
 } from "./hono.js";
 export type {
   LiveView,
+  PageRenderContext,
   Principal,
   SharedLiveView,
   SharedLoad,
@@ -42,7 +43,11 @@ export { connectionStatusOutlet, errorOutlet } from "./outlet.js";
 export { createMemoryPubSub, shareTopicSubscriptions, topic } from "./topic.js";
 export type { PubSub, Topic } from "./topic.js";
 export { createLiveRuntime } from "./live-runtime.js";
-export type { LiveRuntimeOptions, OpenPage } from "./live-runtime.js";
+export type {
+  LiveRuntimeOptions,
+  OpenPage,
+  OpenPageRequest,
+} from "./live-runtime.js";
 export type { LiveRenderer } from "./render.js";
 export type { LiveConnection, LiveMessage } from "./stream.js";
 export type { LiveDiagnostic, RenderReason } from "./diagnostics.js";

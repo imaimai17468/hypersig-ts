@@ -1,6 +1,7 @@
 import { toStandardJsonSchema } from "@valibot/to-json-schema";
 import { Hono } from "hono";
 import { html } from "hono/html";
+import type { HtmlEscapedString } from "hono/utils/html";
 import * as v from "valibot";
 import { expect, expectTypeOf, it, vi } from "vite-plus/test";
 import {
@@ -210,7 +211,7 @@ it("scopes a page's authorized views to its session and catches changes made bef
   const restored = await openStream(app, path);
   try {
     expect(await restored.read()).toContain(
-      '"version":2,"html":"<output>3</output>"'
+      '"version":1,"html":"<output>3</output>"'
     );
     expect(await restored.read()).toContain("event: ready");
   } finally {
@@ -349,13 +350,13 @@ it("replaces a page connection while its old render is still pending", async () 
     try {
       expect(await old.read()).toBe("");
       expect(await next.read()).toContain(
-        '"version":2,"html":"<output>2</output>"'
+        '"version":1,"html":"<output>2</output>"'
       );
       expect(await next.read()).toContain("event: ready");
       resume.complete();
       await commitOutsideAction(3);
       expect(await next.read()).toContain(
-        '"version":3,"html":"<output>3</output>"'
+        '"version":2,"html":"<output>3</output>"'
       );
     } finally {
       await next.close();
@@ -369,7 +370,9 @@ it("replaces a page connection while its old render is still pending", async () 
 it("requests a new SSR document when the page registration has expired", async () => {
   const { app, pageUrl } = setup();
   const { path } = await pageUrl();
-  const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31 * 60_000);
+  const clock = vi
+    .spyOn(Date, "now")
+    .mockReturnValue(Date.now() + 12 * 60 * 60_000 + 1);
   try {
     const stream = await openStream(app, path);
     try {
@@ -897,4 +900,29 @@ it("names the action when conversion fails", () => {
   expect(() => action.control("title")).toThrow(
     /convert-fails.*libraryOptions/s
   );
+});
+
+it("limits top-level page props to JSON in the Hono adapter", () => {
+  const { hypersig } = setup();
+  const dated = hypersig.live({
+    name: "dated",
+    subscribe: () => [changed("dated")],
+    authorize: () => true,
+    load: (params: { at: Date }) => params.at.toISOString(),
+    render: (value) => html`<time>${value}</time>`,
+  });
+  hypersig.live({
+    name: "calendar",
+    subscribe: () => [changed("calendar")],
+    authorize: () => true,
+    load: () => null,
+    render: (_data, _params, context) =>
+      context.view(dated, { at: new Date() }),
+  });
+  const placeDated = (
+    page: Parameters<Parameters<typeof hypersig.page>[1]>[0]
+  ) =>
+    // @ts-expect-error Date is not JSON, so it cannot travel in the page token.
+    page.view(dated, { at: new Date() });
+  expectTypeOf(placeDated).returns.toEqualTypeOf<Promise<HtmlEscapedString>>();
 });
