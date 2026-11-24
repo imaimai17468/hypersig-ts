@@ -682,11 +682,14 @@ it("applies a snapshot that arrives while a call is in flight", async () => {
 
 it("runs onError statements to undo a write by hand", async () => {
   const todo = signals({ completed: false }, { name: "undo-todo" });
-  const t = todo.with({});
+  // The value the page was rendered with, as a server render reads it.
+  const rendered = { completed: false };
+  const t = todo.with(rendered);
   const { page, find, click } = createPage(
     render("div", {
-      ...t.init(),
+      "data-hs-view": "todo",
       children: [
+        element("p", { id: "snapshot", ...t.init() }),
         element("span", { id: "completed", ...t.bindText(t.completed) }),
         element("button", {
           id: "toggle",
@@ -694,7 +697,7 @@ it("runs onError statements to undo a write by hand", async () => {
             t.completed.toggle(),
             toggleTodo.call(
               { key: "a", completed: t.completed },
-              { onError: [t.completed.toggle()] }
+              { onError: [t.completed.set(rendered.completed)] }
             ),
           ]),
         }),
@@ -707,6 +710,20 @@ it("runs onError statements to undo a write by hand", async () => {
   click("#toggle");
   expect(runtime.read(t.completed.path)).toBe(true);
   request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(t.completed.path)).toBe(false);
+  expect(find("#completed").textContent).toBe("false");
+
+  click("#toggle");
+  expect(runtime.read(t.completed.path)).toBe(true);
+  // A Live View update from before the commit arrives during the request.
+  find("#snapshot").setAttribute(
+    "data-hs-signals",
+    todo.with({ completed: false }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(find("[data-hs-view]"));
+  expect(runtime.read(t.completed.path)).toBe(false);
+  request(1).respond({ ok: false });
   await settle();
   expect(runtime.read(t.completed.path)).toBe(false);
   expect(find("#completed").textContent).toBe("false");

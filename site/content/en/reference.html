@@ -255,21 +255,24 @@ li:has(.row [data-hs-pending]) {
   <p>
     A write before a <code>call</code> is an ordinary write: it shows at once
     and stays when the Action fails. To show a value before the server confirms
-    it, undo the write yourself in <code>onError</code>:
+    it, undo the write yourself in <code>onError</code> by setting the value the
+    page was rendered with:
   </p>
   <pre><code>on.click([
   r.completed.toggle(),
   toggle.call(
-    { todoKey: key, completed: r.completed },
-    { onError: [r.completed.toggle()] }
+    { todoKey: todo.key, completed: r.completed },
+    { onError: [r.completed.set(todo.completed)] }
   ),
 ])</code></pre>
   <p>
-    A Live View update that arrives while the request is in flight writes the
-    server's value over the early one, and <code>onError</code> then works from
-    that value. Do not show values early that other people may edit at the same
-    time, values the server decides (such as keys, order, or totals), or input
-    that may fail validation; show the pending state instead.
+    A Live View update during the request overwrites the early value;
+    <code>onError</code> sets the value the page was rendered with. Set that
+    value rather than toggling, so a Live View update that arrived first does
+    not turn the undo into another change. Do not show values early that other
+    people may edit at the same time, values the server decides (such as keys,
+    order, or totals), or input that may fail validation; show the pending state
+    instead.
   </p>
   <p><strong>Known limitations</strong></p>
   <ul>

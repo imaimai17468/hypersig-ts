@@ -249,19 +249,22 @@ li:has(.row [data-hs-pending]) {
     が失敗してもそのまま残ります。サーバーが確定する前に値を表示したいときは、<code
       >onError</code
     >
-    で自分で書き込みを戻します。
+    で、ページを描画したときの値を書いて戻します。
   </p>
   <pre><code>on.click([
   r.completed.toggle(),
   toggle.call(
-    { todoKey: key, completed: r.completed },
-    { onError: [r.completed.toggle()] }
+    { todoKey: todo.key, completed: r.completed },
+    { onError: [r.completed.set(todo.completed)] }
   ),
 ])</code></pre>
   <p>
-    送信中に Live View
-    の更新が届くと、サーバーの値が先に表示した値を上書きし、<code>onError</code>
-    はその値をもとに動きます。ほかの人が同時に編集しうる値、サーバーが決める値
+    送信中に Live View の更新が届くと、先に表示した値を上書きします。<code
+      >onError</code
+    >
+    はページを描画したときの値を書きます。切り替えではなく値を書くので、先に届いた
+    Live View
+    の更新があっても、戻す操作が別の変更になりません。ほかの人が同時に編集しうる値、サーバーが決める値
     (key、順序、合計など)、検証で失敗しうる入力は先に表示せず、処理中の表示にしてください。
   </p>
   <p><strong>既知の制約</strong></p>
