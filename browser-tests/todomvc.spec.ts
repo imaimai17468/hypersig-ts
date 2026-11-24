@@ -71,9 +71,13 @@ test("shared tasks react across sessions and tabs, with updates scoped to each f
 
     fragments.length = 0;
     await page.getByLabel("Edit: Book tickets").click();
-    await row(page, "Book tickets")
-      .getByRole("textbox", { name: "Task title" })
-      .fill("Book train tickets");
+    const editTitle = row(page, "Book tickets").getByRole("textbox", {
+      name: "Task title",
+    });
+    await expect(editTitle).toHaveAttribute("required", "");
+    await expect(editTitle).toHaveAttribute("minlength", "1");
+    await expect(editTitle).toHaveAttribute("maxlength", "200");
+    await editTitle.fill("Book train tickets");
     await row(page, "Book tickets")
       .getByRole("button", { name: "Save" })
       .click();
