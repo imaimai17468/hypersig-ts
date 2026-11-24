@@ -45,6 +45,14 @@ export interface HypersigOptions<
    * served at the same origin.
    */
   origin: string;
+  /**
+   * Reads the user from a request: every page, Action and stream request, and
+   * again throughout a stream with the stream's original `Request`. A stream
+   * sees new credentials only when it reconnects, at most `maxStreamMs` after
+   * it opened, so read revocable server-side state, such as a session store,
+   * rather than trusting a signed cookie or JWT alone, and do not slide an
+   * idle expiry when a stream calls this.
+   */
   authenticate: (request: Request) => User | null | Promise<User | null>;
   /** Non-secret and stable across server restarts, unique to the authenticated session. */
   draftScope?: (user: User) => string;

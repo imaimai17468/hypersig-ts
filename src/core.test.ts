@@ -1474,6 +1474,51 @@ it("accepts the same page key in base64 and base64url", async () => {
   ).toBe("open");
 });
 
+function recordingConnection() {
+  const lifetime = new AbortController();
+  const messages: LiveMessage["type"][] = [];
+  return {
+    messages,
+    signal: lifetime.signal,
+    close: () => lifetime.abort(),
+    send: async (message: LiveMessage) => {
+      messages.push(message.type);
+    },
+  };
+}
+
+const settlesWithin = (promise: Promise<void>, ms: number) =>
+  Promise.race([
+    promise.then(() => true),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), ms)),
+  ]);
+
+it("ends a stream after maxStreamMs without a reset so the browser reconnects", async () => {
+  const store = { count: 0 };
+  const counter = counterRuntime(store, { maxStreamMs: 50 });
+  const token = await renderCounter(counter);
+  const first = await counter.runtime.openPage(token, counterKeys, viewer);
+  if (first.status !== "open") throw new Error("Expected an open page");
+  const connection = recordingConnection();
+  const started = performance.now();
+  const ended = await settlesWithin(
+    first.connect(connection, () => viewer),
+    1_000
+  );
+  expect(ended).toBe(true);
+  expect(performance.now() - started).toBeGreaterThanOrEqual(45);
+  expect(connection.signal.aborted).toBe(true);
+  expect(connection.messages).toEqual(["update", "ready"]);
+
+  // The browser reconnects with the same token while it is valid.
+  const again = await counter.runtime.openPage(token, counterKeys, viewer);
+  expect(again.status).toBe("open");
+  await expectCounterUpdates(again, counter.runtime, store);
+
+  for (const maxStreamMs of [0, 1.5, 2_147_483_648])
+    expect(() => counterRuntime(store, { maxStreamMs })).toThrow(RangeError);
+});
+
 it("opens a token only in the page context that sealed it", async () => {
   const store = { count: 0 };
   const diagnostics: LiveDiagnostic<CounterEvent>[] = [];

@@ -52,6 +52,23 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   /** Close a connection when accepting one frame takes longer (default 30 seconds). */
   sendTimeoutMs?: number;
   /**
+   * End a stream once it has been open this long (default 30 minutes). The
+   * stream ends without `reset` or `access-denied`, so the browser's
+   * EventSource reconnects with the same token while it is valid, and the
+   * adapter authenticates the new request with the browser's current
+   * credentials.
+   *
+   * While a stream stays open, the adapter re-runs authentication against the
+   * credentials it received at connect time: `createHypersig` replays the
+   * original `Request`. A stateless credential, such as a signed cookie or a
+   * JWT, that is revoked or rotated afterwards still authenticates that
+   * stream until it reconnects, at most this long. So `authenticate` should
+   * consult revocable server-side state, such as a session store, and should
+   * not slide an idle expiry when a stream calls it, since a stream calls it
+   * on every update and about every 15 seconds.
+   */
+  maxStreamMs?: number;
+  /**
    * Keys that seal page tokens, each 32 bytes in base64 or base64url. The first
    * key seals new tokens and every key opens them, so rotate by adding the new
    * key in front and removing the old one after a page lifetime. Without keys,
@@ -94,24 +111,17 @@ export function createLiveRuntime<
   onDiagnostic,
   reconcileIntervalMs,
   sendTimeoutMs = 30_000,
+  maxStreamMs = 30 * 60_000,
   pageKeys,
   pageContext = "",
   pageLifetimeMs = 12 * 60 * 60_000,
 }: LiveRuntimeOptions<Event, Markup>) {
-  if (
-    reconcileIntervalMs !== undefined &&
-    (!Number.isSafeInteger(reconcileIntervalMs) ||
-      reconcileIntervalMs < 1 ||
-      reconcileIntervalMs > 2_147_483_647)
-  ) {
+  if (reconcileIntervalMs !== undefined && !isTimerDelay(reconcileIntervalMs))
     throw new RangeError("Invalid Live View reconciliation interval");
-  }
-  if (
-    !Number.isSafeInteger(sendTimeoutMs) ||
-    sendTimeoutMs < 1 ||
-    sendTimeoutMs > 2_147_483_647
-  )
+  if (!isTimerDelay(sendTimeoutMs))
     throw new RangeError("Invalid Live View send timeout");
+  if (!isTimerDelay(maxStreamMs))
+    throw new RangeError("Invalid Live View stream duration");
   if (!Number.isSafeInteger(pageLifetimeMs) || pageLifetimeMs < 1)
     throw new RangeError("Invalid Live View page lifetime");
   const sealer = createPageSealer(pageKeys, pageContext);
@@ -309,6 +319,7 @@ export function createLiveRuntime<
           connections.get(token)?.();
           const close = () => connection.close();
           connections.set(token, close);
+          const deadline = setTimeout(close, maxStreamMs);
           let version = 0;
           try {
             await streamPage(
@@ -327,6 +338,7 @@ export function createLiveRuntime<
               { pubsub, onDiagnostic, reconcileIntervalMs, sendTimeoutMs }
             );
           } finally {
+            clearTimeout(deadline);
             if (connections.get(token) === close) connections.delete(token);
           }
         },
@@ -354,6 +366,11 @@ export function createLiveRuntime<
     }
     return { status: "rebuilt", views };
   }
+}
+
+/** A whole number of milliseconds that `setTimeout` waits for without overflowing. */
+function isTimerDelay(ms: number) {
+  return Number.isSafeInteger(ms) && ms >= 1 && ms <= 2_147_483_647;
 }
 
 type RebuiltViews<User extends Principal, Event extends Topic> =
