@@ -87,7 +87,7 @@ interface ArrayMethods {
   at<Item extends JsonValue>(
     this: Expr<readonly Item[]>,
     index: number | Expr<number>,
-    fallback: Item | Expr<Item>
+    fallback: NoInfer<Item> | Expr<NoInfer<Item>>
   ): Expr<Item>;
   length(): Expr<number>;
 }

@@ -244,7 +244,9 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
               Escape: [c.open.set(false)],
             })}
           >
-            <span {...c.bindText(fruitLabels.at(c.selected, ""))} />
+            <span
+              {...c.bindText(fruitLabels.at(c.selected, fruits[0].label))}
+            />
           </div>
           <div
             id="fruit-listbox"
@@ -285,7 +287,7 @@ function ProductTabs() {
   const count = tabs.length;
   const select = (index: Parameters<typeof t.active.set>[0]) => [
     t.active.set(index),
-    tabRefs.focus(tabKeys.at(t.active, "")),
+    tabRefs.focus(tabKeys.at(t.active, tabs[0].key)),
   ];
   return (
     <section aria-labelledby="tabs-heading" class="widget" {...t.init()}>

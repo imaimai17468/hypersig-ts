@@ -301,6 +301,14 @@ it("builds string, number and array expression nodes", () => {
   expect(s.mod).toBeDefined();
   // @ts-expect-error The fallback must have the element type of the array.
   list.at(0, 1);
+  const modes = signals(
+    { order: ["light", "dark"] as readonly ("light" | "dark")[] },
+    { name: "at-modes" }
+  );
+  const mode: Expr<"light" | "dark"> = modes.order.at(0, "light");
+  expect(mode.node[0]).toBe("at");
+  // @ts-expect-error The fallback cannot widen a union of literal elements.
+  modes.order.at(0, "sepia");
   // @ts-expect-error A number has no length.
   expect(n.length).toBeDefined();
   // @ts-expect-error includes takes a string.
