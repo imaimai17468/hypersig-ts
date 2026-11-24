@@ -1,5 +1,6 @@
 // The automatic JSX runtime that `<span {...props} />` compiles to.
 import { jsx } from "hono/jsx/jsx-runtime";
+import { Idiomorph } from "idiomorph";
 import * as v from "valibot";
 import { expect, it, vi } from "vite-plus/test";
 import {
@@ -1381,7 +1382,7 @@ it("skips submit statements while the form is pending", async () => {
   expect(page.querySelectorAll("[data-hs-item-key]")).toHaveLength(1);
 });
 
-it("reports previews for the morph callbacks", async () => {
+it("reports whether a node is a preview", async () => {
   const { find, click, previews, request, runtime } = createInsertPage();
 
   click("#add");
@@ -1433,4 +1434,101 @@ it("confirms a preview only from a row in its own Live View", () => {
   expect(previews()).toHaveLength(1);
   runtime.applySnapshots(nested);
   expect(previews()).toHaveLength(1);
+});
+
+/** Morphs `view` into `html` the way a Live View update does. */
+function morphInto(view: HTMLElement, html: string) {
+  const next = view.ownerDocument.createElement("template");
+  next.innerHTML = html;
+  void Idiomorph.morph(view, next.content, { morphStyle: "innerHTML" });
+}
+
+it("keeps a preview last in its slot when a morph adds a confirmed row", async () => {
+  const { find, click, type, previews, runtime, view, request } =
+    createInsertPage();
+  type("Draft");
+  click("#add");
+  await settle();
+  const [preview] = previews();
+  if (!preview) throw new Error("No preview");
+  const markup = preview.outerHTML;
+
+  runtime.morphView(view, () =>
+    morphInto(
+      view,
+      render("ul", {
+        id: "list",
+        ...newTodo.slot(),
+        children: [
+          element("li", { class: "todo", children: "old" }),
+          element("li", { class: "todo", children: "other" }),
+        ],
+      })
+    )
+  );
+  const rows = [...find("#list").children];
+  expect(rows.map((row) => row.textContent)).toEqual([
+    "old",
+    "other",
+    "Draft!",
+  ]);
+  expect(rows.at(-1)).toBe(preview);
+  expect(preview.outerHTML).toBe(markup);
+  expect(runtime.isPreview(preview)).toBe(true);
+
+  request(0).respond({ ok: false });
+  await settle();
+  expect(previews()).toHaveLength(0);
+});
+
+it("drops a preview whose slot a morph removes", async () => {
+  const { click, previews, runtime, view, request } = createInsertPage();
+  click("#add");
+  const [preview] = previews();
+  if (!preview) throw new Error("No preview");
+
+  runtime.morphView(view, () =>
+    morphInto(view, render("p", { children: "empty" }))
+  );
+  expect(previews()).toHaveLength(0);
+  expect(runtime.isPreview(preview)).toBe(false);
+
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  expect(preview.isConnected).toBe(false);
+  expect(preview.hasAttribute("data-hs-pending-item")).toBe(true);
+});
+
+it("drops a preview whose slot leaves the view during a morph", () => {
+  const { page, find, click, previews, runtime, view } = createInsertPage();
+  click("#add");
+  const slot = find("#list");
+  runtime.morphView(view, () => page.body.append(slot));
+  expect(slot.isConnected).toBe(true);
+  expect(previews()).toHaveLength(0);
+});
+
+it("ignores signal snapshots inside previews", () => {
+  const preview = signals({ count: 0 }, { name: "preview-snapshot" });
+  const withSnapshot = insertTemplate({ title: "" }, { name: "snapshot-row" });
+  const { page, click, find } = createPage(
+    render("template", {
+      ...withSnapshot.template(),
+      children: element("li", {
+        children: element("span", { ...preview.with({ count: 9 }).init() }),
+      }),
+    }) +
+      render("div", {
+        "data-hs-view": "rows",
+        children: element("ul", { ...withSnapshot.slot() }),
+      }) +
+      render("button", {
+        id: "add",
+        ...on.click(withSnapshot.insert({ title: "a" }, "r1")),
+      })
+  );
+  const runtime = startSignals({ root: page });
+  click("#add");
+  runtime.applySnapshots(find("[data-hs-view]"));
+  expect(runtime.read(preview.with({}).count.path)).toBeUndefined();
 });

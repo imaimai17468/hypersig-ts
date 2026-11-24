@@ -128,29 +128,25 @@ function updateViews(
         }
       }
       // Idiomorph is synchronous when head processing is non-blocking.
-      void Idiomorph.morph(node, fragment, {
-        head: { style: "none" },
-        morphStyle: "innerHTML",
-        ignoreActiveValue: isTextControl(document.activeElement),
-        restoreFocus: true,
-        callbacks: {
-          // Only the signal runtime removes a preview row.
-          beforeNodeRemoved: (node) => !signalRuntime.isPreview(node),
-          beforeNodeMorphed(previous, next) {
-            if (signalRuntime.isPreview(previous)) {
-              // Idiomorph matched an incoming row to the preview. Insert the
-              // row before the preview so it is not lost, and keep the preview.
-              previous.before(document.importNode(next, true));
-              return false;
-            }
-            return !(
-              previous instanceof HTMLElement &&
-              next instanceof HTMLElement &&
-              next.dataset.hsView &&
-              previous.dataset.hsView === next.dataset.hsView
-            );
+      // Preview rows are kept out of the morph, so it cannot remove or
+      // rewrite them.
+      signalRuntime.morphView(node, () => {
+        void Idiomorph.morph(node, fragment, {
+          head: { style: "none" },
+          morphStyle: "innerHTML",
+          ignoreActiveValue: isTextControl(document.activeElement),
+          restoreFocus: true,
+          callbacks: {
+            beforeNodeMorphed(previous, next) {
+              return !(
+                previous instanceof HTMLElement &&
+                next instanceof HTMLElement &&
+                next.dataset.hsView &&
+                previous.dataset.hsView === next.dataset.hsView
+              );
+            },
           },
-        },
+        });
       });
       signalRuntime.applySnapshots(node);
       node.removeAttribute("data-hs-view-error");

@@ -54,11 +54,22 @@ export interface SignalRuntime {
    * typing is not overwritten. Every binding in the document is evaluated
    * again after a microtask.
    *
+   * Snapshots inside preview rows are skipped.
+   *
    * Then removes each preview row in `view` (not in a nested view) whose
    * template ID and key match a `data-hs-confirms` element in `view`, also
    * while its Action is in flight.
    */
   applySnapshots(view: HTMLElement): void;
+  /**
+   * Runs `morph`, which replaces the content of `view`, without letting it
+   * touch preview rows. The previews in `view` (not in a nested view) are
+   * taken out of their slots first and appended back, in order, to the end of
+   * the same slot element when it is still in `view` afterwards. A preview
+   * whose slot is gone is dropped: `isPreview` reports `false` for it and its
+   * Action's result no longer changes it. Call `applySnapshots` after this.
+   */
+  morphView(view: HTMLElement, morph: () => void): void;
   /**
    * Sends a form or a button's Action. While it is in flight,
    * `["$pending", url]` is `true`. A success sets `["$restored", url]` to
@@ -86,7 +97,7 @@ export interface SignalRuntime {
   ): Promise<SendResult>;
   /**
    * Reports a preview row that an `insert` statement added and that has not
-   * been removed yet. A Live View morph must neither remove nor rewrite it.
+   * been removed or dropped yet.
    */
   isPreview(node: Node): boolean;
   write(path: SignalPath, value: JsonValue): void;
@@ -501,6 +512,19 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     return result;
   }
 
+  /** Reports an element inside a preview row, or the row itself. */
+  function isInPreview(element: Element): boolean {
+    const selector = `[${signalAttributes.itemKey}]`;
+    for (
+      let item = element.closest(selector);
+      item;
+      item = item.parentElement?.closest(selector) ?? null
+    ) {
+      if (previews.has(item)) return true;
+    }
+    return false;
+  }
+
   function removePreview(element: Element) {
     previews.delete(element);
     element.remove();
@@ -681,7 +705,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       for (const element of view.querySelectorAll(
         `[${signalAttributes.signals}]`
       )) {
-        if (element.closest(viewSelector) === view) {
+        if (element.closest(viewSelector) === view && !isInPreview(element)) {
           loadSnapshot(element, editingKey);
         }
       }
@@ -715,6 +739,22 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         readStmts(form, signalAttributes.onError),
         owned
       );
+    },
+    morphView(view, morph) {
+      const detached: { element: Element; slot: Element | null }[] = [];
+      for (const element of previews.keys()) {
+        if (element.closest(viewSelector) !== view) continue;
+        detached.push({ element, slot: element.parentElement });
+        element.remove();
+      }
+      try {
+        morph();
+      } finally {
+        for (const { element, slot } of detached) {
+          if (slot?.isConnected && view.contains(slot)) slot.append(element);
+          else previews.delete(element);
+        }
+      }
     },
     isPreview(node) {
       return isElement(node) && previews.has(node);
