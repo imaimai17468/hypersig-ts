@@ -73,10 +73,9 @@ export interface SignalRuntime {
    * Submits `form` to `url`. Runs the form's `data-hs-on-submit` statements
    * like a click handler, renders bindings synchronously so a bound hidden
    * input carries a value they wrote, then sends `new FormData(form,
-   * submitter)` as `send` does. The send owns the writes those statements
-   * made after their last `call`, and reverts them on failure. A form with a
-   * request in flight is not sent again: its statements do not run and it
-   * gets `{ ok: false }`.
+   * submitter)` as `send` does. Writes the statements made stay when the
+   * request fails. A form with a request in flight is not sent again: its
+   * statements do not run and it gets `{ ok: false }`.
    */
   sendForm(
     form: HTMLFormElement,
@@ -100,21 +99,6 @@ interface ValueBinding {
 }
 
 type Field = HTMLInputElement | HTMLTextAreaElement;
-
-/** A path a handler wrote before a `call`, with the value it replaced. */
-interface OptimisticWrite {
-  path: SignalPath;
-  original: JsonValue | undefined;
-}
-
-/**
- * Counts the calls holding a path. `latest` is the newest snapshot value that
- * arrived while held, or `undefined` when none did.
- */
-interface Hold {
-  count: number;
-  latest: JsonValue | undefined;
-}
 
 const viewSelector = "[data-hs-view]";
 const booleanAttributeNames: ReadonlySet<string> = new Set(booleanAttributes);
@@ -247,7 +231,6 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     read,
     uuid: () => options.uuid?.() ?? crypto.randomUUID(),
   };
-  const holds = new Map<string, Hold>();
   const sendingControls = new Map<Element, number>();
   const sendingUrls = new Map<string, number>();
   let isRenderQueued = false;
@@ -256,10 +239,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     return store.get(JSON.stringify(path));
   }
 
-  function write(path: SignalPath, value: JsonValue | undefined) {
-    const key = JSON.stringify(path);
-    if (value === undefined) store.delete(key);
-    else store.set(key, value);
+  function write(path: SignalPath, value: JsonValue) {
+    store.set(JSON.stringify(path), value);
     scheduleRender();
   }
 
@@ -276,18 +257,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (isAppPath(path)) write(path, value);
   }
 
-  /**
-   * Skips the path in `editingKey`, which a focused input is editing, and
-   * keeps the value of a held path until its call ends.
-   */
+  /** Skips the path in `editingKey`, which a focused input is editing. */
   function loadSnapshot(element: Element, editingKey?: string) {
     for (const [path, value, mark] of readSnapshot(element)) {
       const key = JSON.stringify(path);
       if (key === editingKey) continue;
       if (mark === defaultMark && store.has(key)) continue;
-      const hold = holds.get(key);
-      if (hold) hold.latest = value;
-      else writeFromApp(path, value);
+      writeFromApp(path, value);
     }
   }
 
@@ -383,30 +359,18 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     return sendingControls.has(control);
   }
 
-  /**
-   * Holds the optimistic writes while the Action is in flight. On failure,
-   * each path goes back to the newest held snapshot or else to its original
-   * value. On success, only a held snapshot is applied.
-   */
   async function sendAction(
     control: HTMLElement,
     url: string,
     body: string | FormData,
     onSuccess: readonly StmtNode[],
-    onError: readonly StmtNode[],
-    writes: readonly OptimisticWrite[] = []
+    onError: readonly StmtNode[]
   ): Promise<SendResult> {
     const pendingPath = ["$pending", url];
     addCount(sendingControls, control, 1);
     control.setAttribute("data-hs-pending", "");
     addCount(sendingUrls, url, 1);
     write(pendingPath, true);
-    for (const { path } of writes) {
-      const key = JSON.stringify(path);
-      const hold = holds.get(key);
-      if (hold) hold.count += 1;
-      else holds.set(key, { count: 1, latest: undefined });
-    }
     let result: SendResult = { ok: false };
     try {
       if (options.send) result = await options.send(control, url, body);
@@ -417,14 +381,6 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       control.removeAttribute("data-hs-pending");
     }
     write(pendingPath, addCount(sendingUrls, url, -1) > 0);
-    for (const { path, original } of writes) {
-      const key = JSON.stringify(path);
-      const hold = holds.get(key);
-      const latest = hold?.latest;
-      if (hold && --hold.count === 0) holds.delete(key);
-      if (!result.ok) write(path, latest !== undefined ? latest : original);
-      else if (latest !== undefined) write(path, latest);
-    }
     if (result.ok) {
       write(["$restored", url], false);
       run(onSuccess, control, result.data);
@@ -436,29 +392,21 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
 
   /**
    * `control` is the element whose handler runs, and sends its `call`
-   * statements. A `call` takes the paths written since the previous one.
-   * Returns the writes made after the last `call`, for a form send to take.
+   * statements.
    */
   function run(
     stmts: readonly StmtNode[],
     control: HTMLElement,
     output: JsonValue = null
-  ): OptimisticWrite[] {
+  ) {
     const runContext = { ...context, output };
-    let writes = new Map<string, OptimisticWrite>();
-    const writeOptimistic = (path: SignalPath, value: JsonValue) => {
-      if (!isAppPath(path)) return;
-      const key = JSON.stringify(path);
-      if (!writes.has(key)) writes.set(key, { path, original: read(path) });
-      write(path, value);
-    };
     for (const stmt of stmts) {
       switch (stmt[0]) {
         case "set":
-          writeOptimistic(stmt[1], evaluate(stmt[2], runContext));
+          writeFromApp(stmt[1], evaluate(stmt[2], runContext));
           break;
         case "toggle":
-          writeOptimistic(stmt[1], !isTruthy(read(stmt[1]) ?? null));
+          writeFromApp(stmt[1], !isTruthy(read(stmt[1]) ?? null));
           break;
         case "focus":
           focusRef(stmt[1]);
@@ -474,15 +422,12 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
             url,
             JSON.stringify(body),
             onSuccess,
-            onError,
-            [...writes.values()]
+            onError
           );
-          writes = new Map();
           break;
         }
       }
     }
-    return [...writes.values()];
   }
 
   for (const element of root.querySelectorAll(
@@ -509,7 +454,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       if (type !== "click" && isField(target)) writeField(target);
       const handler = target.closest<HTMLElement>(`[${attribute}]`);
       // A click on a control whose Action is in flight runs none of its
-      // statements, so the optimistic writes are not applied twice.
+      // statements, so its writes and calls are not repeated.
       if (handler && !(type === "click" && isSending(handler))) {
         run(readStmts(handler, attribute), handler);
       }
@@ -556,15 +501,14 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     },
     sendForm(form, url, submitter) {
       if (isSending(form)) return Promise.resolve({ ok: false });
-      const writes = run(readStmts(form, signalAttributes.onSubmit), form);
+      run(readStmts(form, signalAttributes.onSubmit), form);
       render();
       return sendAction(
         form,
         url,
         new FormData(form, submitter),
         readStmts(form, signalAttributes.onSuccess),
-        readStmts(form, signalAttributes.onError),
-        writes
+        readStmts(form, signalAttributes.onError)
       );
     },
     isSending,

@@ -563,7 +563,7 @@ function createSend() {
   return { requests, request, send };
 }
 
-/** A counter in a Live View whose button bumps it optimistically. */
+/** A counter in a Live View whose button writes the bumped count before calling. */
 function createBumpPage() {
   const counter = signals(
     { count: 0, revision: 0, failed: false },
@@ -601,10 +601,10 @@ function createBumpPage() {
   return { ...created, ...sender, runtime, c, sendSnapshot };
 }
 
-it("shows an optimistic change before the response and keeps it on success", async () => {
+it("shows a write before a call, sends its value and keeps it on success", async () => {
   const todo = signals(
     { completed: false, revision: 0 },
-    { name: "optimistic-todo" }
+    { name: "early-todo" }
   );
   const t = todo.with({});
   const { page, find, click } = createPage(
@@ -643,64 +643,73 @@ it("shows an optimistic change before the response and keeps it on success", asy
   expect(find("#revision").textContent).toBe("7");
 });
 
-it("reverts on failure unless the server sent a newer value", async () => {
-  const { find, click, request, runtime, c, sendSnapshot } = createBumpPage();
+it("keeps writes made before a failed call", async () => {
+  const { find, click, request, runtime, c } = createBumpPage();
 
   click("#bump");
   expect(runtime.read(c.count.path)).toBe(2);
   request(0).respond({ ok: false });
   await settle();
-  expect(runtime.read(c.count.path)).toBe(1);
+  expect(runtime.read(c.count.path)).toBe(2);
   expect(runtime.read(c.failed.path)).toBe(true);
-  expect(find("#count").textContent).toBe("1");
-
-  click("#bump");
-  expect(runtime.read(c.failed.path)).toBe(false);
-  sendSnapshot(5, 2);
-  request(1).respond({ ok: false });
-  await settle();
-  expect(runtime.read(c.count.path)).toBe(5);
-  expect(find("#count").textContent).toBe("5");
+  expect(find("#count").textContent).toBe("2");
 });
 
-it("holds snapshots while a call is pending and applies the latest on success", async () => {
-  const { find, click, request, runtime, c, sendSnapshot } = createBumpPage();
-
-  click("#bump");
-  sendSnapshot(3, 2);
-  await settle();
-  expect(find("#count").textContent).toBe("2");
-  expect(runtime.read(c.revision.path)).toBe(2);
-  sendSnapshot(4, 3);
-  await settle();
-  expect(find("#count").textContent).toBe("2");
-
-  request(0).respond({ ok: true, data: 4 });
-  await settle();
-  expect(find("#count").textContent).toBe("4");
-  expect(runtime.read(c.failed.path)).toBe(false);
-
-  sendSnapshot(6, 4);
-  await settle();
-  expect(find("#count").textContent).toBe("6");
-});
-
-it("reverts on a network error", async () => {
+it("keeps writes and runs onError when the request rejects", async () => {
   const { click, request, runtime, c } = createBumpPage();
 
   click("#bump");
-  request(0).respond({ ok: false });
+  request(0).fail();
   await settle();
-  expect(runtime.read(c.count.path)).toBe(1);
-  expect(runtime.read(c.failed.path)).toBe(true);
-
-  click("#bump");
   expect(runtime.read(c.count.path)).toBe(2);
-  request(1).fail();
-  await settle();
-  expect(runtime.read(c.count.path)).toBe(1);
   expect(runtime.read(c.failed.path)).toBe(true);
   expect(runtime.read(["$pending", bump.url])).toBe(false);
+});
+
+it("applies a snapshot that arrives while a call is in flight", async () => {
+  const { find, click, request, runtime, c, sendSnapshot } = createBumpPage();
+
+  click("#bump");
+  sendSnapshot(5, 2);
+  await settle();
+  expect(runtime.read(c.count.path)).toBe(5);
+  expect(find("#count").textContent).toBe("5");
+
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(c.count.path)).toBe(5);
+});
+
+it("runs onError statements to undo a write by hand", async () => {
+  const todo = signals({ completed: false }, { name: "undo-todo" });
+  const t = todo.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...t.init(),
+      children: [
+        element("span", { id: "completed", ...t.bindText(t.completed) }),
+        element("button", {
+          id: "toggle",
+          ...on.click([
+            t.completed.toggle(),
+            toggleTodo.call(
+              { key: "a", completed: t.completed },
+              { onError: [t.completed.toggle()] }
+            ),
+          ]),
+        }),
+      ],
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  click("#toggle");
+  expect(runtime.read(t.completed.path)).toBe(true);
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(t.completed.path)).toBe(false);
+  expect(find("#completed").textContent).toBe("false");
 });
 
 it("skips the whole handler while its control is pending", async () => {
@@ -852,71 +861,6 @@ it("runs form success statements with the action output", async () => {
   expect(await saved).toEqual({ ok: true, data: { revision: 3 } });
   expect(runtime.read(e.base.path)).toBe(3);
   expect(runtime.read(e.failed.path)).toBe(false);
-});
-
-it("reverts only the paths written since the previous call, to their value before the handler", async () => {
-  const both = signals({ count: 1, open: false }, { name: "two-calls" });
-  const b = both.with({});
-  const { page, click } = createPage(
-    render("button", {
-      id: "both",
-      ...b.init(),
-      ...on.click([
-        b.count.set(b.count.add(1)),
-        b.count.set(b.count.add(1)),
-        bump.call({ count: b.count }),
-        b.open.toggle(),
-        saveMemo.call({ title: "t" }),
-      ]),
-    })
-  );
-  const { request, send } = createSend();
-  const runtime = startSignals({ root: page, send });
-
-  click("#both");
-  expect(runtime.read(b.count.path)).toBe(3);
-  expect(runtime.read(b.open.path)).toBe(true);
-  request(1).respond({ ok: false });
-  await settle();
-  expect(runtime.read(b.open.path)).toBe(false);
-  expect(runtime.read(b.count.path)).toBe(3);
-
-  request(0).respond({ ok: false });
-  await settle();
-  expect(runtime.read(b.count.path)).toBe(1);
-});
-
-it("reverts to a null value the server sent while the call was pending", async () => {
-  const note = signals(
-    { text: "a" as string | null },
-    { name: "nullable-note" }
-  );
-  const n = note.with({});
-  const { page, find, click } = createPage(
-    render("div", {
-      "data-hs-view": "note",
-      children: [
-        element("p", { id: "snapshot", ...n.init() }),
-        element("button", {
-          id: "edit",
-          ...on.click([n.text.set("b"), saveMemo.call({ title: "b" })]),
-        }),
-      ],
-    })
-  );
-  const { request, send } = createSend();
-  const runtime = startSignals({ root: page, send });
-
-  click("#edit");
-  find("#snapshot").setAttribute(
-    "data-hs-signals",
-    n.with({ text: null }).init()["data-hs-signals"]
-  );
-  runtime.applySnapshots(find("[data-hs-view]"));
-  expect(runtime.read(n.text.path)).toBe("b");
-  request(0).respond({ ok: false });
-  await settle();
-  expect(runtime.read(n.text.path)).toBeNull();
 });
 
 it("shows the store value in a focused checkbox that a morph reset", async () => {
@@ -1140,7 +1084,7 @@ it("runs submit statements and sends the bound values they wrote", async () => {
 
   request(0).respond({ ok: false });
   expect(await sent).toEqual({ ok: false });
-  expect(runtime.read(e.newKey.path)).toBe("");
+  expect(runtime.read(e.newKey.path)).toBe("f1");
 });
 
 it("refuses to send a form while it is pending, without running its submit statements", async () => {
