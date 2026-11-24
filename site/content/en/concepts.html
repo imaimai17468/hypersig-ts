@@ -41,6 +41,15 @@
     the server when saving, and publish the change to update other views from
     the committed result.
   </p>
+  <p>
+    A JavaScript library, or a React component, goes in a custom element that
+    you declare once as a value and implement with
+    <code>defineElement</code> or <code>reactElement</code>. Such an island is
+    not rendered on the server and does not use Shadow DOM. The server passes it
+    attributes, including JSON, and the element sends events back as typed
+    values.
+    <a href="../reference/#custom-elements">Custom elements</a>
+  </p>
 </section>
 
 <section id="connections">

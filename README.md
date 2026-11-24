@@ -10,6 +10,8 @@ hypersig.ts は、サーバーで確定したデータに画面を同期する T
 
 Hono アプリには `hypersig.ts` のアダプターを使います。同じ Hono アプリを Void に組み込むこともできます。描画と通信を自分で組み合わせる場合は `hypersig.ts/core` を使います。
 
+カスタム要素の宣言と、ブラウザ側の実装 `defineElement` は `hypersig.ts/element` にあり、Hono にも React にも依存しません。React の部品を要素として載せる `reactElement` は `hypersig.ts/react` にあり、`react` と `react-dom`（^19）が必要です。
+
 [日本語ドキュメント](https://imaimai17468.github.io/hypersig-ts/ja/) · [English documentation](https://imaimai17468.github.io/hypersig-ts/)
 
 ## セットアップ

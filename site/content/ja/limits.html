@@ -85,14 +85,20 @@
       <a href="../deploy/#updates">新しいバージョンのデプロイ</a>
     </li>
     <li>
-      地図やリッチテキストエディタのような JavaScript
-      のライブラリは、自分で書いて読み込むカスタム要素の中で動かします。hypersig.ts
-      は要素の属性とイベントを型で扱いますが、ライブラリの JavaScript
-      と突き合わせる検査はできません。また、要素が自分で描いた子は、タグと
-      <code>id</code> が一致するときだけ Live View の更新で残ります。<a
-        href="../reference/#custom-elements"
-        >カスタム要素</a
+      地図やリッチテキストエディタのような JavaScript のライブラリや React
+      の部品は、カスタム要素（アイランド）の中で動かします。hypersig.ts
+      は要素の属性とイベントを型で扱い、<code>defineElement</code>
+      で書いた要素では <code>props</code> と
+      <code>emit</code> も型で検査します。<code>customElements.define</code>
+      で自分で登録した要素は、宣言と突き合わせません。アイランドはサーバーで描かず、Shadow
+      DOM も使いません。要素が自分で描いた子は、タグと
+      <code>id</code> が一致するときだけ Live View の更新で残り、<code
+        >ownsChildren</code
       >
+      の要素には <code>id</code> が必要です。<code>json</code>
+      の属性は Live View 全体の HTML に入るので、一覧の行数が多いときは Live
+      View を小さくしてください。
+      <a href="../reference/#custom-elements">カスタム要素</a>
     </li>
     <li>
       リンクをたどると、次のページをサーバーから読み込みます。クライアント側の画面遷移はありません。

@@ -51,6 +51,20 @@
     サーバーで生成したページにも JavaScript
     を追加できます。たとえば、ドラッグ中の位置をプレビューしたり、編集中の文字数を表示したりできます。保存する値はサーバーに送り、確定した結果をほかの表示にも反映するときは、通常の変更通知を使います。
   </p>
+  <p>
+    JavaScript のライブラリや React
+    の部品は、宣言の値として一度だけ書いたカスタム要素に入れ、<code
+      >defineElement</code
+    >
+    または
+    <code>reactElement</code>
+    で実装します。このアイランドはサーバーで描かず、Shadow DOM
+    も使いません。サーバーは JSON
+    を含む属性を渡し、要素はイベントを型付きの値として返します。<a
+      href="../reference/#custom-elements"
+      >カスタム要素</a
+    >
+  </p>
 </section>
 
 <section id="connections">

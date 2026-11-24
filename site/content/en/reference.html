@@ -376,17 +376,22 @@ li:has(.row [data-hs-pending]) {
 <section id="custom-elements">
   <h2>Custom elements</h2>
   <p>
-    Wrap a JavaScript library, such as a map or an editor, in a custom element
-    that you write and load yourself. <code>customElement</code> describes the
-    element's attributes and events as types, so the page sets the attributes
-    and handles the events without string literals.
+    Wrap a JavaScript library, such as a map or an editor, in a custom element.
+    You declare the element's attributes and events once, as a value. The page
+    sets the attributes and handles the events from that value, and the
+    browser-side code is typed by the same value, so none of them is written as
+    a string literal.
   </p>
-  <pre><code>const rating = customElement("star-rating", {
+  <pre><code>// elements.ts, imported by the server and the browser
+import { customElement, event } from "hypersig.ts/element";
+
+export const rating = customElement("star-rating", {
   attributes: { value: "number", max: "number" },
   events: { rate: event&lt;number&gt;() },
   ownsChildren: true,
 });
 
+// server
 &lt;CustomTag
   of={rating}
   id="rating"
@@ -397,67 +402,80 @@ li:has(.row [data-hs-pending]) {
   ])}
 /&gt;</code></pre>
   <dl>
-    <dt><code>customElement&lt;Spec&gt;(tag, options)</code></dt>
+    <dt>
+      <code>customElement(tag, { attributes, events, ownsChildren })</code>
+    </dt>
     <dd>
-      <code>Spec</code> lists the attributes (<code>attributes</code>, with the
-      type of each value) and the events (<code>events</code>, with the type of
-      each <code>detail</code>) the element uses. The tag name starts with a
+      Returns the declaration. <code>attributes</code> maps each name to
+      <code>"string"</code>, <code>"number"</code>, <code>"boolean"</code>, or
+      <code>json&lt;T&gt;()</code>. <code>events</code> maps each name to
+      <code>event&lt;Detail&gt;()</code>. <code>T</code> and
+      <code>Detail</code> must be JSON values. The tag name starts with a
       lowercase letter, contains a <code>-</code>, and has only lowercase
       letters, digits, <code>-</code>, <code>.</code>, and <code>_</code>. The
-      type checks what it can, and the other characters are checked when
-      <code>customElement</code> is called, so a typo in a tag name is an error
-      at startup. The names HTML reserves, such as <code>font-face</code> and
-      <code>annotation-xml</code>, are rejected the same way. An attribute name
-      must be lowercase and must not start with <code>on</code> (this rejects
-      <code>once</code> too), nor be <code>style</code>, <code>id</code>, or
-      <code>data-hs-*</code>. An event name starts with a lowercase letter and
-      then has lowercase letters, digits, <code>-</code>, <code>.</code>,
-      <code>:</code>, or <code>_</code>. It cannot be <code>click</code>,
-      <code>input</code>, <code>change</code>, or <code>submit</code>, which the
-      runtime handles for every element; the type rejects these names, and the
-      runtime ignores them in a hand-written <code>data-hs-on-custom</code>.
+      type checks what it can, and the rest is checked when
+      <code>customElement</code> is called, as are attribute and event names and
+      kinds, so a typo is an error at startup. The names HTML reserves, such as
+      <code>font-face</code> and <code>annotation-xml</code>, are rejected the
+      same way. An attribute name must be lowercase and must not start with
+      <code>on</code> (this rejects <code>once</code> too), nor be
+      <code>style</code>, <code>id</code>, or <code>data-hs-*</code>. A
+      <code>data-*</code> attribute cannot be <code>json</code>. An event name
+      starts with a lowercase letter and then has lowercase letters, digits,
+      <code>-</code>, <code>.</code>, <code>:</code>, or <code>_</code>. It
+      cannot be <code>click</code>, <code>input</code>, <code>change</code>, or
+      <code>submit</code>, which the runtime handles for every element; the type
+      rejects these names, and the runtime ignores them in a hand-written
+      <code>data-hs-on-custom</code>. The function and the types are exported
+      from <code>hypersig.ts/element</code>, which imports neither Hono nor
+      React and can be imported where there is no DOM, and from
+      <code>hypersig.ts</code>.
     </dd>
-    <dt><code>Element</code></dt>
+    <dt><code>&lt;CustomTag of={declaration} /&gt;</code></dt>
     <dd>
       Renders the element with the declared tag name. It takes the HTML
       attributes Hono JSX names, <code>role</code>, <code>part</code>,
       <code>exportparts</code>, <code>aria-*</code>, <code>data-*</code>,
       <code>children</code>, and the declared attributes as fixed values. A
-      <code>true</code> value renders the attribute empty and
-      <code>false</code> leaves it out, except for <code>aria-*</code>,
-      <code>data-*</code>, <code>draggable</code>, <code>spellcheck</code>, and
-      <code>contenteditable</code>, whose booleans render as
-      <code>"true"</code> or <code>"false"</code>. Give each element an
-      <code>id</code>, and in a list give each one an <code>id</code> of its
-      own: a Live View update keeps an element that owns its children only when
-      the tag and the <code>id</code> match, and rebuilds it otherwise.
+      <code>json</code> attribute takes any JSON value of its type and is
+      written as <code>JSON.stringify</code> text. A <code>true</code> value
+      renders the attribute empty and <code>false</code> leaves it out, except
+      for <code>aria-*</code>, <code>data-*</code>, <code>draggable</code>,
+      <code>spellcheck</code>, and <code>contenteditable</code>, whose booleans
+      render as <code>"true"</code> or <code>"false"</code>. When the
+      declaration sets <code>ownsChildren: true</code>, <code>id</code> is
+      required (a type error otherwise). In a list give each element an
+      <code>id</code> of its own: a Live View update keeps an element that owns
+      its children only when the tag and the <code>id</code> match, and rebuilds
+      it otherwise, which loses what the element's JavaScript held.
     </dd>
-    <dt><code>scope.bindElement(element, values)</code></dt>
+    <dt><code>scope.bindElement(declaration, values)</code></dt>
     <dd>
       Binds the declared attributes to expressions. The server renders the first
       value, and the runtime writes later ones as the signals change. It writes
       <code>data-hs-element-attr</code> and keeps its own rule: it takes any
       declared name that passes the attribute rules above, and writes a
-      <code>string</code> or <code>number</code> as text and a
-      <code>boolean</code> as <code>Element</code> does: an empty or absent
+      <code>string</code> or <code>number</code> as text, a
+      <code>json</code> value as <code>JSON.stringify</code> text, and a
+      <code>boolean</code> as <code>CustomTag</code> does: an empty or absent
       attribute, or <code>"true"</code> or <code>"false"</code> for the names
-      listed there. It writes an attribute only when its value changes, so
+      listed there. It writes an attribute only when its value changes (for a
+      <code>json</code> attribute, when the text changes), so
       <code>attributeChangedCallback</code> does not run for changes to other
       signals. <code>id</code> cannot be bound: an owned element whose
-      <code>id</code> changes is rebuilt, so give it a fixed <code>id</code>
-      from the server render.
-      <code>bindAttr</code> keeps the name list and
-      <code>data-hs-attr</code> described under Bindings. The type checks the
-      declared keys and their value types, but an object from a variable that
-      has extra keys still writes them, and the runtime checks only the name
-      rules at run time.
+      <code>id</code> changes is rebuilt, so give it a fixed
+      <code>id</code> from the server render. <code>bindAttr</code> keeps the
+      name list and <code>data-hs-attr</code> described under Bindings. The type
+      checks the declared keys and their value types, but an object from a
+      variable that has extra keys still writes them, and the runtime checks
+      only the name rules at run time.
     </dd>
-    <dt><code>element.on(event, handler)</code></dt>
+    <dt><code>declaration.on(event, handler)</code></dt>
     <dd>
       Runs statements when the element dispatches the event, with
       <code>detail</code> standing for the event's <code>detail</code> as an
       expression of the declared type. To handle several events on one element,
-      pass one object, <code>element.on({ rate: ..., clear: ... })</code>;
+      pass one object, <code>rating.on({ rate: ..., clear: ... })</code>;
       spreading two results keeps only the later one. A <code>call</code> in the
       handler can use <code>detail</code> in its <code>onSuccess</code> and
       <code>onError</code> statements too. The runtime runs these events even
@@ -474,16 +492,124 @@ li:has(.row [data-hs-pending]) {
       during that update, so the element does not see a transient server value
       in <code>attributeChangedCallback</code>; a bound attribute the server
       meant to change waits for the runtime to render it again, within the same
-      tick. The runtime ignores hypersig attributes inside those children, such
-      as bindings, <code>on.click</code> handlers, snapshots, value bindings,
-      refs, custom event handlers, Action buttons, <code>action.form()</code>
-      forms, error outlets, and draft fields, because the element's JavaScript
-      may render user content there. Such a button or form sends nothing and a
-      form does not post natively either. An event inside the children runs the
-      nearest handler on the element itself or outside it. Put them on the
-      element itself or outside it.
+      tick. Attributes the server rendered as fixed values, including
+      <code>json</code> ones, are copied as usual. The runtime ignores hypersig
+      attributes inside those children, such as bindings,
+      <code>on.click</code> handlers, snapshots, value bindings, refs, custom
+      event handlers, Action buttons, <code>action.form()</code> forms, error
+      outlets, and draft fields, because the element's JavaScript may render
+      user content there. Such a button or form sends nothing and a form does
+      not post natively either. An event inside the children runs the nearest
+      handler on the element itself or outside it. Put them on the element
+      itself or outside it. Without <code>ownsChildren</code>, children the
+      element's JavaScript renders are removed by the next Live View update.
     </dd>
   </dl>
+
+  <p><strong>Implementing the element: defineElement</strong></p>
+  <pre><code>import { defineElement } from "hypersig.ts/element";
+
+defineElement(rating, {
+  mount(host, props, emit) {
+    // props: { value?: number; max?: number }
+    // emit("rate", 3) is checked against the declaration
+    return {
+      update(props) {},
+      unmount() {},
+    };
+  },
+});</code></pre>
+  <ul>
+    <li>
+      It calls <code>customElements.define</code> with the declared tag and
+      throws if that tag is already defined.
+    </li>
+    <li>
+      <code>mount</code> runs when the element is inserted. Each declared
+      attribute is read as its kind and is left out of <code>props</code>, so it
+      reads as <code>undefined</code>, when it is absent or cannot be read: a
+      <code>number</code> that is not a finite number, a text boolean
+      (<code>data-*</code>, <code>aria-*</code>) that is not
+      <code>"true"</code> or <code>"false"</code>, or a <code>json</code> value
+      that <code>JSON.parse</code> cannot read. A <code>number</code> is read
+      with <code>Number()</code>, so <code>"0x10"</code> and
+      <code>"1e3"</code> read as numbers, and an empty string does not. A
+      <code>json</code> value is not checked against its declared type, so treat
+      it as input.
+    </li>
+    <li>
+      Attribute changes made in one task reach <code>update</code> once, in a
+      microtask, with every declared attribute read again. A change made before
+      <code>unmount</code> never reaches <code>update</code>.
+    </li>
+    <li>
+      <code>unmount</code> runs when the element is removed. Inserting the same
+      element again calls <code>mount</code> again, so moving an element calls
+      <code>unmount</code> and then <code>mount</code>.
+    </li>
+    <li>
+      If <code>mount</code> throws, the element stays unmounted: neither
+      <code>update</code> nor <code>unmount</code> runs, and it is mounted again
+      only when it is inserted again.
+    </li>
+    <li>
+      <code>emit(name, detail)</code> dispatches a <code>CustomEvent</code> that
+      does not bubble, which the handlers from <code>declaration.on</code>
+      receive.
+    </li>
+  </ul>
+  <p>
+    The types check <code>props</code> and <code>emit</code> against the
+    declaration only for an element written with <code>defineElement</code>. An
+    element you register yourself with <code>customElements.define</code> is not
+    compared with its declaration at all.
+  </p>
+
+  <p><strong>React islands</strong></p>
+  <pre><code>import { reactElement } from "hypersig.ts/react";
+
+reactElement(sortableList, SortableList);
+// SortableList: (props: { items?: Item[]; failures?: number; emit: Emit&lt;...&gt; }) =&gt; ReactNode</code></pre>
+  <p>
+    <code>reactElement(declaration, Component)</code> is built on
+    <code>defineElement</code>. Insertion creates a React root on the element
+    and renders <code>Component</code> with the declared attributes (optional,
+    as in <code>props</code> above) and <code>emit</code>. An attribute change
+    renders into the same root, so the component keeps its state. Removal
+    unmounts the root from <code>disconnectedCallback</code>; if an outer React
+    tree removes the element during its commit, React warns about unmounting a
+    root while it is rendering, but a server-rendered page does not have an
+    outer React tree. A component whose props do not match the declaration is a
+    type error, and so is a declaration without <code>ownsChildren: true</code>,
+    because React replaces the children. <code>react</code> and
+    <code>react-dom</code>
+    (^19) are optional peer dependencies, needed only by apps that import
+    <code>hypersig.ts/react</code>. An island is not rendered on the server: the
+    server's HTML holds only the placeholder children you give
+    <code>CustomTag</code>, and <code>mount</code> replaces them. It does not
+    use Shadow DOM, so the page's CSS reaches its DOM. The
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/sortable/server.tsx"
+      >sortable example</a
+    >
+    drops a dragged row as a dimmed pending order until the committed order
+    arrives, returns to the server's order when a save fails (the
+    <code>onError</code> of the <code>call</code> changes a signal that is bound
+    to an attribute), blocks new drags while an order is pending, waits for a
+    drop before showing an update that arrives mid-drag, and applies a drop by
+    key, not by screen position, after another tab reordered the list.
+  </p>
+
+  <p><strong>JSON attributes and Live View</strong></p>
+  <p>
+    A <code>json</code> attribute written in a Live View's <code>render</code>
+    changes when a Topic redraws the Live View, and the change reaches
+    <code>update</code>. The value is part of the page and update HTML, and the
+    whole Live View is sent each time it redraws, so when a list has many rows,
+    keep the update boundary small: split the list into smaller Live Views.
+    There is no size limit on the attribute.
+  </p>
+
   <p><strong>Loading the script</strong></p>
   <p>
     Serve the element's script from your own origin and load it with
@@ -492,16 +618,23 @@ li:has(.row [data-hs-pending]) {
       href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/rating/server.tsx"
       >rating example</a
     >
-    does. The page's <code>script-src 'self'</code> policy applies to it as it
-    does to the runtime.
+    does. Build it with a bundler, as the examples do with
+    <code>bun build</code>. The page's <code>script-src 'self'</code> policy
+    applies to it as it does to the runtime.
   </p>
   <p><strong>What goes unchecked</strong></p>
   <ul>
     <li>
-      Nothing compares the declaration with the element's JavaScript. An
-      attribute the element does not read changes nothing, an event it never
-      dispatches runs nothing, and a <code>detail</code> of another shape
-      reaches the statements as it is (<code>null</code> when it is not JSON).
+      An element registered with <code>customElements.define</code> instead of
+      <code>defineElement</code> is not compared with its declaration. An
+      attribute it does not read changes nothing, an event it never dispatches
+      runs nothing, and a <code>detail</code> of another shape reaches the
+      statements as it is (<code>null</code> when it is not JSON).
+    </li>
+    <li>
+      A <code>json</code> value is read with <code>JSON.parse</code> and not
+      checked against <code>T</code> in the browser. A value that does not parse
+      reads as missing.
     </li>
     <li>
       The type does not check a key of <code>bindElement</code> that is not

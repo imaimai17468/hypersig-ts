@@ -93,11 +93,17 @@
       <a href="../deploy/#updates">Deploy a new version</a>
     </li>
     <li>
-      A JavaScript library such as a map or a rich text editor runs inside a
-      custom element that you write and load yourself. hypersig.ts types the
-      element's attributes and events, but it cannot check them against the
-      library's JavaScript, and a Live View update keeps an element's own
-      children only when its tag and <code>id</code> match.
+      A JavaScript library such as a map, a rich text editor, or a React
+      component runs inside a custom element, which hypersig.ts calls an island.
+      hypersig.ts types the element's attributes and events and, for an element
+      written with <code>defineElement</code>, its <code>props</code> and
+      <code>emit</code>. It does not compare the declaration with an element you
+      register with <code>customElements.define</code>. An island is not
+      rendered on the server, and it does not use Shadow DOM. A Live View update
+      keeps an element's own children only when its tag and
+      <code>id</code> match, and <code>ownsChildren</code> requires the
+      <code>id</code>. A <code>json</code> attribute travels in the HTML of the
+      whole Live View, so keep the Live View small when a list has many rows.
       <a href="../reference/#custom-elements">Custom elements</a>
     </li>
     <li>

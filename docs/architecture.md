@@ -148,21 +148,86 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 
 画面は操作にすぐ反応し、データはサーバーが確定してから表示する。送信中は `action.pending()` と、ランタイムが送信元のフォームやボタンに付ける `data-hs-pending` 属性で処理中であることを示し、値は確定したデータを持つ Live View の更新で変わる。一覧の新しい行もサーバーが key を決めて描く。確定前の値を表示するときは `call` より前に書き、`onError` で描画したときの値を書いて戻す。ほかの人が同時に編集しうる値、サーバーが決める値、検証で失敗しうる入力には使わない。TodoMVC は完了の切り替え、追加、削除を処理中として表示し、確定前の値を使わない。処理中の表示は HTTP の応答で終わる。外部の pubsub を使う構成では確定した更新が応答のあとに届くことがあり、そのあいだは古い値が薄くならずに一瞬見える。
 
+確定前の値を表示してよいのは、利用者が自分で動かした結果を処理中として示す場合に限る。並べ替えのサンプルは、手を離した位置を薄く表示したまま残し、確定した並びが Live View の属性で届いたら置き換え、失敗したら戻す。ほかの人の変更やサーバーが決める値を先に見せるものではなく、それらはサーバーが確定してから表示する。
+
 `data-hs-pending` はランタイムがコントロールごとに数え、最後のリクエストが終わるまで付けたままにする。Live View の morph でも、送信中のコントロールからは外さない（Idiomorph の `beforeAttributeUpdated`）。送信中のフォームやボタンは再び送信しない。`form({ onSubmit })` の文は送信の前に走り、束縛を描き直してから `FormData` を作る。送信中のフォームでは文も走らない。
 
 一時期、テンプレートから複製した仮の行で一覧への追加を先に表示していたが、確定していないデータが確定したデータと並び、アプリのサーバーがブラウザの作った key を受け入れる必要があったため取り除いた。
 
 ### カスタム要素
 
-地図やエディタのような JavaScript のライブラリは、アプリが読み込むカスタム要素で包む。`customElement<Spec>(tag, { ownsChildren })`（`src/element.tsx`）が属性とイベントを型で宣言し、`Element`、`on`、`scope.bindElement` から属性を作る。ランタイムはこの属性の仕様を解釈するだけで、要素の JavaScript は読まない。
+地図やエディタのような JavaScript のライブラリは、アプリが読み込むカスタム要素で包む。要素の属性とイベントは、サーバーとブラウザが共有する宣言の値で一度だけ書く。ランタイムは宣言から作った属性の仕様を解釈するだけで、要素の JavaScript は読まない。
 
-- タグ名は型（`CustomTagName`）で検査できる範囲を検査し、残りの文字は `customElement()` を呼んだときに実行時に検査する。呼び出し側が `Spec` を明示するとタグのリテラルを推論できないため、重複した Action 名と同じく打ち間違いは起動時の例外になる。
-- `bindElement` は `data-hs-element-attr` に書く。`bindAttr` の `data-hs-attr` は名前の一覧で受け付けるので、サーバーとブラウザが同じ規則を使えるよう属性を分けた。`data-hs-element-attr` は宣言済みの名前を値の型で書き分ける（`string` と `number` は文字列、`boolean` は空の属性か属性なし）。ただし `aria-*`、`data-*`、`draggable`、`spellcheck`、`contenteditable` の `boolean` は `"true"` か `"false"` の文字列にする。この判定は `src/protocol.ts` の `rendersBooleanAsText` 1つで、`Element`、`bindElement`、ランタイムが共有する。Hono の JSX は自分の一覧にない名前の `true` を `"true"` と描くので、`bindElement` と `Element` の props はそれ以外の名前の真偽値を空文字列か省略に直してから渡す。`on` で始まる名前（`once` を含む）、`style`、`id`、`data-hs-*` は型と実行時の両方で拒否する。`id` を拒否するのは、ブラウザだけで変わる `id` が子を自分で描く要素を更新のたびに作り直すためである。ランタイムは値が変わらない属性を書かないので、ほかのシグナルの書き込みで `attributeChangedCallback` は呼ばれない。型は宣言していないキーを検査できないので、変数から渡したオブジェクトでは余分なキーも書かれる。
+```ts
+import { customElement, event, json } from "hypersig.ts/element";
+
+const sortableList = customElement("sortable-list", {
+  attributes: { items: json<Item[]>(), failures: "number" },
+  events: { reorder: event<string[]>() },
+  ownsChildren: true,
+});
+```
+
+#### 宣言と入口
+
+- `customElement(tag, { attributes, events, ownsChildren })`（`src/element.ts`）が宣言を値として返す。属性の種類は `"string"`、`"number"`、`"boolean"`、`json<T>()` の4つで、`event<Detail>()` がイベントの `detail` の型を持つ。`json<T>()` の `T` とイベントの `Detail` は JSON にできる型に限る。
+- 入口は3つに分ける。`hypersig.ts/element`（宣言と、ブラウザ側の `defineElement`）は Hono も React も読み込まず、DOM のないサーバーで import しても例外を出さない。`HTMLElement` を継承するクラスは `defineElement` の呼び出し時に作る。`hypersig.ts/react` は `reactElement` を持ち、React を読み込む。`hypersig.ts` は `customElement`、`event`、`json` を `hypersig.ts/element` から再 export し、React は読み込まない。`react` と `react-dom`（^19）は optional の peerDependency で、`hypersig.ts/react` を使うアプリだけが必要とする。
+- サーバーでは `<CustomTag of={declaration} id=... />`（`src/custom-tag.tsx`）が宣言のタグで要素を描き、`declaration.on(...)`、`scope.bindElement(declaration, values)` が属性を作る。
+- タグ名は型（`CustomTagName`）で検査できる範囲を検査し、残りの文字は `customElement()` を呼んだときに実行時に検査する。属性名、イベント名、属性の種類も同じときに実行時に検査するので、打ち間違いは起動時の例外になる。
+- `ownsChildren: true` の宣言の `CustomTag` は `id` を必須の props にする（型で強制する）。`id` がないと Live View の更新のたびに要素が作り直され、`unmount` → `mount` で部品の内部の状態が消える。値はアプリが決める（一覧なら行ごとに一意にする）。
+- 古い `customElement<Spec>(tag, options)` と `decl.Element` は残していない。
+
+#### 属性の値の形式
+
+- `bindElement` は `data-hs-element-attr` に書く。`bindAttr` の `data-hs-attr` は名前の一覧で受け付けるので、サーバーとブラウザが同じ規則を使えるよう属性を分けた。`data-hs-element-attr` は宣言済みの名前を値の型で書き分ける（`string` と `number` は文字列、`boolean` は空の属性か属性なし）。ただし `aria-*`、`data-*`、`draggable`、`spellcheck`、`contenteditable` の `boolean` は `"true"` か `"false"` の文字列にする。この判定は `src/protocol.ts` の `rendersBooleanAsText` 1つで、`CustomTag`、`bindElement`、ランタイム、`defineElement` が共有する。Hono の JSX は自分の一覧にない名前の `true` を `"true"` と描くので、`bindElement` と `CustomTag` の props はそれ以外の名前の真偽値を空文字列か省略に直してから渡す。
+- `json` の属性は `formatJsonAttribute`（`JSON.stringify`）の文字列で書く。`CustomTag` の props、`bindElement`（Signal の値）、ランタイムの書き込みのどれも同じ形式にする。`bindElement` は JSON の属性の名前を `data-hs-element-json`（`customElementAttributes.elementJson`）に並べ、ランタイムはその名前の値を同じ関数で書く。JSON の属性がない束縛では、この属性は書かない。`bindElement` の出力を `CustomTag` に展開しても、すでに書いた JSON を二重に変換しない。
+- `on` で始まる名前（`once` を含む）、`style`、`id`、`data-hs-*` は型と実行時の両方で拒否する。`id` を拒否するのは、ブラウザだけで変わる `id` が子を自分で描く要素を更新のたびに作り直すためである。`json` の属性に `data-*` の名前は使えない（`CustomTag` は `data-*` の props を文字列、数、真偽値として渡すため、型と実行時の両方で拒否する）。ランタイムは値が変わらない属性を書かないので、ほかのシグナルの書き込みで `attributeChangedCallback` は呼ばれない。JSON の属性も同じ文字列かどうかで判定する。型は宣言していないキーを検査できないので、変数から渡したオブジェクトでは余分なキーも書かれる。
 - タグ名は HTML が予約している名前（`font-face` など）を拒否する。イベント名は、ランタイムがすべての要素に委譲で扱う `click`、`input`、`change`、`submit` を型と実行時の両方で拒否する。送信中のクリックを捨てる処理などと衝突するためである。
+
+#### イベント
+
 - イベントは `data-hs-on-custom` にイベント名と文の組で書き、ランタイムがリスナーを付ける。ハンドラの中の `call` の `onSuccess` と `onError` も、発火したイベントの `detail` を読める。ボタンのような送信中のスキップはせず、送信中でもイベントを実行する（エディタやピッカーは頻繁にイベントを出し、捨てると入力を失うため）。リスナーは要素が挿入されたあとの次の描画で付くので、`connectedCallback` の中の同期的なイベントは取りこぼす。
 - 更新の HTML は DOMPurify が検査する。カスタム要素は `isCustomElementName` を満たすタグだけを残す。属性は DOMPurify の許可一覧にあるもの、`data-*` と `aria-*`、`isBindableCustomAttribute` を満たすものが残る。URL の値を検査するのは許可一覧の属性だけなので、一覧にない属性は `javascript:` のような値も残る。`is` による拡張した組み込み要素は受け付けない。
-- `ownsChildren` の要素は、morph（`src/morph.ts` の `morphView`）がタグと `id` が一致するときだけ子を残し、一致しなければ Idiomorph の終了後に作り直す。一覧では要素ごとに `id` を付ける。残した要素では、`data-hs-element-attr` に書かれた属性をサーバーの HTML から写さず、ランタイムに任せる。要素の `attributeChangedCallback` がサーバーの一時的な値を見ないためで、サーバーが変えるつもりだった束縛済みの属性は、ランタイムが同じ tick のうちに描画し直すまで待つ。子はライブラリが描き、ユーザーの内容を含むことがあるので、ランタイムは子の中の hypersig の属性（束縛、委譲するイベントのハンドラ、スナップショット、値の束縛、ref、カスタムイベントのリスナー、Action のボタン、`data-hs-form` のフォーム、`data-hs-error` と `data-hs-field-error` の出力先、`data-hs-draft-form` と `data-hs-draft` の下書き）を無視する。要素そのものは対象に残る。委譲するイベントは、子の中のハンドラを飛ばして要素そのものか外側のいちばん近いハンドラを実行する。`src/browser.ts` のボタンとフォームの委譲は既定の動作を止めたうえでランタイムの `send` / `sendForm` に渡し、ランタイムが子の中のものを送らない。既定の動作を止めるので、偽のフォームがブラウザの通常の送信で Action を送ることもない。出力先と下書きは `src/browser.ts` と `src/drafts.ts` が探すので、そこでも子の中のものを飛ばす。判定はどれもランタイムの `isOwnedChild` を使う。
-- 宣言と要素の JavaScript の突き合わせはしない。要素が読まない属性や発火しないイベントは何も起こさず、別の形の `detail` はそのまま文に届く（JSON でなければ `null`）。
+
+#### 子を自分で描く要素
+
+`ownsChildren` の要素は、morph（`src/morph.ts` の `morphView`）がタグ、`data-hs-owns-children`、`id` が一致するときだけ子を残し、一致しなければ Idiomorph の終了後に作り直す。残した要素では、`data-hs-element-attr` と `data-hs-element-json` に書かれた属性をサーバーの HTML から写さず、ランタイムに任せる。要素の `attributeChangedCallback` がサーバーの一時的な値を見ないためで、サーバーが変えるつもりだった束縛済みの属性は、ランタイムが同じ tick のうちに描画し直すまで待つ。サーバーが固定の値として描いた JSON の属性は、ほかの属性と同じく写す。
+
+子はライブラリが描き、ユーザーの内容を含むことがあるので、ランタイムは子の中の hypersig の属性（束縛、委譲するイベントのハンドラ、スナップショット、値の束縛、ref、カスタムイベントのリスナー、Action のボタン、`data-hs-form` のフォーム、`data-hs-error` と `data-hs-field-error` の出力先、`data-hs-draft-form` と `data-hs-draft` の下書き）を無視する。要素そのものは対象に残る。委譲するイベントは、子の中のハンドラを飛ばして要素そのものか外側のいちばん近いハンドラを実行する。`src/browser.ts` のボタンとフォームの委譲は既定の動作を止めたうえでランタイムの `send` / `sendForm` に渡し、ランタイムが子の中のものを送らない。既定の動作を止めるので、偽のフォームがブラウザの通常の送信で Action を送ることもない。出力先と下書きは `src/browser.ts` と `src/drafts.ts` が探すので、そこでも子の中のものを飛ばす。判定はどれもランタイムの `isOwnedChild` を使う。`ownsChildren: false` の要素の子は Live View の更新で消える。
+
+#### defineElement
+
+ブラウザ側は `defineElement(declaration, { mount(host, props, emit) { return { update, unmount }; } })`（`src/define-element.ts`）で書く。
+
+- 宣言のタグ名で `customElements.define` を呼び、同じタグが定義済みなら例外にする。`observedAttributes` は宣言の属性名から作る。
+- `props` は宣言の属性の型から決まり、各項目は省略可能になる。属性がない、`number` が有限の数にならない、`data-*` や `aria-*` の真偽値が `"true"` か `"false"` でない、`json` が JSON として読めない、という属性は `props` に含めず、`undefined` として読む。`number` は `Number()` で読むので、`"0x10"` や `"1e3"` も数になる。空の文字列は数にしない。`json` の値は `JSON.parse` で読めることしか検査せず、宣言した `T` の形かどうかは実行時に検査しない。
+- `emit(name, detail)` の `name` と `detail` は宣言で検査する。`bubbles: false` の `CustomEvent` を発火し、`data-hs-on-custom` のリスナーが受ける。
+- `connectedCallback` で `mount` を呼ぶ。`attributeChangedCallback` は、同じタスクの中の変更をまとめ、マイクロタスクで一度だけ `update` を呼ぶ（Live View の morph で複数の属性が同時に変わるため）。`update` には宣言したすべての属性を読み直して渡す。`disconnectedCallback` で `unmount` を呼ぶ。`unmount` の前の変更は `update` に届かない。切り離してから同じ要素を挿し直したら、もう一度 `mount` する（要素を動かすと `unmount` のあとに `mount` が走る）。
+- `mount` が例外を投げると、その要素は `mount` されないままになり、`update` も `unmount` も呼ばれない。その要素を挿し直すまで、もう一度 `mount` することはない。
+- `ownsChildren: true` の宣言では、`mount` は `host` の子を自由に描ける。SSR で置いた仮の子は `mount` が消してよい。
+
+宣言と要素の JavaScript の突き合わせは、`defineElement` を使うときだけ型で行う。`props` と `emit` の型は宣言から決まるので、読まない属性や宣言にないイベントは型エラーになる。`customElements.define` で直接書いた要素は、今までどおり突き合わせない。要素が読まない属性や発火しないイベントは何も起こさず、別の形の `detail` はそのまま文に届く（JSON でなければ `null`）。
+
+#### React アダプター
+
+`reactElement(declaration, Component)`（`src/react.tsx`）は `defineElement` の上に作る。`mount` で `createRoot(host)` を作って描き、`update` で同じ root に描き直し、`unmount` で `root.unmount()` する。同じ root への描き直しなので、部品の内部の状態は残る。部品の props は宣言の属性の型（省略可能）と `emit` で、合わない部品は型エラーになる。React が子を描くので、`ownsChildren: true` の宣言だけを受け付け、`false` の宣言は型エラーにする。`unmount` は `disconnectedCallback` から呼ぶため、外側の React の木が commit の最中にこの要素を外すと、React の処理中に `root.unmount()` を呼ぶことになり、React が警告する。ページはサーバーが描くので、通常は外側に React の木はない。
+
+アイランドはサーバーで描かない。サーバーの HTML は、部品が描く前の仮の子（上の例では行の一覧）だけで、`mount` が置き換える。Shadow DOM も使わない。部品の DOM は通常の DOM なので、ページの CSS が当たり、`ownsChildren` の規則で hypersig の属性が無視される。
+
+#### JSON の属性と Live View
+
+Live View の `render` の中で `<CustomTag of={list} items={todos} />` のように書くと、サーバーが JSON の属性を描く。Topic の更新で Live View が描き直されると属性が変わり、morph が残した要素の `attributeChangedCallback` から `update` に届く。JSON の属性の大きさに上限は設けない。属性の値はそのままページの HTML と更新の HTML に入り、Live View が描き直されるたびに全体を送るので、一覧の行数が多いときは更新境界を小さくする（行ごとに別の Live View にする、一覧を分ける）。Live View ごとに描き直す方針は、ほかの View と同じである。
+
+#### サンプルの並べ替え
+
+`examples/sortable` は React と dnd-kit の部品を `reactElement` で載せる。Live View が一覧を JSON の属性で渡し、並べ替えたら `emit("reorder", keys)` から Action で保存し、Topic を発行して、ほかのタブの Live View が新しい順で描き直す。
+
+- 手を離した位置は、処理中として薄く表示したまま残す。確定した並びが属性で届いたらそちらに置き換える。保存が失敗したら、Action の `call` の `onError` で `failures` の Signal を書き換え、`bindElement` で部品の属性に渡す。部品は属性が変わったら手元の並びを捨てて、サーバーの並びに戻る。フレームワークに失敗の API は足していない。
+- 処理中は行をドラッグできないので、保存は同時に1つだけ走り、その結果が処理中の表示を消す。
+- ドラッグ中に別のタブの更新が届いても、ドロップするまで反映を待つ。ほかのタブの並べ替えのあとにドロップしたときは、画面の位置ではなくキーで移動を適用する。
+- キーボードでの並べ替えは dnd-kit の `KeyboardSensor` を使う。
+
+`examples/rating` は同じ宣言を `defineElement` で実装している。
 
 ### ランタイムの大きさ
 
@@ -200,6 +265,14 @@ gzip での増分は目安の 4 KB 以下に収まった。
 | カスタム要素の実装後        | 60,580 B  | 22,248 B |
 | 最終レビューの修正後        | 60,913 B  | 22,374 B |
 | 増分（修正後まで）          | 2,911 B   | 1,200 B  |
+
+アイランドの実装後に、この計画を書いたコミット（c2332fa）と現在を同じ方法で比べた（Bun 1.3.1、gzip -9）。増分は `json` の属性を書く処理で、`data-hs-element-json` の名前の読み取りと `formatJsonAttribute` の呼び出しである。`defineElement` と `reactElement` は別の入口なので、ランタイムには入らない。
+
+| 時点                                   | minify 後 | gzip -9  |
+| -------------------------------------- | --------- | -------- |
+| c2332fa（アイランドの前）              | 61,674 B  | 22,615 B |
+| 宣言の値と JSON の属性の実装後（現在） | 61,925 B  | 22,674 B |
+| 増分                                   | 251 B     | 59 B     |
 
 ## 独立した View の描画
 

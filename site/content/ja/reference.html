@@ -383,17 +383,18 @@ li:has(.row [data-hs-pending]) {
   <h2>カスタム要素</h2>
   <p>
     地図やエディタのような JavaScript
-    のライブラリは、自分で書いて読み込むカスタム要素で包みます。<code
-      >customElement</code
-    >
-    は要素の属性とイベントを型で宣言するので、ページは文字列リテラルなしで属性を設定し、イベントを処理できます。
+    のライブラリは、カスタム要素で包みます。要素の属性とイベントは、宣言の値として一度だけ書きます。ページはその値から属性を設定してイベントを処理し、ブラウザ側のコードも同じ値で型付けされるので、どれも文字列リテラルで書きません。
   </p>
-  <pre><code>const rating = customElement("star-rating", {
+  <pre><code>// elements.ts（サーバーとブラウザが import する）
+import { customElement, event } from "hypersig.ts/element";
+
+export const rating = customElement("star-rating", {
   attributes: { value: "number", max: "number" },
   events: { rate: event&lt;number&gt;() },
   ownsChildren: true,
 });
 
+// サーバー
 &lt;CustomTag
   of={rating}
   id="rating"
@@ -404,17 +405,23 @@ li:has(.row [data-hs-pending]) {
   ])}
 /&gt;</code></pre>
   <dl>
-    <dt><code>customElement&lt;Spec&gt;(tag, options)</code></dt>
+    <dt>
+      <code>customElement(tag, { attributes, events, ownsChildren })</code>
+    </dt>
     <dd>
-      <code>Spec</code>
-      には、要素が使う属性（<code>attributes</code>、値ごとの型）とイベント（<code>events</code>、<code
-        >detail</code
+      宣言を返します。<code>attributes</code> は名前ごとに
+      <code>"string"</code
+      >、<code>"number"</code>、<code>"boolean"</code>、<code
+        >json&lt;T&gt;()</code
       >
-      ごとの型）を書きます。タグ名は小文字で始め、<code>-</code>
+      のどれかを指定します。<code>events</code> は名前ごとに
+      <code>event&lt;Detail&gt;()</code> を指定します。<code>T</code> と
+      <code>Detail</code> は JSON
+      にできる型に限ります。タグ名は小文字で始め、<code>-</code>
       を含み、小文字、数字、<code>-</code>、<code>.</code>、<code>_</code>
-      だけを使います。型で検査できる部分は型が検査し、それ以外の文字は
+      だけを使います。型で検査できる部分は型が検査し、それ以外は
       <code>customElement</code>
-      を呼んだときに検査するので、タグ名の打ち間違いは起動時のエラーになります。<code
+      を呼んだときに検査します。属性名、イベント名、属性の種類も同じときに検査するので、打ち間違いは起動時のエラーになります。<code
         >font-face</code
       >
       や <code>annotation-xml</code> のように HTML
@@ -423,7 +430,9 @@ li:has(.row [data-hs-pending]) {
       >
       で始まる名前（<code>once</code>
       も含みます）、<code>style</code>、<code>id</code>、<code>data-hs-*</code>
-      は使えません。イベント名は小文字で始め、小文字、数字、<code>-</code>、<code>.</code>、<code>:</code>、<code
+      は使えません。<code>data-*</code> の属性を
+      <code>json</code>
+      にすることもできません。イベント名は小文字で始め、小文字、数字、<code>-</code>、<code>.</code>、<code>:</code>、<code
         >_</code
       >
       を使います。ランタイムがすべての要素で扱う
@@ -431,39 +440,52 @@ li:has(.row [data-hs-pending]) {
         >submit</code
       >
       は使えません。型がこれらの名前を拒否し、手書きの
-      <code>data-hs-on-custom</code> にあってもランタイムは無視します。
+      <code>data-hs-on-custom</code>
+      にあってもランタイムは無視します。この関数と型は、Hono も React も import
+      せず DOM のない環境でも import できる
+      <code>hypersig.ts/element</code> と、<code>hypersig.ts</code>
+      から export します。
     </dd>
-    <dt><code>Element</code></dt>
+    <dt><code>&lt;CustomTag of={declaration} /&gt;</code></dt>
     <dd>
       宣言したタグ名で要素を描画します。Hono JSX が名前を持つ HTML
       属性、<code>role</code>、<code>part</code>、<code>exportparts</code>、<code>aria-*</code>、<code>data-*</code>、<code>children</code>、宣言した属性（固定値）を渡せます。<code
-        >true</code
+        >json</code
       >
-      は空の属性として描画し、<code>false</code> は属性を書きません。ただし
+      の属性は、その型の JSON の値を受け取り、<code>JSON.stringify</code>
+      した文字列で書きます。<code>true</code> は空の属性として描画し、<code
+        >false</code
+      >
+      は属性を書きません。ただし
       <code>aria-*</code
       >、<code>data-*</code>、<code>draggable</code>、<code>spellcheck</code>、<code
         >contenteditable</code
       >
-      の真偽値は <code>"true"</code> または <code>"false"</code>
-      として描画します。要素には
-      <code>id</code> を付け、一覧では要素ごとに別の
+      の真偽値は <code>"true"</code> または
+      <code>"false"</code> として描画します。宣言が
+      <code>ownsChildren: true</code> のときは
+      <code>id</code> が必須です（なければ型エラーです）。一覧では要素ごとに別の
       <code>id</code> を付けてください。子を自分で描く要素は、タグと
       <code>id</code>
-      が一致するときだけ Live View の更新で残り、そうでなければ作り直されます。
+      が一致するときだけ Live View
+      の更新で残り、そうでなければ作り直されて、要素の JavaScript
+      が持っていた状態が消えます。
     </dd>
-    <dt><code>scope.bindElement(element, values)</code></dt>
+    <dt><code>scope.bindElement(declaration, values)</code></dt>
     <dd>
       宣言した属性を式に束縛します。サーバーが最初の値を描画し、以降はシグナルの変化に合わせてランタイムが書き込みます。属性は
       <code>data-hs-element-attr</code>
       に書かれ、独自の規則に従います。上の属性名の規則を満たす宣言済みの名前を受け付け、<code
         >string</code
       >
-      と <code>number</code> は文字列として、<code>boolean</code> は
-      <code>Element</code>
+      と <code>number</code> は文字列として、<code>json</code> は
+      <code>JSON.stringify</code> した文字列として、<code>boolean</code> は
+      <code>CustomTag</code>
       と同じく空の属性か属性なしとして（そこに挙げた名前では
       <code>"true"</code> または
       <code>"false"</code>
-      として）書きます。値が変わったときだけ属性を書くので、ほかのシグナルが変わっても
+      として）書きます。値が変わったとき（<code>json</code>
+      の属性では文字列が変わったとき）だけ属性を書くので、ほかのシグナルが変わっても
       <code>attributeChangedCallback</code> は呼ばれません。<code>id</code>
       は束縛できません。子を自分で描く要素は <code>id</code>
       が変わると作り直されるので、サーバーの描画で固定の
@@ -471,13 +493,13 @@ li:has(.row [data-hs-pending]) {
       は束縛の項で説明した名前の一覧と <code>data-hs-attr</code>
       のままです。型は宣言したキーと値の型を検査しますが、余分なキーを持つ変数のオブジェクトを渡すと、そのキーも書かれます。実行時に検査するのは名前の規則だけです。
     </dd>
-    <dt><code>element.on(event, handler)</code></dt>
+    <dt><code>declaration.on(event, handler)</code></dt>
     <dd>
       要素がそのイベントを発火したときに文を実行します。<code>detail</code>
       はイベントの
       <code>detail</code>
       を宣言した型の式として表します。1つの要素で複数のイベントを処理するときは、<code
-        >element.on({ rate: ..., clear: ... })</code
+        >rating.on({ rate: ..., clear: ... })</code
       >
       のように1つのオブジェクトで渡します。2つの結果を展開すると、あとのものだけが残ります。ハンドラの中の
       <code>call</code> は、<code>onSuccess</code> と
@@ -495,14 +517,139 @@ li:has(.row [data-hs-pending]) {
       に書いた属性は、この更新ではランタイムに任せるので、要素が
       <code>attributeChangedCallback</code>
       でサーバーの一時的な値を見ることはありません。サーバーが変えるつもりだった束縛済みの属性は、ランタイムが同じ
-      tick のうちに描画し直すまで待ちます。要素の JavaScript
+      tick
+      のうちに描画し直すまで待ちます。サーバーが固定の値として描いた属性は、<code
+        >json</code
+      >
+      も含めて通常どおり写します。要素の JavaScript
       はその子にユーザーの内容を描くことがあるので、ランタイムは子の中にある
       hypersig の属性（束縛、<code>on.click</code>
       などのハンドラ、スナップショット、値の束縛、ref、カスタムイベントのハンドラ、Action
       のボタン、<code>action.form()</code>
-      のフォーム、エラーの出力先、下書きのフィールド）を無視します。そうしたボタンやフォームは何も送らず、フォームがブラウザの既定の送信をすることもありません。子の中で起きたイベントは、要素そのものか要素の外にあるいちばん近いハンドラが実行します。これらは要素そのものか、要素の外に付けてください。
+      のフォーム、エラーの出力先、下書きのフィールド）を無視します。そうしたボタンやフォームは何も送らず、フォームがブラウザの既定の送信をすることもありません。子の中で起きたイベントは、要素そのものか要素の外にあるいちばん近いハンドラが実行します。これらは要素そのものか、要素の外に付けてください。<code
+        >ownsChildren</code
+      >
+      がない要素の JavaScript が描いた子は、次の Live View の更新で消えます。
     </dd>
   </dl>
+
+  <p><strong>要素を実装する: defineElement</strong></p>
+  <pre><code>import { defineElement } from "hypersig.ts/element";
+
+defineElement(rating, {
+  mount(host, props, emit) {
+    // props: { value?: number; max?: number }
+    // emit("rate", 3) は宣言で検査される
+    return {
+      update(props) {},
+      unmount() {},
+    };
+  },
+});</code></pre>
+  <ul>
+    <li>
+      宣言のタグ名で <code>customElements.define</code>
+      を呼びます。同じタグが定義済みなら例外にします。
+    </li>
+    <li>
+      <code>mount</code>
+      は要素が挿入されたときに呼びます。宣言した属性は種類に従って読み、属性がない、または読めないときは
+      <code>props</code> に含めず、<code>undefined</code>
+      として読みます。読めない場合とは、有限の数にならない
+      <code>number</code>、<code>"true"</code> でも
+      <code>"false"</code>
+      でもない文字列の真偽値（<code>data-*</code>、<code>aria-*</code>）、<code
+        >JSON.parse</code
+      >
+      で読めない <code>json</code> です。<code>number</code> は
+      <code>Number()</code> で読むので、<code>"0x10"</code> や
+      <code>"1e3"</code> も数になり、空の文字列は数になりません。<code
+        >json</code
+      >
+      の値は宣言した型かどうかを検査しないので、入力として扱ってください。
+    </li>
+    <li>
+      同じタスクの中の属性の変更はまとめて、マイクロタスクで一度だけ
+      <code>update</code>
+      に届きます。宣言したすべての属性を読み直して渡します。<code>unmount</code>
+      の前の変更は <code>update</code> に届きません。
+    </li>
+    <li>
+      <code>unmount</code> は要素が外されたときに呼びます。同じ要素を挿し直すと
+      <code>mount</code> をもう一度呼ぶので、要素を動かすと
+      <code>unmount</code> のあとに <code>mount</code> が走ります。
+    </li>
+    <li>
+      <code>mount</code> が例外を投げた要素は
+      <code>mount</code> されないままで、<code>update</code> も
+      <code>unmount</code> も呼ばれません。挿し直したときにだけ、もう一度
+      <code>mount</code>
+      します。
+    </li>
+    <li>
+      <code>emit(name, detail)</code> は、バブリングしない
+      <code>CustomEvent</code> を発火し、<code>declaration.on</code>
+      のハンドラが受けます。
+    </li>
+  </ul>
+  <p>
+    <code>props</code> と
+    <code>emit</code> を宣言と突き合わせて検査するのは、<code
+      >defineElement</code
+    >
+    で書いた要素だけです。自分で
+    <code>customElements.define</code>
+    に登録した要素は、宣言と突き合わせません。
+  </p>
+
+  <p><strong>React のアイランド</strong></p>
+  <pre><code>import { reactElement } from "hypersig.ts/react";
+
+reactElement(sortableList, SortableList);
+// SortableList: (props: { items?: Item[]; failures?: number; emit: Emit&lt;...&gt; }) =&gt; ReactNode</code></pre>
+  <p>
+    <code>reactElement(declaration, Component)</code> は
+    <code>defineElement</code> の上に作ります。要素が挿入されると、要素に React
+    の root を作り、宣言した属性（上の <code>props</code> と同じく省略可能）と
+    <code>emit</code> を渡して <code>Component</code>
+    を描画します。属性が変わると同じ root
+    に描き直すので、部品の内部の状態は残ります。外されると
+    <code>disconnectedCallback</code> から root を unmount します。外側の React
+    の木が commit の最中にこの要素を外すと、React が root を描画中に unmount
+    することを警告しますが、サーバーが描くページに外側の React
+    の木はありません。部品の props が宣言と合わないと型エラーになり、<code
+      >ownsChildren: true</code
+    >
+    でない宣言を渡すときも、React が子を置き換えるので型エラーになります。<code
+      >react</code
+    >
+    と <code>react-dom</code>（^19）は optional の peer dependency で、<code
+      >hypersig.ts/react</code
+    >
+    を import
+    するアプリだけが必要とします。アイランドはサーバーで描きません。サーバーの
+    HTML は <code>CustomTag</code> に渡した仮の子だけで、<code>mount</code>
+    がそれを置き換えます。Shadow DOM は使わないので、ページの CSS が部品の DOM
+    に当たります。<a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/sortable/server.tsx"
+      >sortable のサンプル</a
+    >は、ドロップした行を、確定した並びが届くまで処理中として薄く表示します。保存が失敗するとサーバーの並びに戻り（<code
+      >call</code
+    >
+    の <code>onError</code>
+    が、属性に束縛したシグナルを変えます）、処理中は新しいドラッグを受け付けず、ドラッグ中に届いた更新はドロップするまで反映を待ち、別のタブが並べ替えたあとのドロップは、画面の位置ではなくキーで適用します。
+  </p>
+
+  <p><strong>JSON の属性と Live View</strong></p>
+  <p>
+    Live View の <code>render</code> に書いた <code>json</code> の属性は、Topic
+    で Live View が描き直されると変わり、その変化は
+    <code>update</code> に届きます。値はページと更新の HTML に入り、Live View
+    が描き直されるたびに全体を送るので、一覧の行数が多いときは、一覧を小さな
+    Live View
+    に分けて更新境界を小さくしてください。属性の大きさに上限はありません。
+  </p>
+
   <p><strong>スクリプトの読み込み方</strong></p>
   <p>
     要素のスクリプトは自分のオリジンから配信し、<code
@@ -511,16 +658,24 @@ li:has(.row [data-hs-pending]) {
     で読み込みます。<a
       href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/rating/server.tsx"
       >rating のサンプル</a
-    >がその例です。ページの <code>script-src 'self'</code>
+    >がその例です。サンプルのように
+    <code>bun build</code> などのバンドラで作ります。ページの
+    <code>script-src 'self'</code>
     は、ランタイムと同じようにこのスクリプトにも適用されます。
   </p>
   <p><strong>検査できないこと</strong></p>
   <ul>
     <li>
-      宣言と要素の JavaScript
-      を突き合わせる検査はありません。要素が読まない属性を設定しても何も変わらず、要素が発火しないイベントは何も実行せず、別の形の
+      <code>defineElement</code> ではなく
+      <code>customElements.define</code>
+      で登録した要素は、宣言と突き合わせません。要素が読まない属性を設定しても何も変わらず、要素が発火しないイベントは何も実行せず、別の形の
       <code>detail</code> はそのまま文に届きます（JSON でなければ
       <code>null</code> です）。
+    </li>
+    <li>
+      <code>json</code> の値はブラウザで
+      <code>JSON.parse</code> で読むだけで、<code>T</code>
+      かどうかは検査しません。読めない値は、ないものとして扱います。
     </li>
     <li>
       変数から渡したオブジェクトにある、宣言していない <code>bindElement</code>
