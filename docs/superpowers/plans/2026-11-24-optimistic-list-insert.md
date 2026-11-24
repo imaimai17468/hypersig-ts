@@ -1,3 +1,5 @@
+> この機能は 2026-11-24 に取り除いた。確定していない行が確定したデータと並び、アプリのサーバーがブラウザの作った key を受け入れる必要があったため。画面は操作にすぐ処理中として反応し、データはサーバーが確定してから表示する原則に戻した。
+
 # 一覧への楽観的な追加 実装計画
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

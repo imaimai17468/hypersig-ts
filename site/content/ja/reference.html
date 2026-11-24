@@ -183,14 +183,7 @@ const e = editor.with({ base: draft.revision });</code></pre>
     </dd>
     <dt><code>action.call(input, options)</code></dt>
     <dd>
-      文の中から Action
-      を送ります。入力の各項目には値か式を書けます。同じハンドラーで
-      <code>call</code>
-      より前に書いた変更は、すぐに画面に出ます。Action が失敗し、その後に Live
-      View
-      がそのパスの値を書いていなければ、ランタイムは元の値に戻します。送信中に
-      Live View
-      からそのパスの値が届いた場合は、送信が終わるまで適用を待ちます。<code
+      文の中から Action を送ります。入力の各項目には値か式を書けます。<code
         >options.onSuccess(output)</code
       >
       と <code>options.onError</code> には文を書きます。<code
@@ -210,133 +203,57 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>form({ draft: true })</code> に復元されると true になり、その Action
       が成功すると false に戻ります。
     </dd>
+    <dt><code>data-hs-pending</code></dt>
+    <dd>
+      ランタイムは、リクエストを送ったフォームやボタンにこの属性を付け、リクエストが終わると成功でも失敗でも外します。送信中のコントロールは再び送信しません。CSS
+      でこの属性を使うと、JavaScript なしで処理中であることを表示できます。
+    </dd>
     <dt><code>action.form({ onSubmit })</code></dt>
     <dd>
-      フォームの送信時、リクエストを送る前にブラウザで文を実行します。ここで書いた値は、<code
+      フォームの送信時、リクエストを送る前にブラウザで文を実行します。フォームのデータを作る前に束縛を描き直すので、Signal
+      に束縛した hidden input は文が書いた値を送ります。ここで書いた値は、<code
         >call</code
       >
-      より前の書き込みと同じく、その送信リクエストが持ちます。<code
-        >onSubmit</code
-      >
-      を持つフォームは、前のリクエストが送信中でも再び送信できます。それぞれのリクエストが自分の書き込みと仮の行を持ち、<code
-        >pending()</code
-      >
-      とフォームの
-      <code>data-hs-pending</code>
-      属性は最後のリクエストが終わるまで残ります。<code>onSubmit</code>
-      のないフォームは一度に一つのリクエストだけを送り、送信中にもう一度送信しても無視します。
-    </dd>
-    <dt>
-      <code>insertTemplate(initial, { name })</code>
-    </dt>
-    <dd>
-      楽観的な一覧への挿入に使う行のテンプレートを定義します。ID
-      <code>name-番号</code>
-      は呼び出したときに割り当てられるので、モジュールの直下で定義します。<code
-        >initial</code
-      >
-      で項目の型を決め、<code>item.項目名</code>
-      は挿入する行のその項目を表す式です。部品は次のとおりです。
-      <ul>
-        <li>
-          <code>template()</code> は <code>&lt;template&gt;</code>
-          要素に付けます。中身のルート要素はちょうど一つにし、すべての Live View
-          の外に置きます。DOMPurify が Fragment 内の
-          <code>&lt;template&gt;</code> を取り除くためです。束縛
-          (<code>bindText</code>、<code>bindShow</code>、<code>bindAttr</code>)
-          は、サーバーでは <code>initial</code> の値で、ブラウザでは挿入した値で
-          <code>item</code> を描画します。<code>item</code>
-          はテンプレートの中のこれらの束縛でだけ使ってください。ほかの場所で使っても誤りは報告されず、サーバーでは別のスコープの束縛が
-          <code>false</code>
-          と描画し、ブラウザでは仮の行の外で値を持ちません。
-        </li>
-        <li>
-          <code>slot()</code>
-          は、ブラウザが行を挿入する一覧の要素に付けます。確定した行を描く Live
-          View の中の、項目が加わる一覧にだけ置いてください。スロットの Live
-          View に確定した行が届かない場合や、スロットがどの Live View
-          の中にもない場合、成功した仮の行はページを読み込み直すまで残ります。
-        </li>
-        <li>
-          <code>insert(values, key)</code>
-          は文です。そのテンプレートのすべてのスロットの末尾に仮の行を足します。値はリテラルか式、<code
-            >key</code
-          >
-          は文字列か文字列の式です。項目名の誤りは型でだけ検査するので、型のない呼び出し元は、未知の項目名を書いてもエラーになりません。
-        </li>
-        <li>
-          <code>confirms(key)</code> は確定した行に付けます。スロットを含む Live
-          View のどこかに (入れ子の Live View の中は除く)
-          <code>confirms(key)</code> を持つ要素が現れると、その key
-          の仮の行を取り除きます。Action が失敗したときも取り除きます。
-        </li>
-      </ul>
+      より前の書き込みと同じく、その送信リクエストが持ちます。リクエストが送信中のフォームは再び送信せず、文も実行しません。
     </dd>
   </dl>
+  <p>
+    画面は操作にすぐ反応し、データはサーバーが確定してから表示します。リクエストの送信中は
+    <code>pending()</code> や <code>data-hs-pending</code>
+    で処理中であることを示し、画面の値は確定したデータを持つ Live View
+    の更新が届いたときに変わります。一覧の新しい行も、その更新でサーバーから届きます。TodoMVC
+    は、完了の切り替えや削除が送信中の行を薄く表示します。
+  </p>
   <pre><code>&lt;button
   type="button"
-  {...r.bindAttr({ "aria-pressed": r.completed })}
-  {...on.click([
-    r.completed.toggle(),
-    toggle.call({ todoKey: todo.key, completed: r.completed }),
-  ])}
+  aria-pressed={String(todo.completed)}
+  {...toggle.bind({ todoKey: todo.key, completed: !todo.completed })}
 &gt;
-  &lt;span {...r.bindText(r.completed.choose("✓", "○"))} /&gt;
+  {todo.completed ? "✓" : "○"}
+&lt;/button&gt;
+
+/* style.css */
+li:has([data-hs-pending]) {
+  opacity: 0.55;
+}</code></pre>
+  <p>
+    <code>call</code> より前に Signal
+    に書き込むのは例外で、サーバーが確定する前の値を表示します。同じハンドラーで
+    <code>call</code>
+    より前に書いた変更は、すぐに画面に出ます。Action が失敗し、その後に Live
+    View
+    がそのパスの値を書いていなければ、ランタイムは元の値に戻します。送信中に
+    Live View
+    からそのパスの値が届いた場合は、送信が終わるまで適用を待ちます。ほかの人が同時に編集しうる値、サーバーが決める値
+    (key、順序、合計など)、検証で失敗しうる入力には使わず、処理中の表示にしてください。
+  </p>
+  <pre><code>&lt;button
+  type="button"
+  {...r.bindAttr({ "aria-pressed": r.open })}
+  {...on.click([r.open.toggle(), setOpen.call({ open: r.open })])}
+&gt;
+  Details
 &lt;/button&gt;</code></pre>
-  <p>
-    楽観的な追加は、これらをつなげて作ります。ブラウザが key
-    を作り、仮の行を表示し、Action の入力で key を送ります。サーバーは key
-    の形式を検証し、すでにある key は拒否し、確定した行を
-    <code>confirms(key)</code> 付きで描画します。ブラウザは送信のたびに key
-    を書き換えるので、hidden input にサーバーが描く値は JavaScript
-    なしで送るフォームのためだけにあります。リクエストごとに新しい key
-    を描いてください。そうしないと、ネイティブの送信が key の検証で失敗します。
-  </p>
-  <pre><code>const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
-const composer = signals({ title: "", key: "" }, { name: "composer" });
-const entry = composer.with({ key: crypto.randomUUID() });
-
-&lt;form
-  {...entry.init()}
-  {...add.form({
-    resetOnSuccess: true,
-    onSubmit: [
-      entry.key.set(uuid()),
-      newTodo.insert({ title: entry.title }, entry.key),
-    ],
-  })}
-&gt;
-  &lt;input type="hidden" name={add.field("todoKey")} {...entry.bindValue(entry.key)} /&gt;
-  &lt;input name={add.field("todoTitle")} {...entry.bindValue(entry.title)} /&gt;
-&lt;/form&gt;
-
-&lt;ul {...newTodo.slot()}&gt;
-  {todos.map((todo) =&gt; (
-    &lt;li {...newTodo.confirms(todo.key)}&gt;...&lt;/li&gt;
-  ))}
-&lt;/ul&gt;
-
-&lt;template {...newTodo.template()}&gt;
-  &lt;li&gt;&lt;span {...newTodo.bindText(newTodo.item.title)} /&gt;&lt;/li&gt;
-&lt;/template&gt;</code></pre>
-  <p>
-    確定した一覧は Live View が持ち、ブラウザが描くのは仮の行だけです。Live View
-    を morph するあいだ、仮の行はいったん外し、morph
-    のあとでスロットの末尾に付け直します。morph
-    でスロットがなくなった仮の行は捨てます。仮の行の中にあるフォーカスは、morph
-    で失われます。Action
-    が失敗すると仮の行を取り除きます。仮の行の並べ替えと編集はできません。
-  </p>
-  <p>
-    削除に新しい API は要りません。行の Signal に
-    <code>removed</code> 項目を持たせ、<code>bindShow(r.removed.not())</code>
-    で隠し、<code>call</code>
-    より前に立てます。
-    <code
-      >on.click([r.removed.set(true), remove.call({ todoKey: todo.key })])</code
-    >。呼び出しが失敗すると、<code>removed</code>
-    が元に戻って行が再び表示されます。
-  </p>
   <p><strong>既知の制約</strong></p>
   <ul>
     <li>

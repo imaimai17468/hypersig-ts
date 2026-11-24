@@ -69,13 +69,13 @@
   </p>
   <ul>
     <li>
-      An added item shows at once as a preview, and the confirmed list still
-      comes from the server. A preview comes from a template and shows only the
-      fields the template binds. It cannot be reordered or edited. It goes away
-      when the confirmed row carrying the same key arrives, so the key the
-      browser sends must round-trip through the Action, or when the Action
-      fails. In the TodoMVC example, toggling, adding, and deleting a task all
-      show at once.
+      Values, including new list rows, appear once the server confirms them.
+      Until then the page shows that the action is in progress, with
+      <code>pending()</code> or the <code>data-hs-pending</code> attribute.
+      Writing a signal before a <code>call</code> shows a value before it is
+      confirmed and is meant for the exceptions. In the TodoMVC example,
+      toggling, adding, and deleting a task show as in progress at once, and the
+      values change when the confirmed update arrives.
     </li>
     <li>
       Pages need a connection to the server. Committed data arrives over SSE,
