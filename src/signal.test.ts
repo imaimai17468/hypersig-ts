@@ -249,3 +249,70 @@ it("serializes statements and checks types", () => {
   const flag: Signal<boolean> = e.flag;
   expect(flag.path).toEqual(["stmt-group-1", "flag"]);
 });
+
+it("builds string, number and array expression nodes", () => {
+  const s = exprOf<string>(["sig", ["g", "s"]]);
+  const n = exprOf<number>(["sig", ["g", "n"]]);
+  const list = exprOf<readonly string[]>(["sig", ["g", "list"]]);
+  const sig = (name: string) => ["sig", ["g", name]];
+
+  expect(s.length().node).toEqual(["length", sig("s")]);
+  expect(list.length().node).toEqual(["length", sig("list")]);
+  expect(s.trim().node).toEqual(["trim", sig("s")]);
+  expect(s.lower().node).toEqual(["lower", sig("s")]);
+  expect(s.includes("a").node).toEqual(["includes", sig("s"), ["lit", "a"]]);
+  expect(s.includes(s.trim()).node).toEqual([
+    "includes",
+    sig("s"),
+    ["trim", sig("s")],
+  ]);
+  expect(n.clamp(0, n.add(1)).node).toEqual([
+    "clamp",
+    sig("n"),
+    ["lit", 0],
+    ["add", sig("n"), ["lit", 1]],
+  ]);
+  expect(n.mod(3).node).toEqual(["mod", sig("n"), ["lit", 3]]);
+  expect(list.at(n, "none").node).toEqual([
+    "at",
+    sig("list"),
+    sig("n"),
+    ["lit", "none"],
+  ]);
+
+  const typed: Expr<string> = list.at(0, s);
+  expect(typed.node[0]).toBe("at");
+  const lengthOfLength: Expr<number> = s.length().clamp(0, 1);
+  expect(lengthOfLength.node[0]).toBe("clamp");
+
+  // @ts-expect-error A number has no trim.
+  expect(n.trim).toBeDefined();
+  // @ts-expect-error A string has no mod.
+  expect(s.mod).toBeDefined();
+  // @ts-expect-error The fallback must have the element type of the array.
+  list.at(0, 1);
+  // @ts-expect-error A number has no length.
+  expect(n.length).toBeDefined();
+  // @ts-expect-error includes takes a string.
+  s.includes(1);
+  // @ts-expect-error A string has no at.
+  expect(s.at).toBeDefined();
+});
+
+it("evaluates array and string expressions on signal values", () => {
+  const picker = signals(
+    { items: ["a", "b", "c"], index: 4, query: "  Hi " },
+    { name: "picker" }
+  );
+  const p = picker.with({});
+  const wrapped = p.index.mod(p.items.length());
+
+  expect(p.bindText(wrapped).children).toBe("1");
+  expect(p.bindText(p.items.at(wrapped, "none")).children).toBe("b");
+  expect(p.bindText(p.items.at(9, "none")).children).toBe("none");
+  expect(p.bindText(p.query.trim().lower()).children).toBe("hi");
+  expect(p.bindShow(p.query.lower().includes("hi")).hidden).toBeUndefined();
+  expect(p.bindText(p.index.clamp(0, 2)).children).toBe("2");
+  const item: Signal<string> = signals({ s: "x" }, { name: "item" }).s;
+  expect(p.items.at(0, item).node[0]).toBe("at");
+});

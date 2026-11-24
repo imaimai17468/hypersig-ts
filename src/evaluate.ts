@@ -71,6 +71,42 @@ function concatenate(left: JsonValue, right: JsonValue): JsonValue {
   return `${left}${right}`;
 }
 
+function measureLength(value: JsonValue): number {
+  return typeof value === "string" || Array.isArray(value) ? value.length : 0;
+}
+
+function clamp(value: JsonValue, min: JsonValue, max: JsonValue): number {
+  if (typeof min !== "number") return 0;
+  if (typeof value !== "number" || typeof max !== "number") return min;
+  return Math.max(min, Math.min(value, max));
+}
+
+/** The remainder in `[0, n)` for a positive `n`; `0` when `n` is `0`. */
+function modulo(value: JsonValue, divisor: JsonValue): number {
+  if (typeof value !== "number" || typeof divisor !== "number") return 0;
+  if (divisor === 0) return 0;
+  const result = ((value % divisor) + divisor) % divisor;
+  return Number.isFinite(result) ? result : 0;
+}
+
+function elementAt(
+  list: JsonValue,
+  index: JsonValue,
+  fallback: () => JsonValue
+): JsonValue {
+  if (
+    Array.isArray(list) &&
+    typeof index === "number" &&
+    Number.isInteger(index) &&
+    index >= 0 &&
+    index < list.length
+  ) {
+    const items: readonly JsonValue[] = list;
+    return items[index] ?? null;
+  }
+  return fallback();
+}
+
 /** A node nested deeper than `maxNestingDepth` evaluates to `null`. */
 export function evaluate(
   node: ExprNode,
@@ -117,6 +153,35 @@ function evaluateAt(
       return calculate(node[0], evaluateChild(node[1]), evaluateChild(node[2]));
     case "concat":
       return concatenate(evaluateChild(node[1]), evaluateChild(node[2]));
+    case "length":
+      return measureLength(evaluateChild(node[1]));
+    case "trim": {
+      const text = evaluateChild(node[1]);
+      return typeof text === "string" ? text.trim() : "";
+    }
+    case "lower": {
+      const text = evaluateChild(node[1]);
+      return typeof text === "string" ? text.toLowerCase() : "";
+    }
+    case "includes": {
+      const text = evaluateChild(node[1]);
+      const part = evaluateChild(node[2]);
+      return typeof text === "string" && typeof part === "string"
+        ? text.includes(part)
+        : false;
+    }
+    case "clamp":
+      return clamp(
+        evaluateChild(node[1]),
+        evaluateChild(node[2]),
+        evaluateChild(node[3])
+      );
+    case "mod":
+      return modulo(evaluateChild(node[1]), evaluateChild(node[2]));
+    case "at":
+      return elementAt(evaluateChild(node[1]), evaluateChild(node[2]), () =>
+        evaluateChild(node[3])
+      );
     case "if":
       return isTruthy(evaluateChild(node[1]))
         ? evaluateChild(node[2])

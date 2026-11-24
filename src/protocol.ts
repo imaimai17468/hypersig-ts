@@ -54,10 +54,15 @@ export type ExprNode =
         | "sub"
         | "mul"
         | "concat"
+        | "includes"
+        | "mod"
       ),
       ExprNode,
       ExprNode,
     ]
+  | ["length" | "trim" | "lower", ExprNode]
+  | ["clamp", ExprNode, ExprNode, ExprNode]
+  | ["at", ExprNode, ExprNode, ExprNode]
   | ["if", ExprNode, ExprNode, ExprNode]
   | ["get", ExprNode, string]
   | ["uuid"]
@@ -238,6 +243,8 @@ const binaryOperators: ReadonlySet<string> = new Set([
   "sub",
   "mul",
   "concat",
+  "includes",
+  "mod",
 ]);
 
 /**
@@ -289,7 +296,12 @@ function isExprNodeAt(value: unknown, depth: number): value is ExprNode {
     case "sig":
       return value.length === 2 && isSignalPath(first);
     case "not":
+    case "length":
+    case "trim":
+    case "lower":
       return value.length === 2 && isChild(first);
+    case "clamp":
+    case "at":
     case "if":
       return (
         value.length === 4 &&

@@ -43,6 +43,16 @@ interface NumberMethods {
   ge(other: number | Expr<number>): Expr<boolean>;
   lt(other: number | Expr<number>): Expr<boolean>;
   le(other: number | Expr<number>): Expr<boolean>;
+  /**
+   * Keeps the value within `min..max`. Evaluates to `min` when `min > max` or
+   * when the value or `max` is not a number.
+   */
+  clamp(min: number | Expr<number>, max: number | Expr<number>): Expr<number>;
+  /**
+   * The remainder in `0..n` (exclusive) for a positive `n`, so a negative
+   * value wraps around. Evaluates to `0` when `n` is `0`.
+   */
+  mod(n: number | Expr<number>): Expr<number>;
 }
 
 interface BooleanMethods {
@@ -57,6 +67,27 @@ interface BooleanMethods {
 
 interface StringMethods {
   concat(other: string | Expr<string>): Expr<string>;
+  /** UTF-16 code units (`String.prototype.length`), not characters. */
+  length(): Expr<number>;
+  /** Removes leading and trailing whitespace. */
+  trim(): Expr<string>;
+  /** `toLowerCase()`, which does not depend on the locale. */
+  lower(): Expr<string>;
+  /** Whether `other` is a substring. Every string includes `""`. */
+  includes(other: string | Expr<string>): Expr<boolean>;
+}
+
+interface ArrayMethods {
+  /**
+   * The element at `index`. Evaluates to `fallback` when `index` is not an
+   * integer inside the array, so the result keeps the element type.
+   */
+  at<Item extends JsonValue>(
+    this: Expr<readonly Item[]>,
+    index: number | Expr<number>,
+    fallback: Item | Expr<Item>
+  ): Expr<Item>;
+  length(): Expr<number>;
 }
 
 /** A missing optional field evaluates to `null`. */
@@ -77,7 +108,8 @@ export type Expr<T extends JsonValue> = ExprBase<T> &
   ([T] extends [number] ? NumberMethods : unknown) &
   ([T] extends [boolean] ? BooleanMethods : unknown) &
   ([T] extends [string] ? StringMethods : unknown) &
-  ([T] extends [JsonObject] ? ObjectMethods<T> : unknown);
+  ([T] extends [JsonObject] ? ObjectMethods<T> : unknown) &
+  ([T] extends [readonly JsonValue[]] ? ArrayMethods : unknown);
 
 /** A value the browser keeps in its signal store at `path`. */
 export type Signal<T extends JsonValue> = Expr<T> & {
@@ -259,6 +291,27 @@ class ExprHandle {
   }
   concat(other: ExprInput): ExprHandle {
     return combine("concat", this, other);
+  }
+  includes(other: ExprInput): ExprHandle {
+    return combine("includes", this, other);
+  }
+  mod(other: ExprInput): ExprHandle {
+    return combine("mod", this, other);
+  }
+  length(): ExprHandle {
+    return new ExprHandle(["length", this.node]);
+  }
+  trim(): ExprHandle {
+    return new ExprHandle(["trim", this.node]);
+  }
+  lower(): ExprHandle {
+    return new ExprHandle(["lower", this.node]);
+  }
+  clamp(min: ExprInput, max: ExprInput): ExprHandle {
+    return new ExprHandle(["clamp", this.node, nodeOf(min), nodeOf(max)]);
+  }
+  at(index: ExprInput, fallback: ExprInput): ExprHandle {
+    return new ExprHandle(["at", this.node, nodeOf(index), nodeOf(fallback)]);
   }
   not(): ExprHandle {
     return new ExprHandle(["not", this.node]);

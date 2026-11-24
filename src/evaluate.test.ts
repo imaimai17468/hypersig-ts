@@ -247,3 +247,85 @@ it("recognizes custom event names", () => {
     expect(isCustomEventName(name)).toBe(false);
   }
 });
+
+const ctx = createContext({});
+const lit = (value: JsonValue): ExprNode => ["lit", value];
+
+it("evaluates length of strings and arrays, and 0 for other values", () => {
+  expect(evaluate(["length", lit("héllo")], ctx)).toBe(5);
+  expect(evaluate(["length", lit("")], ctx)).toBe(0);
+  expect(evaluate(["length", lit(["a", "b"])], ctx)).toBe(2);
+  expect(evaluate(["length", lit(7)], ctx)).toBe(0);
+  expect(evaluate(["length", lit(null)], ctx)).toBe(0);
+  expect(evaluate(["length", lit({ length: 3 })], ctx)).toBe(0);
+});
+
+it("evaluates trim and lower, and '' for non-strings", () => {
+  expect(evaluate(["trim", lit("  a b ")], ctx)).toBe("a b");
+  expect(evaluate(["trim", lit(5)], ctx)).toBe("");
+  expect(evaluate(["trim", lit(null)], ctx)).toBe("");
+  expect(evaluate(["lower", lit("ÀB")], ctx)).toBe("àb");
+  expect(evaluate(["lower", lit(["A"])], ctx)).toBe("");
+});
+
+it("evaluates includes, and false unless both sides are strings", () => {
+  expect(evaluate(["includes", lit("Hello"), lit("ell")], ctx)).toBe(true);
+  expect(evaluate(["includes", lit("Hello"), lit("ELL")], ctx)).toBe(false);
+  expect(evaluate(["includes", lit("Hello"), lit("")], ctx)).toBe(true);
+  expect(evaluate(["includes", lit(5), lit("5")], ctx)).toBe(false);
+  expect(evaluate(["includes", lit("5"), lit(5)], ctx)).toBe(false);
+  expect(evaluate(["includes", lit(null), lit("")], ctx)).toBe(false);
+});
+
+it("evaluates clamp, with min for min > max and non-numbers", () => {
+  const clamp = (v: JsonValue, min: JsonValue, max: JsonValue) =>
+    evaluate(["clamp", lit(v), lit(min), lit(max)], ctx);
+  expect(clamp(5, 0, 3)).toBe(3);
+  expect(clamp(-1, 0, 3)).toBe(0);
+  expect(clamp(2, 0, 3)).toBe(2);
+  expect(clamp(5, 4, 1)).toBe(4);
+  expect(clamp("5", 1, 3)).toBe(1);
+  expect(clamp(null, 1, 3)).toBe(1);
+  expect(clamp(5, 1, "3")).toBe(1);
+  expect(clamp(5, "1", 3)).toBe(0);
+});
+
+it("evaluates mod as a non-negative remainder, 0 for n = 0 and non-numbers", () => {
+  const mod = (v: JsonValue, n: JsonValue) =>
+    evaluate(["mod", lit(v), lit(n)], ctx);
+  expect(mod(4, 3)).toBe(1);
+  expect(mod(-1, 3)).toBe(2);
+  expect(mod(3, 3)).toBe(0);
+  expect(mod(-3, 3)).toBe(0);
+  expect(mod(5, 0)).toBe(0);
+  expect(mod("4", 3)).toBe(0);
+  expect(mod(4, null)).toBe(0);
+});
+
+it("evaluates at, with the fallback outside the array or for a bad index", () => {
+  const at = (list: JsonValue, index: JsonValue) =>
+    evaluate(["at", lit(list), lit(index), lit("fb")], ctx);
+  expect(at(["a", "b"], 1)).toBe("b");
+  expect(at(["a", "b"], 0)).toBe("a");
+  expect(at(["a", "b"], 3)).toBe("fb");
+  expect(at(["a", "b"], 2)).toBe("fb");
+  expect(at(["a", "b"], -1)).toBe("fb");
+  expect(at(["a", "b"], 0.5)).toBe("fb");
+  expect(at(["a", "b"], "1")).toBe("fb");
+  expect(at("ab", 0)).toBe("fb");
+  expect(at(null, 0)).toBe("fb");
+  expect(at({ "0": "a" }, 0)).toBe("fb");
+});
+
+it("accepts the new nodes only with the right arity", () => {
+  expect(isExprNode(["length", lit("a")])).toBe(true);
+  expect(isExprNode(["includes", lit("a"), lit("b")])).toBe(true);
+  expect(isExprNode(["clamp", lit(1), lit(0), lit(2)])).toBe(true);
+  expect(isExprNode(["at", lit([]), lit(0), lit(null)])).toBe(true);
+  expect(isExprNode(["length"])).toBe(false);
+  expect(isExprNode(["trim", lit("a"), lit("b")])).toBe(false);
+  expect(isExprNode(["mod", lit(1)])).toBe(false);
+  expect(isExprNode(["clamp", lit(1), lit(0)])).toBe(false);
+  expect(isExprNode(["at", lit([]), lit(0)])).toBe(false);
+  expect(isExprNode(["lower", ["bogus"]])).toBe(false);
+});
