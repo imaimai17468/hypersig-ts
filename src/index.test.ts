@@ -4,8 +4,10 @@ import { html } from "hono/html";
 import * as v from "valibot";
 import { expect, expectTypeOf, it, vi } from "vite-plus/test";
 import {
+  connectionStatusOutlet,
   createHypersig,
   createMemoryPubSub,
+  errorOutlet,
   live,
   signals,
   topic,
@@ -393,6 +395,11 @@ it("binds schema wire input and accepts only the application's topic types", () 
   expectTypeOf(increment.field("amount")).toEqualTypeOf<"amount">();
   // @ts-expect-error The schema does not accept a field named "ammount".
   increment.field("ammount");
+  expect(increment.fieldError("amount")).toEqual({
+    "data-hs-field-error": "amount",
+  });
+  // @ts-expect-error A field error outlet names a field the schema accepts.
+  increment.fieldError("ammount");
   expect(increment.draft("amount")).toEqual({
     name: "amount",
     "data-hs-draft": "",
@@ -425,6 +432,11 @@ it("accepts only literal Action names and rejects a repeated name at registratio
   const name: string = "computed";
   // @ts-expect-error A name typed as string escapes the literal check.
   hypersig.action(name, definition);
+});
+
+it("marks the outlets the runtime fills", () => {
+  expect(errorOutlet()).toEqual({ "data-hs-error": "" });
+  expect(connectionStatusOutlet()).toEqual({ "data-hs-connection-status": "" });
 });
 
 it("binds only JSON input and leaves other input to forms", () => {

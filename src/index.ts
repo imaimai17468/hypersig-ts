@@ -33,6 +33,7 @@ export type {
   SignalScope,
 } from "./signal.js";
 export type { ExprNode, SignalPath, StmtNode } from "./protocol.js";
+export { connectionStatusOutlet, errorOutlet } from "./outlet.js";
 export { createMemoryPubSub, shareTopicSubscriptions, topic } from "./topic.js";
 export type { PubSub, Topic } from "./topic.js";
 export { createLiveRuntime } from "./live-runtime.js";

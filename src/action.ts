@@ -6,7 +6,7 @@ import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Principal } from "./live.js";
 import type { ExprNode, JsonValue, StmtNode } from "./protocol.js";
-import { signalAttributes } from "./protocol.js";
+import { outletAttributes, signalAttributes } from "./protocol.js";
 import type { Expr } from "./signal.js";
 import { exprOf, listStmts, nodeOf, serializeStmts } from "./signal.js";
 
@@ -308,6 +308,15 @@ function createActionMethods<Wire, Output>(url: string, name: string) {
     /** Check a top-level HTML field name against the schema's input type. */
     field<Name extends FormFieldName<Wire>>(name: Name): Name {
       return name;
+    },
+    /**
+     * Marks the element inside this Action's form that shows the schema's
+     * message for one field after a failed submission.
+     */
+    fieldError<Name extends FormFieldName<Wire>>(
+      name: Name
+    ): { [outletAttributes.fieldError]: Name } {
+      return { [outletAttributes.fieldError]: name };
     },
     /**
      * Names a field and keeps its value across a live registration reset. The

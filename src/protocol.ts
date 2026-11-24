@@ -72,6 +72,13 @@ export type SnapshotEntry =
   | [path: SignalPath, value: JsonValue]
   | [path: SignalPath, value: JsonValue, mark: typeof defaultMark];
 
+/** Elements the browser runtime fills with text. Applications mark them through the outlet functions. */
+export const outletAttributes = {
+  error: "data-hs-error",
+  connectionStatus: "data-hs-connection-status",
+  fieldError: "data-hs-field-error",
+} as const;
+
 export const signalAttributes = {
   signals: "data-hs-signals",
   text: "data-hs-text",

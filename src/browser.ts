@@ -1,7 +1,7 @@
 import DOMPurify from "dompurify";
 import { Idiomorph } from "idiomorph";
 import { preserveDrafts, restoreDrafts } from "./drafts.js";
-import { events, isJsonValue } from "./protocol.js";
+import { events, isJsonValue, outletAttributes } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
 import { isTextControl, startSignals } from "./signal-runtime.js";
@@ -49,7 +49,9 @@ function updateViews(
     status: "connecting" | "ready" | "disconnected" | "reload-required"
   ) {
     document.documentElement.dataset.hsConnection = status;
-    const outlet = document.querySelector("[data-hs-connection-status]");
+    const outlet = document.querySelector(
+      `[${outletAttributes.connectionStatus}]`
+    );
     if (outlet)
       outlet.textContent =
         status === "reload-required"
@@ -245,11 +247,11 @@ function createActionSender(stream: URL) {
     body: string | FormData
   ): Promise<SendResult> {
     const outlet =
-      control.closest("form")?.querySelector("[data-hs-error]") ??
-      document.querySelector("[data-hs-error]");
+      control.closest("form")?.querySelector(`[${outletAttributes.error}]`) ??
+      document.querySelector(`[${outletAttributes.error}]`);
     const fields = control
       .closest("form")
-      ?.querySelectorAll<HTMLElement>("[data-hs-field-error]");
+      ?.querySelectorAll<HTMLElement>(`[${outletAttributes.fieldError}]`);
     if (outlet) outlet.textContent = "";
     for (const field of fields ?? []) field.textContent = "";
     let status = 0;
@@ -326,7 +328,9 @@ function createActionSender(stream: URL) {
           const field =
             "field" in issue
               ? [...fields].find(
-                  (node) => node.dataset.hsFieldError === issue.field
+                  (node) =>
+                    node.getAttribute(outletAttributes.fieldError) ===
+                    issue.field
                 )
               : undefined;
           if (field)
