@@ -365,7 +365,7 @@ function createGroup(
     },
     uuid: () => "",
   };
-  const valueOf = (expr: ExprHandle) => evaluate(expr.node, context);
+  const valueOf = (expr: AnyExpr) => evaluate(expr.node, context);
 
   return {
     ...signalsByField,
@@ -383,16 +383,7 @@ function createGroup(
         })
       ),
     }),
-    bindText: (expr: ExprHandle) => ({
-      [signalAttributes.text]: JSON.stringify(expr.node),
-      children: formatText(valueOf(expr)),
-    }),
-    bindShow: (expr: ExprHandle) => ({
-      [signalAttributes.show]: JSON.stringify(expr.node),
-      ...(isTruthy(valueOf(expr)) ? {} : { hidden: true }),
-    }),
-    bindAttr: (attrs: Readonly<Record<string, ExprHandle | undefined>>) =>
-      bindAttributes(attrs, valueOf),
+    ...createBindings(valueOf),
     bindValue: (signal: SignalHandle) => {
       const kind = inputKindOf(signal.path);
       const value = valueOf(signal);
@@ -402,6 +393,24 @@ function createGroup(
       if (kind !== "boolean") return { ...bound, value: formatText(value) };
       return isTruthy(value) ? { ...bound, checked: true } : bound;
     },
+  };
+}
+
+/** The bindings that render an expression with the values `valueOf` reads. */
+function createBindings(
+  valueOf: (expr: AnyExpr) => JsonValue
+): Pick<SignalScope<SignalValues>, "bindText" | "bindShow" | "bindAttr"> {
+  return {
+    bindText: (expr: AnyExpr) => ({
+      [signalAttributes.text]: JSON.stringify(expr.node),
+      children: formatText(valueOf(expr)),
+    }),
+    bindShow: (expr: AnyExpr) => ({
+      [signalAttributes.show]: JSON.stringify(expr.node),
+      ...(isTruthy(valueOf(expr)) ? {} : { hidden: true as const }),
+    }),
+    bindAttr: (attrs: Readonly<Record<string, AnyExpr | undefined>>) =>
+      bindAttributes(attrs, valueOf),
   };
 }
 
@@ -419,9 +428,9 @@ function inputKindOf(path: SignalPath): InputKind {
 const booleanAttributeNames: ReadonlySet<string> = new Set(booleanAttributes);
 
 function bindAttributes(
-  attrs: Readonly<Record<string, ExprHandle | undefined>>,
-  valueOf: (expr: ExprHandle) => JsonValue
-): Record<string, string | true> {
+  attrs: Readonly<Record<string, AnyExpr | undefined>>,
+  valueOf: (expr: AnyExpr) => JsonValue
+): Record<string, string | true> & { [signalAttributes.attr]: string } {
   const rendered: Record<string, string | true> = {};
   const nodes: Record<string, ExprNode> = {};
   for (const [name, expr] of Object.entries(attrs)) {
@@ -434,8 +443,7 @@ function bindAttributes(
     if (!booleanAttributeNames.has(name)) rendered[name] = formatText(value);
     else if (isTruthy(value)) rendered[name] = true;
   }
-  rendered[signalAttributes.attr] = JSON.stringify(nodes);
-  return rendered;
+  return { ...rendered, [signalAttributes.attr]: JSON.stringify(nodes) };
 }
 
 /**
@@ -523,3 +531,86 @@ export const on = {
     [eventAttributes.change]: serializeStmts(stmts),
   }),
 };
+
+/**
+ * A row template for optimistic list inserts. `item` holds the fields of the
+ * row the browser inserts; the template's own bind methods render them with
+ * the `initial` values on the server and with the inserted values in the
+ * browser.
+ */
+export interface InsertTemplate<Values extends SignalValues> {
+  readonly id: string;
+  readonly item: { readonly [K in keyof Values]: Expr<Values[K]> };
+  /** Marks the `<template>` element that holds the row's markup. */
+  template(): { [signalAttributes.template]: string };
+  /** Marks the element the browser inserts rows into. */
+  slot(): { [signalAttributes.insert]: string };
+  /**
+   * Inserts a pending row built from this template, keyed by `key`. The row
+   * stays until an element carrying `confirms(key)` appears in the slot.
+   */
+  insert(
+    values: { [K in keyof Values]: Values[K] | Expr<Values[K]> },
+    key: string | Expr<string>
+  ): StmtNode;
+  /** Marks the confirmed row that replaces the pending row for `key`. */
+  confirms(key: string): { [signalAttributes.confirms]: string };
+  bindText: SignalScope<Values>["bindText"];
+  bindShow: SignalScope<Values>["bindShow"];
+  bindAttr: SignalScope<Values>["bindAttr"];
+}
+
+const itemRoot = "$item";
+
+/**
+ * Defines an insert template. The ID `name-number` is assigned when this is
+ * called, so define templates at module level to keep IDs stable across
+ * renders. `name` defaults to `insert`.
+ */
+export function insertTemplate<
+  Values extends SignalValues,
+  const Name extends string = never,
+>(
+  initial: Values,
+  options?: NameOption<Name>
+): InsertTemplate<WidenedValues<Values>>;
+export function insertTemplate(
+  initial: SignalValues,
+  options?: { name?: string }
+): InsertTemplate<SignalValues> {
+  const id = assignId("Signal", options?.name ?? "insert");
+  const context: EvaluationContext = {
+    read(path) {
+      const [root, field] = path;
+      if (root === itemRoot && path.length === 2 && field !== undefined) {
+        return Object.hasOwn(initial, field) ? initial[field] : undefined;
+      }
+      return root?.startsWith("$") ? false : readInitial(path);
+    },
+    uuid: () => "",
+  };
+  const item = Object.fromEntries(
+    Object.keys(initial).map((field) => [
+      field,
+      new ExprHandle(["sig", [itemRoot, field]]),
+    ])
+  );
+  return {
+    id,
+    item,
+    template: () => ({ [signalAttributes.template]: id }),
+    slot: () => ({ [signalAttributes.insert]: id }),
+    insert: (values, key) => [
+      "insert",
+      id,
+      Object.fromEntries(
+        Object.entries(values).map(([field, value]) => [field, nodeOf(value)])
+      ),
+      nodeOf(key),
+    ],
+    confirms: (key) => ({
+      [signalAttributes.confirms]: JSON.stringify([id, key]),
+    }),
+    ...createBindings((expr) => evaluate(expr.node, context)),
+  };
+}

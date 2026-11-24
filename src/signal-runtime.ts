@@ -438,6 +438,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         case "focus":
           focusRef(stmt[1]);
           break;
+        case "insert":
+          // The browser runtime does not render inserted rows yet.
+          break;
         case "call": {
           const [, url, input, onSuccess, onError] = stmt;
           const body: Record<string, JsonValue> = {};

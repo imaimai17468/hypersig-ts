@@ -59,6 +59,7 @@ export type StmtNode =
   | ["set", SignalPath, ExprNode]
   | ["toggle", SignalPath]
   | ["focus", string]
+  | ["insert", string, Record<string, ExprNode>, ExprNode]
   | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]];
 
 /** Marks a `data-hs-signals` entry as a default rather than an owned value. */
@@ -81,6 +82,13 @@ export const signalAttributes = {
   ref: "data-hs-ref",
   onSuccess: "data-hs-on-success",
   onError: "data-hs-on-error",
+  template: "data-hs-template",
+  insert: "data-hs-insert",
+  item: "data-hs-item",
+  itemKey: "data-hs-item-key",
+  pendingItem: "data-hs-pending-item",
+  confirms: "data-hs-confirms",
+  onSubmit: "data-hs-on-submit",
 } as const;
 
 export const eventAttributes = {
@@ -213,6 +221,13 @@ function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
       return value.length === 2 && isSignalPath(first);
     case "focus":
       return value.length === 2 && typeof first === "string";
+    case "insert":
+      return (
+        value.length === 4 &&
+        typeof first === "string" &&
+        isExprRecord(second, depth + 1) &&
+        isExprNodeAt(third, depth + 1)
+      );
     case "call":
       return (
         value.length === 5 &&

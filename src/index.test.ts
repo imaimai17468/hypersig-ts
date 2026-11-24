@@ -640,6 +640,15 @@ it("attaches result statements to forms", () => {
   expect(increment.form()).not.toHaveProperty("data-hs-on-error");
 });
 
+it("attaches submit statements to forms", () => {
+  const { increment } = setup();
+  const s = signals({ flag: false }, { name: "submit-form" });
+  expect(
+    increment.form({ onSubmit: [s.flag.toggle()] })["data-hs-on-submit"]
+  ).toBe(JSON.stringify([["toggle", s.flag.path]]));
+  expect(increment.form()).not.toHaveProperty("data-hs-on-submit");
+});
+
 it("exports the types that signal and Action signatures name", () => {
   const { increment } = setup();
   const group = signals({ count: 0 }, { name: "exported-types" });

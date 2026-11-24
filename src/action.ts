@@ -271,6 +271,8 @@ export function registerAction<
         resetOnSuccess?: boolean;
         reportSuccess?: boolean;
         draft?: boolean;
+        /** Runs in the browser, before the submit request is sent. */
+        onSubmit?: Statements;
       } = {}
     ): {
       action: string;
@@ -281,6 +283,7 @@ export function registerAction<
       "data-hs-draft-form"?: string;
       "data-hs-on-success"?: string;
       "data-hs-on-error"?: string;
+      "data-hs-on-submit"?: string;
     } {
       return {
         action: url,
@@ -298,6 +301,9 @@ export function registerAction<
           : {}),
         ...(options.onError
           ? { [signalAttributes.onError]: serializeStmts(options.onError) }
+          : {}),
+        ...(options.onSubmit
+          ? { [signalAttributes.onSubmit]: serializeStmts(options.onSubmit) }
           : {}),
       };
     },
