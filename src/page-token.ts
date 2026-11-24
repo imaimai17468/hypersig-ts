@@ -38,12 +38,19 @@ const tokenPattern = /^[A-Za-z0-9_-]+$/;
  * Seals page claims with the first key and opens them with any key, so a key
  * can be rotated in at the front while tokens sealed with the old one stay
  * valid. Without keys, the sealer makes a random key that only this process
- * holds. Throws a `RangeError` for a key that is not 32 bytes of base64 or
- * base64url, or for an empty list.
+ * holds. `context` is authenticated with every token, so a token opens only
+ * where it was sealed with the same context. Throws a `RangeError` for a key
+ * that is not 32 bytes of base64 or base64url, or for an empty list.
  */
-export function createPageSealer(keys: readonly string[] | undefined) {
+export function createPageSealer(
+  keys: readonly string[] | undefined,
+  context: string
+) {
   if (keys?.length === 0)
     throw new RangeError("Expected at least one page key");
+  const additionalData = new TextEncoder().encode(
+    `hypersig.page-token.v1\n${context}`
+  );
   const secrets = keys?.map(decodeKey) ?? [
     crypto.getRandomValues(new Uint8Array(keyLength)),
   ];
@@ -63,7 +70,11 @@ export function createPageSealer(keys: readonly string[] | undefined) {
       const iv = crypto.getRandomValues(new Uint8Array(ivLength));
       const plaintext = new TextEncoder().encode(JSON.stringify(claims));
       const ciphertext = new Uint8Array(
-        await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext)
+        await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv, additionalData },
+          key,
+          plaintext
+        )
       );
       const sealed = new Uint8Array(ivLength + ciphertext.length);
       sealed.set(iv);
@@ -71,7 +82,7 @@ export function createPageSealer(keys: readonly string[] | undefined) {
       return encodeBase64Url(sealed);
     },
     async open(token: string, now: number): Promise<PageTokenResult> {
-      const plaintext = await decrypt(await imported, token);
+      const plaintext = await decrypt(await imported, additionalData, token);
       if (plaintext === undefined) return { status: "invalid" };
       const claims = parseClaims(plaintext);
       if (!claims) return { status: "invalid" };
@@ -81,7 +92,11 @@ export function createPageSealer(keys: readonly string[] | undefined) {
   };
 }
 
-async function decrypt(keys: readonly CryptoKey[], token: string) {
+async function decrypt(
+  keys: readonly CryptoKey[],
+  additionalData: Uint8Array<ArrayBuffer>,
+  token: string
+) {
   if (token.length > maxTokenLength || !tokenPattern.test(token)) return;
   const sealed = decodeBase64(token);
   // Unused trailing bits would let several strings name one token, and one
@@ -97,10 +112,14 @@ async function decrypt(keys: readonly CryptoKey[], token: string) {
   for (const key of keys) {
     try {
       return new TextDecoder().decode(
-        await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext)
+        await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv, additionalData },
+          key,
+          ciphertext
+        )
       );
     } catch {
-      // Sealed with another key, or altered. Try the next key.
+      // Sealed with another key or context, or altered. Try the next key.
     }
   }
 }

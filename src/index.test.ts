@@ -475,6 +475,83 @@ it("opens a page rendered by another runtime with the same page key and trusts S
   expect(rejected.status).toBe(400);
 });
 
+it("rejects a page token from an app at another origin that shares its page keys", async () => {
+  const pageKeys = [Buffer.alloc(32, 9).toString("base64")];
+  function serve(publicOrigin: string, pageContext?: string) {
+    const hypersig = createHypersig({
+      origin: publicOrigin,
+      ...(pageContext !== undefined && { pageContext }),
+      pubsub: createMemoryPubSub<CounterEvent>(),
+      pageKeys,
+      authenticate(request) {
+        const sessionId = request.headers.get("X-Session");
+        return sessionId ? { sessionId } : null;
+      },
+    });
+    const counter = hypersig.live({
+      name: "counter",
+      subscribe: () => [changed("main")],
+      authorize: () => true,
+      load: () => 0,
+      render: (value) => html`<output>${value}</output>`,
+    });
+    const app = new Hono();
+    app.route("/", hypersig.routes);
+    app.get("/", (c) =>
+      hypersig.page(
+        c.req.raw,
+        (page) =>
+          html`<html>
+            ${page.runtime("/runtime.js")}${page.view(counter, {})}
+          </html>`
+      )
+    );
+    return app;
+  }
+  async function renderPath(app: Hono) {
+    const response = await app.request("/", {
+      headers: { "X-Session": "owner" },
+    });
+    const path = /data-hs-stream="([^"]+)"/.exec(await response.text())?.[1];
+    if (!path) throw new Error("Missing SSE URL");
+    return path;
+  }
+  const staging = serve("https://staging.example.com");
+  const production = serve("https://example.com/");
+  const path = await renderPath(staging);
+
+  const foreign = await openStream(production, path, ["counter"]);
+  try {
+    expect(await foreign.read()).toContain("event: reset");
+  } finally {
+    await foreign.close();
+  }
+  const sameOrigin = await openStream(
+    serve("https://staging.example.com/app"),
+    path,
+    ["counter"]
+  );
+  try {
+    expect(await sameOrigin.read()).toContain('"html":"<output>0</output>"');
+  } finally {
+    await sameOrigin.close();
+  }
+
+  // An explicit context lets two origins serve one deployment's pages.
+  const shared = "counter-app";
+  const sharedPath = await renderPath(serve("https://a.example.com", shared));
+  const otherOrigin = await openStream(
+    serve("https://b.example.com", shared),
+    sharedPath,
+    ["counter"]
+  );
+  try {
+    expect(await otherOrigin.read()).toContain('"html":"<output>0</output>"');
+  } finally {
+    await otherOrigin.close();
+  }
+});
+
 it("binds schema wire input and accepts only the application's topic types", () => {
   const { increment, publish } = setup();
   expect(increment.bind({ amount: "2" })["data-hs-input"]).toBe(

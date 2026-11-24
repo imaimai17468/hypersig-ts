@@ -61,6 +61,15 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * that many pages: at least once a year for a busy service.
    */
   pageKeys?: readonly string[];
+  /**
+   * Names the application and environment that seal page tokens, such as the
+   * public origin. A token opens only in a runtime given the same context, so
+   * apps or environments that share `pageKeys` and sessions cannot replay each
+   * other's tokens. A token from another context is `expired` with a
+   * `page-token-invalid` diagnostic, as for a foreign key. Defaults to the
+   * empty string; `createHypersig` defaults it to its normalized `origin`.
+   */
+  pageContext?: string;
   /** How long a rendered page can open a stream, counted from SSR (default 12 hours). */
   pageLifetimeMs?: number;
 }
@@ -86,6 +95,7 @@ export function createLiveRuntime<
   reconcileIntervalMs,
   sendTimeoutMs = 30_000,
   pageKeys,
+  pageContext = "",
   pageLifetimeMs = 12 * 60 * 60_000,
 }: LiveRuntimeOptions<Event, Markup>) {
   if (
@@ -104,7 +114,7 @@ export function createLiveRuntime<
     throw new RangeError("Invalid Live View send timeout");
   if (!Number.isSafeInteger(pageLifetimeMs) || pageLifetimeMs < 1)
     throw new RangeError("Invalid Live View page lifetime");
-  const sealer = createPageSealer(pageKeys);
+  const sealer = createPageSealer(pageKeys, pageContext);
   // Closes the connection streaming each token, so a page has one stream per process.
   const connections = new Map<string, () => void>();
   const definitions = new Map<string, RegisteredView<User, Event, Markup>>();

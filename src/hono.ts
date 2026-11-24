@@ -39,7 +39,11 @@ export interface HypersigOptions<
   User extends Principal,
   Event extends Topic,
 > extends Omit<LiveRuntimeOptions<Event, Markup>, "renderer"> {
-  /** Public origin to compare against the Origin header of every Action. */
+  /**
+   * Public origin to compare against the Origin header of every Action. It is
+   * also the default `pageContext`, so a page token opens only in an app
+   * served at the same origin.
+   */
   origin: string;
   authenticate: (request: Request) => User | null | Promise<User | null>;
   /** Non-secret and stable across server restarts, unique to the authenticated session. */
@@ -111,6 +115,7 @@ export function createHypersig<User extends Principal, Event extends Topic>(
   const routes = new Hono().basePath(basePath);
   const runtime = createLiveRuntime<User, Event, Markup>({
     ...options,
+    pageContext: options.pageContext ?? origin,
     renderer,
   });
   const actions = new Set<string>();

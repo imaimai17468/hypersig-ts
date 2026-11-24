@@ -1474,6 +1474,52 @@ it("accepts the same page key in base64 and base64url", async () => {
   ).toBe("open");
 });
 
+it("opens a token only in the page context that sealed it", async () => {
+  const store = { count: 0 };
+  const diagnostics: LiveDiagnostic<CounterEvent>[] = [];
+  const onDiagnostic = (event: LiveDiagnostic<CounterEvent>) => {
+    diagnostics.push(event);
+  };
+  const staging = counterRuntime(store, {
+    pageKeys: [key1],
+    pageContext: "https://staging.example",
+    onDiagnostic,
+  });
+  const production = counterRuntime(store, {
+    pageKeys: [key1],
+    pageContext: "https://example",
+    onDiagnostic,
+  });
+  const unnamed = counterRuntime(store, { pageKeys: [key1], onDiagnostic });
+  const token = await renderCounter(staging);
+
+  for (const other of [production, unnamed]) {
+    diagnostics.length = 0;
+    expect(
+      (await other.runtime.openPage(token, counterKeys, viewer)).status
+    ).toBe("expired");
+    expect(diagnostics).toEqual([{ type: "page-token-invalid" }]);
+  }
+  diagnostics.length = 0;
+  expect(
+    (
+      await unnamed.runtime.openPage(
+        await renderCounter(unnamed),
+        counterKeys,
+        viewer
+      )
+    ).status
+  ).toBe("open");
+
+  const sameContext = counterRuntime(store, {
+    pageKeys: [key1],
+    pageContext: "https://staging.example",
+  });
+  const page = await sameContext.runtime.openPage(token, counterKeys, viewer);
+  expect(page.status).toBe("open");
+  expect(diagnostics).toEqual([]);
+});
+
 it("resets when a token names a view the runtime no longer has", async () => {
   const store = { count: 0 };
   const token = await renderCounter(
