@@ -227,7 +227,11 @@ export function createLiveRuntime<
       report(onDiagnostic, { type: "publish", topic: event });
     },
     /**
-     * Renders a page and seals its top-level views into a token. `render`
+     * Renders a page and seals its top-level views into a token. Pass a `user`
+     * the adapter has just authenticated from the request. An adapter other
+     * than `createHypersig` also answers the page with `Cache-Control:
+     * no-store`, because the document holds the token, and with
+     * `Referrer-Policy: same-origin` or stricter. `render`
      * receives a stand-in for the token, because the token holds every view
      * the page places and is sealed only after rendering ends. The stand-in is
      * replaced with the token wherever the document contains it. Throws when
@@ -284,6 +288,14 @@ export function createLiveRuntime<
      * runtime no longer registers is `expired`, so the browser renders the page
      * again. A view in `request.pristine` that the token holds a snapshot for
      * skips its first render when its snapshot revision has not moved since SSR.
+     *
+     * The adapter authenticates the request before calling this, passes that
+     * user, and answers the stream with `Cache-Control: no-store`. It maps
+     * `expired` to a single `reset` message, `denied` (the token belongs to
+     * another session) to a 403 response, and `invalid-count` and
+     * `unknown-view` to 400 responses. `refreshUser` re-authenticates the
+     * stream's request throughout the stream, so it should read revocable
+     * server-side state and not extend an idle expiry.
      */
     async openPage(
       token: string,

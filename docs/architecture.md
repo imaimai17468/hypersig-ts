@@ -84,6 +84,13 @@ Playwright は二つの Cookie セッションに All / Active / Completed の�
 
 `hypersig.ts/core` は `createLiveRuntime()`、Live View と Topic の型、インメモリ Pub/Sub を公開する。ページ登録、セッションに紐づく購読、再接続、更新順序、親子の照合はここが所有する。アダプターは `LiveRenderer` で境界の生成とマークアップの直列化を提供し、`LiveConnection` で更新メッセージの送信と切断を実装する。マークアップのエスケープと安全な描画はレンダラーの責務になる。
 
+`hypersig.ts/core` で独自のアダプターを書く場合、`createHypersig()` が HTTP の層で行っている次の処理はアダプター自身が受け持つ。ランタイムは HTTP のヘッダーやリクエストを扱わないため、これらは型でも実行時にも確かめられない。
+
+- `renderPage` の前と `openPage` の前に毎回リクエストを認証し、認証できなければ呼ばずに 401 を返す。`openPage` と `connect` の `refreshUser` には、そのリクエストで認証したユーザーを渡す。`refreshUser` は接続中に何度も呼ばれるので、失効できるサーバー側の状態を確かめ、アイドル期限を延ばさない。
+- ページと SSE の応答に `Cache-Control: no-store` を付ける。ページはトークンを、SSE はユーザーごとの HTML を含むので、共有キャッシュに残さない。
+- ページの応答に `Referrer-Policy: same-origin`（またはより厳しい値）を付け、外部への遷移や読み込みで URL を渡さない。
+- `openPage` の結果を応答に対応させる。`expired` は SSE の `reset` を 1 件送って閉じ、`denied`（ページのセッションと認証したユーザーのセッションが違う）は 403、`invalid-count` と `unknown-view` は 400 を返す。`createHypersig()` も `denied` には `reset` ではなく 403 を返す。
+
 メインのエントリの `createHypersig()` は、Hono JSX と SSE をこの境界に接続する。Action の HTTP ルーティングとスキーマ検証も Hono アダプターから利用する。ブラウザでは既存の SSE イベントと DOM morphing を使う。文字列レンダラーとインメモリ接続のテストで、Hono を通さずに同じページ登録と更新処理を動かしている。
 
 子の `revision(params, user)` は、Topic が扱う業務データ以外で、親から渡す描画入力が変わったことを表す。表示形式やロケールのような値を含める。指定を省いた子は親の再描画に合わせて最新の props を読み直す。revision が一定でも、Topic を受け取っている子は再描画される。View 内の通常の TSX は、その View が更新されたときに描画し直す。
