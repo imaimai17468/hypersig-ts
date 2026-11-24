@@ -5,12 +5,16 @@ import { getCookie, setCookie } from "hono/cookie";
 import { validator } from "hono/validator";
 import * as v from "valibot";
 import {
+  ActionError,
   createHypersig,
   createMemoryPubSub,
+  insertTemplate,
   live,
   on,
   signalFamily,
+  signals,
   topic,
+  uuid,
 } from "../../src/index.js";
 import {
   applyTodoAction,
@@ -59,9 +63,14 @@ const todoKey = v.pipe(v.string(), v.uuid());
 const sharedAction = { authorize: () => true, output: v.literal(true) };
 const add = hypersig.action("add-todo", {
   ...sharedAction,
-  input: v.object({ todoTitle: title }),
-  execute: ({ todoTitle }) =>
-    commit({ kind: "add", key: crypto.randomUUID(), title: todoTitle }),
+  input: v.object({ todoKey, todoTitle: title }),
+  execute: ({ todoKey, todoTitle }) => {
+    // The browser picks the key so its preview can match the confirmed row.
+    if (todos.some((todo) => todo.key === todoKey)) {
+      throw new ActionError(409, "A task with this key already exists.");
+    }
+    return commit({ kind: "add", key: todoKey, title: todoTitle });
+  },
 });
 const edit = hypersig.action("edit-todo", {
   ...sharedAction,
@@ -91,7 +100,12 @@ const clear = hypersig.action("clear-completed-todos", {
   execute: () => commit({ kind: "clear-completed" }),
 });
 
-const rows = signalFamily({ completed: false }, { name: "todo-row" });
+const rows = signalFamily(
+  { completed: false, removed: false },
+  { name: "todo-row" }
+);
+const newTodo = insertTemplate({ title: "" }, { name: "new-todo" });
+const composer = signals({ title: "", key: "" }, { name: "composer" });
 
 function TodoRow({ todo }: { todo: Todo }) {
   const editor = `edit-${todo.key}`;
@@ -101,6 +115,8 @@ function TodoRow({ todo }: { todo: Todo }) {
       id={`todo-${todo.key}`}
       {...r.init()}
       {...r.bindAttr({ "data-completed": r.completed })}
+      {...r.bindShow(r.removed.not())}
+      {...newTodo.confirms(todo.key)}
     >
       <div class="row">
         <button
@@ -131,7 +147,10 @@ function TodoRow({ todo }: { todo: Todo }) {
         <button
           type="button"
           aria-label={`Delete: ${todo.title}`}
-          {...remove.bind({ todoKey: todo.key })}
+          {...on.click([
+            r.removed.set(true),
+            remove.call({ todoKey: todo.key }),
+          ])}
         >
           Delete
         </button>
@@ -171,20 +190,23 @@ const list = live({
       ? [todosChanged("active"), todosChanged("completed")]
       : [todosChanged(filter)],
   authorize: () => true,
-  load: ({ filter }) => selectTodos(todos, filter),
-  render: (visible) => (
-    <section aria-label="Task list">
-      {visible.length === 0 ? (
-        <p class="empty">No tasks in this view.</p>
-      ) : (
-        <ul>
-          {visible.map((todo) => (
-            <TodoRow todo={todo} />
-          ))}
-        </ul>
-      )}
-    </section>
-  ),
+  load: ({ filter }) => ({ filter, visible: selectTodos(todos, filter) }),
+  render: ({ filter, visible }) => {
+    // New tasks are active, so only the views that show them take previews.
+    const acceptsNewTodos = filter !== "completed";
+    return (
+      <section aria-label="Task list">
+        {(acceptsNewTodos || visible.length > 0) && (
+          <ul {...(acceptsNewTodos ? newTodo.slot() : {})}>
+            {visible.map((todo) => (
+              <TodoRow todo={todo} />
+            ))}
+          </ul>
+        )}
+        {visible.length === 0 && <p class="empty">No tasks in this view.</p>}
+      </section>
+    );
+  },
 });
 
 const counts = live({
@@ -265,6 +287,7 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
     "Content-Security-Policy",
     "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
   );
+  const entry = composer.with({});
   return hypersig.page(c.req.raw, (page) => (
     <html lang="en">
       <head>
@@ -277,14 +300,30 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
       <body>
         <main>
           <h1>Todos</h1>
-          <form class="composer" {...add.form({ resetOnSuccess: true })}>
+          <form
+            class="composer"
+            {...entry.init()}
+            {...add.form({
+              resetOnSuccess: true,
+              onSubmit: [
+                entry.key.set(uuid()),
+                newTodo.insert({ title: entry.title }, entry.key),
+              ],
+            })}
+          >
             <label for="new-todo">New task</label>
+            <input
+              type="hidden"
+              name={add.field("todoKey")}
+              {...entry.bindValue(entry.key)}
+            />
             <div>
               <input
                 id="new-todo"
                 name={add.field("todoTitle")}
                 required
                 maxLength={200}
+                {...entry.bindValue(entry.title)}
               />
               <button type="submit">Add</button>
             </div>
@@ -304,6 +343,16 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
           <p role="status" data-hs-connection-status=""></p>
           <p role="alert" data-hs-error=""></p>
         </main>
+        <template {...newTodo.template()}>
+          <li>
+            <div class="row">
+              <span class="toggle" aria-hidden="true">
+                ○
+              </span>
+              <span class="title" {...newTodo.bindText(newTodo.item.title)} />
+            </div>
+          </li>
+        </template>
       </body>
     </html>
   ));

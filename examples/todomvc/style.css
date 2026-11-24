@@ -131,3 +131,15 @@ li[data-completed="true"] .title {
     min-height: 100vh;
   }
 }
+
+li[data-hs-pending-item] {
+  opacity: 0.55;
+}
+
+li[hidden] {
+  display: none;
+}
+
+ul:has(> li:not([hidden])) ~ .empty {
+  display: none;
+}

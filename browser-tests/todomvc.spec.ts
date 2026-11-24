@@ -250,3 +250,181 @@ test("reverts a toggle the server rejects", async ({ page }) => {
   await page.getByRole("button", { name: "Delete: Rejected task" }).click();
   await expect(row(page, "Rejected task")).toHaveCount(0);
 });
+
+const addUrl = "**/_hypersig/actions/add-todo";
+const removeUrl = "**/_hypersig/actions/remove-todo";
+const uuidPattern =
+  /name="todoKey"\r\n\r\n([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\r\n/;
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function submitTask(page: Page, title: string) {
+  const composer = page.getByRole("textbox", { name: "New task" });
+  await composer.fill(title);
+  await composer.press("Enter");
+}
+
+async function deleteTask(page: Page, title: string) {
+  await page.getByRole("button", { name: `Delete: ${title}` }).click();
+  await expect(row(page, title)).toHaveCount(0);
+}
+
+test("adds a task before the server answers", async ({ page }) => {
+  await page.goto("/");
+  await waitForLive(page);
+  let body = "";
+  await page.route(addUrl, async (route) => {
+    body = route.request().postData() ?? "";
+    await delay(1500);
+    await route.continue();
+  });
+  const answered = page.waitForResponse(addUrl);
+  await submitTask(page, "Pending task");
+  // Shorter than the route delay, so only the preview can pass it.
+  await expect(row(page, "Pending task")).toBeVisible({ timeout: 1000 });
+  await expect(row(page, "Pending task")).toHaveAttribute(
+    "data-hs-pending-item",
+    ""
+  );
+  await answered;
+  expect(body).toMatch(uuidPattern);
+  await expect(
+    page.locator("li[data-hs-pending-item]").filter({ hasText: "Pending task" })
+  ).toHaveCount(0);
+  await expect(row(page, "Pending task")).toHaveCount(1);
+  await expect(row(page, "Pending task")).toBeVisible();
+
+  await page.unroute(addUrl);
+  await deleteTask(page, "Pending task");
+});
+
+test("removes a preview the server rejects", async ({ page }) => {
+  await page.goto("/");
+  await waitForLive(page);
+  await page.route(addUrl, async (route) => {
+    await delay(1500);
+    await route.fulfill({ status: 500, body: "" });
+  });
+  const answered = page.waitForResponse(addUrl);
+  await submitTask(page, "Rejected add");
+  // Shorter than the route delay, so only the preview can pass it.
+  await expect(row(page, "Rejected add")).toBeVisible({ timeout: 1000 });
+  await answered;
+  await expect(row(page, "Rejected add")).toHaveCount(0);
+});
+
+test("hides a deleted task before the server answers and restores it on failure", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForLive(page);
+  await addTask(page, "Doomed task");
+  const doomed = row(page, "Doomed task");
+
+  await page.route(removeUrl, async (route) => {
+    await delay(1500);
+    await route.fulfill({ status: 500, body: "" });
+  });
+  let answered = page.waitForResponse(removeUrl);
+  await page.getByRole("button", { name: "Delete: Doomed task" }).click();
+  // Shorter than the route delay, so only the optimistic write can pass it.
+  await expect(doomed).toBeHidden({ timeout: 1000 });
+  await answered;
+  await expect(doomed).toBeVisible();
+
+  await page.unroute(removeUrl);
+  await page.route(removeUrl, async (route) => {
+    await delay(1500);
+    await route.continue();
+  });
+  answered = page.waitForResponse(removeUrl);
+  await page.getByRole("button", { name: "Delete: Doomed task" }).click();
+  await expect(doomed).toBeHidden({ timeout: 1000 });
+  await answered;
+  await expect(doomed).toHaveCount(0);
+});
+
+test("keeps the preview while another update arrives", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  if (!baseURL) throw new Error("Missing TodoMVC base URL");
+  const peerSession = await browser.newContext({ baseURL });
+  try {
+    await page.goto("/");
+    await waitForLive(page);
+    const peer = await peerSession.newPage();
+    await peer.goto("/");
+    await waitForLive(peer);
+
+    let resume = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    await page.route(addUrl, async (route) => {
+      await waiting;
+      await route.continue();
+    });
+    const started = page.waitForRequest(addUrl);
+    const answered = page.waitForResponse(addUrl);
+    await submitTask(page, "Held task");
+    try {
+      await started;
+      const preview = row(page, "Held task");
+      await expect(preview).toHaveAttribute("data-hs-pending-item", "");
+
+      await submitTask(peer, "Peer task");
+      await expect(row(page, "Peer task")).toBeVisible();
+      await expect(preview).toBeVisible();
+      await expect(preview).toHaveCount(1);
+      await expect(preview).toHaveAttribute("data-hs-pending-item", "");
+      await expect(preview.locator(".title")).toHaveText("Held task");
+    } finally {
+      resume();
+    }
+    await answered;
+    await expect(page.locator("li[data-hs-pending-item]")).toHaveCount(0);
+    await expect(row(page, "Held task")).toHaveCount(1);
+
+    await page.unroute(addUrl);
+    await deleteTask(page, "Held task");
+    await deleteTask(page, "Peer task");
+  } finally {
+    await peerSession.close();
+  }
+});
+
+test("does not insert on the completed filter", async ({ page }) => {
+  await page.goto("/?filter=completed");
+  await waitForLive(page);
+  let resume = () => {};
+  const waiting = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  await page.route(addUrl, async (route) => {
+    await waiting;
+    await route.continue();
+  });
+  const started = page.waitForRequest(addUrl);
+  const answered = page.waitForResponse(addUrl);
+  await submitTask(page, "Active only");
+  try {
+    await started;
+    // onSubmit inserts before the request starts, so a preview would exist.
+    await expect(page.locator("[data-hs-pending-item]")).toHaveCount(0);
+    await expect(row(page, "Active only")).toHaveCount(0);
+  } finally {
+    resume();
+  }
+  await answered;
+  await expect(page.getByText("1 item left")).toBeVisible();
+  await expect(row(page, "Active only")).toHaveCount(0);
+
+  await page.unroute(addUrl);
+  await page.goto("/");
+  await waitForLive(page);
+  await deleteTask(page, "Active only");
+});
