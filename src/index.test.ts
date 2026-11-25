@@ -21,6 +21,7 @@ import type {
   SignalScope,
   StmtNode,
 } from "./index.js";
+import { streamParams } from "./protocol.js";
 
 const origin = "http://localhost";
 const changed = topic("counter", (id: string) => id);
@@ -140,17 +141,24 @@ function setup(
   };
 }
 
+/** Builds the query string of a stream request for these views. */
+function streamQuery(
+  views: readonly string[],
+  pristine: readonly string[] = []
+) {
+  return new URLSearchParams([
+    ...views.map((key) => [streamParams.view, key]),
+    ...pristine.map((key) => [streamParams.pristine, key]),
+  ]).toString();
+}
+
 async function openStream(
   app: Hono,
   path: string,
   keys = ["counter.main"],
   pristine: readonly string[] = []
 ) {
-  const query = new URLSearchParams([
-    ...keys.map((key) => ["view", key]),
-    ...pristine.map((key) => ["pristine", key]),
-  ]);
-  const response = await app.request(`${path}?${query}`, {
+  const response = await app.request(`${path}?${streamQuery(keys, pristine)}`, {
     headers: { "X-Session": "owner" },
   });
   expect(response.headers.get("Content-Type")).toContain("text/event-stream");
@@ -194,17 +202,19 @@ it("scopes a page's authorized views to its session and catches changes made bef
   expect((await app.request("/")).status).toBe(401);
   const { source, path } = await pageUrl();
   expect(source).toContain("<output>0</output>");
-  expect((await app.request(path + "?view=counter.main")).status).toBe(401);
+  expect(
+    (await app.request(`${path}?${streamQuery(["counter.main"])}`)).status
+  ).toBe(401);
   expect(
     (
-      await app.request(path + "?view=counter.main", {
+      await app.request(`${path}?${streamQuery(["counter.main"])}`, {
         headers: { "X-Session": "other" },
       })
     ).status
   ).toBe(403);
   expect(
     (
-      await app.request(path + "?view=private", {
+      await app.request(`${path}?${streamQuery(["private"])}`, {
         headers: { "X-Session": "owner" },
       })
     ).status
@@ -550,13 +560,10 @@ it("opens a page rendered by another runtime with the same page key and trusts S
   }
 
   const tooMany = Array.from({ length: 33 }, (_, index) => `view-${index}`);
-  const query = new URLSearchParams([
-    ["view", "counter"],
-    ...tooMany.map((key) => ["pristine", key]),
-  ]);
-  const rejected = await streaming.app.request(`${path}?${query}`, {
-    headers: { "X-Session": "owner" },
-  });
+  const rejected = await streaming.app.request(
+    `${path}?${streamQuery(["counter"], tooMany)}`,
+    { headers: { "X-Session": "owner" } }
+  );
   expect(rejected.status).toBe(400);
 });
 
@@ -794,7 +801,9 @@ it("rechecks ancestor access before releasing a child fragment", async () => {
   );
   const path = /data-hs-stream="([^"]+)"/.exec(source)?.[1];
   if (!path) throw new Error("Missing SSE URL");
-  expect((await app.request(path + "?view=parent%2Fchild-1")).status).toBe(400);
+  expect(
+    (await app.request(`${path}?${streamQuery(["parent/child-1"])}`)).status
+  ).toBe(400);
 
   const stream = await openStream(app, path, ["parent"]);
   try {
