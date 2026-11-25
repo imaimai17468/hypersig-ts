@@ -865,6 +865,27 @@ it("leaves a pending value a later request wrote when the earlier one fails", as
   expect(runtime.read(f.favorite.path)).toBe(false);
 });
 
+/**
+ * Runs `act` and returns the exceptions reported to the page's window while
+ * it runs, keeping them from failing the test.
+ */
+function catchErrors(page: Document, act: () => void): unknown[] {
+  const errors: unknown[] = [];
+  const catchError = (event: ErrorEvent) => {
+    errors.push(event.error);
+    event.preventDefault();
+  };
+  const view = page.defaultView;
+  if (!view) throw new Error("The page has no window");
+  view.addEventListener("error", catchError);
+  try {
+    act();
+  } finally {
+    view.removeEventListener("error", catchError);
+  }
+  return errors;
+}
+
 it("throws and sends nothing when a pending path has no committed value", () => {
   const favorite = signals(
     { favorite: false, seen: "", other: 0 },
@@ -888,25 +909,238 @@ it("throws and sends nothing when a pending path has no committed value", () => 
   );
   const { requests, send } = createSend();
   const runtime = startSignals({ root: page, send });
-  const errors: unknown[] = [];
-  const catchError = (event: ErrorEvent) => {
-    errors.push(event.error);
-    event.preventDefault();
-  };
-  const view = page.defaultView;
-  if (!view) throw new Error("The page has no window");
-  // The click reports the exception to the frame's window.
-  view.addEventListener("error", catchError);
-  try {
-    click("#uncommitted");
-  } finally {
-    view.removeEventListener("error", catchError);
-  }
+  const errors = catchErrors(page, () => click("#uncommitted"));
   expect(errors).toHaveLength(1);
   expect(String(errors[0])).toContain(JSON.stringify(f.other.path));
   expect(requests).toHaveLength(0);
   expect(runtime.read(f.favorite.path)).toBe(false);
   expect(runtime.read(f.seen.path)).toBe("");
+});
+
+it("keeps a later request's pending value when an earlier one succeeds", async () => {
+  const { click, request, runtime, f } = createFavoritePage();
+
+  click("#off");
+  click("#on");
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(true);
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(false);
+});
+
+it("keeps a value a statement wrote over a pending value when the request fails", async () => {
+  const { page, find, click, request, runtime, f } = createFavoritePage();
+  const set = page.createElement("div");
+  set.innerHTML =
+    render("button", { id: "set", ...on.click(f.favorite.set(true)) }) +
+    render("button", { id: "flip", ...on.click(f.favorite.toggle()) });
+  find("[data-hs-view]").append(set);
+
+  click("#off");
+  click("#set");
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(true);
+
+  click("#on");
+  click("#flip");
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(false);
+  click("#flip");
+  expect(runtime.read(f.favorite.path)).toBe(true);
+});
+
+it("keeps a slider's newer input when the change it sent fails", async () => {
+  const slider = signals({ level: 0 }, { name: "pending-slider" });
+  const l = slider.with({ level: 5 });
+  const { page, input, dispatch } = createPage(
+    render("div", {
+      "data-hs-view": "slider",
+      ...l.init(),
+      children: element("input", {
+        id: "level",
+        type: "range",
+        ...l.bindValue(l.level),
+        ...on.change(
+          bump.call({ count: l.level }, { pending: l.level.set(l.level) })
+        ),
+      }),
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  input("#level").value = "7";
+  dispatch("#level", "change");
+  expect(request(0).body).toBe(JSON.stringify({ count: 7 }));
+  input("#level").value = "9";
+  dispatch("#level", "input");
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(l.level.path)).toBe(9);
+  expect(input("#level").value).toBe("9");
+
+  input("#level").value = "3";
+  dispatch("#level", "change");
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(l.level.path)).toBe(5);
+  expect(input("#level").value).toBe("5");
+});
+
+it("reverts to a committed value a snapshot brought while its input had focus", async () => {
+  const memo = signals({ title: "" }, { name: "pending-title" });
+  const m = memo.with({ title: "a" });
+  const { page, find, input } = createPage(
+    render("div", {
+      "data-hs-view": "title",
+      children: [
+        element("p", { id: "snapshot", ...m.init() }),
+        element("input", {
+          id: "title",
+          ...m.bindValue(m.title),
+          ...on.keydown({
+            Enter: saveMemo.call(
+              { title: m.title },
+              { pending: m.title.set(m.title.trim()) }
+            ),
+          }),
+        }),
+      ],
+    })
+  );
+  const { request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+  const field = input("#title");
+  field.focus();
+  press(field, { key: "Enter" });
+  find("#snapshot").setAttribute(
+    "data-hs-signals",
+    memo.with({ title: "c" }).init()["data-hs-signals"]
+  );
+  runtime.applySnapshots(find("[data-hs-view]"));
+  // The focused input keeps its path, so the store does not take "c" yet.
+  expect(runtime.read(m.title.path)).toBe("a");
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(m.title.path)).toBe("c");
+});
+
+it("records no committed value from owned children or from a nested view's snapshot", async () => {
+  const outer = signals({ favorite: false }, { name: "pending-outer" });
+  const inner = signals({ favorite: false }, { name: "pending-inner" });
+  const owned = signals({ favorite: false }, { name: "pending-owned" });
+  const o = outer.with({ favorite: false });
+  const i = inner.with({ favorite: false });
+  const w = owned.with({ favorite: true });
+  const { page, find, click } = createPage(
+    render("div", {
+      "data-hs-view": "outer",
+      children: [
+        element("p", { ...o.init() }),
+        element("div", {
+          "data-hs-view": "outer/inner",
+          children: element("p", { id: "inner-snapshot", ...i.init() }),
+        }),
+        element("star-rating", {
+          id: "owner",
+          "data-hs-owns-children": "",
+          children: element("p", { ...w.init() }),
+        }),
+        element("button", {
+          id: "inner-on",
+          ...on.click(
+            saveFavorite.call(
+              { favorite: true },
+              { pending: i.favorite.set(true) }
+            )
+          ),
+        }),
+        element("button", {
+          id: "owned-on",
+          ...on.click(
+            saveFavorite.call(
+              { favorite: true },
+              { pending: w.favorite.set(false) }
+            )
+          ),
+        }),
+      ],
+    })
+  );
+  const { requests, request, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+
+  const errors = catchErrors(page, () => click("#owned-on"));
+  expect(errors).toHaveLength(1);
+  expect(requests).toHaveLength(0);
+
+  click("#inner-on");
+  find("#inner-snapshot").setAttribute(
+    "data-hs-signals",
+    inner.with({ favorite: true }).init()["data-hs-signals"]
+  );
+  // Only the inner view's own update records its values.
+  runtime.applySnapshots(find("[data-hs-view='outer']"));
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(i.favorite.path)).toBe(false);
+});
+
+it("reports a pending call in onError that has no committed value like a click", async () => {
+  const favorite = signals(
+    { favorite: false, other: 0 },
+    { name: "pending-in-error" }
+  );
+  const f = favorite.with({ favorite: false });
+  const { page, click } = createPage(
+    render("div", {
+      ...f.init(),
+      children: element("button", {
+        id: "save",
+        ...on.click(
+          saveFavorite.call(
+            { favorite: true },
+            {
+              onError: saveFavorite.call(
+                { favorite: false },
+                { pending: f.other.set(1) }
+              ),
+            }
+          )
+        ),
+      }),
+    })
+  );
+  const { requests, request, send } = createSend();
+  startSignals({ root: page, send });
+  const view = page.defaultView;
+  if (!view) throw new Error("The page has no window");
+  // jsdom has no reportError, which every browser the runtime supports has.
+  const reportError = vi.fn<(error: unknown) => void>();
+  Object.assign(view, { reportError });
+  const unhandled: unknown[] = [];
+  const catchRejection = (event: PromiseRejectionEvent) => {
+    unhandled.push(event.reason);
+    event.preventDefault();
+  };
+  window.addEventListener("unhandledrejection", catchRejection);
+  try {
+    click("#save");
+    request(0).respond({ ok: false });
+    await settle();
+  } finally {
+    window.removeEventListener("unhandledrejection", catchRejection);
+  }
+  expect(reportError).toHaveBeenCalledOnce();
+  expect(String(reportError.mock.calls[0]?.[0])).toContain(
+    JSON.stringify(f.other.path)
+  );
+  expect(unhandled).toHaveLength(0);
+  expect(requests).toHaveLength(1);
 });
 
 it("skips the whole handler while its control is pending", async () => {

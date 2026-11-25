@@ -112,9 +112,9 @@
     <code>pending</code> lists <code>set</code> statements that write the shown
     value when the call runs. The runtime remembers the latest committed value
     of each path from the Live View, lets a committed value replace the shown
-    one at any time, and writes the latest committed value back when the request
-    fails. The value must come from a Live View, and the Action must publish the
-    Topic that renders it again. The favorite button in the
+    one even during the request, and writes the latest committed value back when
+    the request fails. The value must come from a Live View, and the Action must
+    publish the Topic that renders it again. The favorite button in the
     <a
       href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/widgets/server.tsx"
       >Widgets example</a

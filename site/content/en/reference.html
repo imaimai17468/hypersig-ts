@@ -588,20 +588,29 @@ on.click(
       Each path needs a committed value: a field passed to
       <code>with</code> whose <code>init()</code> is rendered, usually by a Live
       View. The runtime keeps the latest such value of each path from the first
-      page and every Live View update. When a path has none, the click throws,
-      sends nothing, and runs none of the handler's later statements.
+      page and every Live View update, one value per path. When a path has none,
+      the handler that runs the call throws (a click, a key, a timer, a custom
+      event, a focus move, <code>onSubmit</code>, or the result statements of
+      another call), sends nothing, and runs none of its later statements. The
+      exception reaches the window's <code>error</code> event.
     </li>
     <li>
-      A Live View update during the request replaces the shown value at once.
-      When the request fails, the runtime writes the latest committed value back
-      to each path, then runs <code>onError</code>. It does not write back the
-      value from before the click, which is stale once a commit from another tab
-      has arrived during the request.
+      A Live View update during the request replaces the shown value at once,
+      except on the path of a focused <code>bindValue</code> text input. When
+      the request fails, the runtime writes the latest committed value back to
+      each path that still shows the pending value, then runs
+      <code>onError</code>. It does not write back the value from before the
+      click, which is stale once a commit from another tab has arrived during
+      the request.
     </li>
     <li>
       When a later call writes the same path before the earlier one ends, the
       path follows the later call: the earlier call's failure leaves it alone,
-      and the later call's failure writes the committed value back.
+      and the later call's failure writes the committed value back. A
+      <code>set</code> or <code>toggle</code> statement, or a
+      <code>bindValue</code> input, that writes the path during the request ends
+      the pending value, so a failure keeps that newer write, such as a slider
+      the user moved on. A Live View update does not end it.
     </li>
     <li>
       A success leaves the shown value as it is. The Action must publish the

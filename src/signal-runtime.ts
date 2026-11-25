@@ -387,8 +387,11 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   const listenedEvents = new WeakMap<Element, Set<string>>();
   const reservations = new Map<string, ReturnType<typeof setTimeout>>();
   // The latest owned value of each app path from a `data-hs-signals` load.
+  // It keeps one value per path a snapshot names, like the store, so it does
+  // not grow with the number of updates.
   const committed = new Map<string, JsonValue>();
-  // The request whose pending value each path shows.
+  // The request whose pending value each path still shows. A statement or an
+  // input that writes the path ends it, so a failure does not undo that write.
   const pendingOwners = new Map<string, object>();
   let isRenderQueued = false;
 
@@ -414,6 +417,12 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     if (isAppPath(path)) write(path, value);
   }
 
+  /** A write by a statement or an input, which replaces any pending value. */
+  function writeByUser(path: SignalPath, value: JsonValue) {
+    pendingOwners.delete(JSON.stringify(path));
+    writeFromApp(path, value);
+  }
+
   /** Skips the path in `editingKey`, which a focused input is editing. */
   function loadSnapshot(element: Element, editingKey?: string) {
     for (const [path, value, mark] of readSnapshot(element)) {
@@ -437,7 +446,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     const binding = readValueBinding(field);
     if (!binding) return;
     const value = readField(field, binding.kind);
-    if (value !== undefined) writeFromApp(binding.path, value);
+    if (value !== undefined) writeByUser(binding.path, value);
   }
 
   /** Reads a JSON object of expressions, or `undefined` when malformed. */
@@ -626,11 +635,17 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       const value = committed.get(key);
       if (!result.ok && value !== undefined) writeFromApp(path, value);
     }
-    if (result.ok) {
-      write(["$restored", url], false);
-      run(onSuccess, control, result.data, detail);
-    } else {
-      run(onError, control, null, detail);
+    try {
+      if (result.ok) {
+        write(["$restored", url], false);
+        run(onSuccess, control, result.data, detail);
+      } else {
+        run(onError, control, null, detail);
+      }
+    } catch (error) {
+      // Reported to the window's `error` event like an exception in a click
+      // handler, not as an unhandled rejection.
+      (root.defaultView ?? window).reportError(error);
     }
     return result;
   }
@@ -676,10 +691,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     for (const stmt of stmts) {
       switch (stmt[0]) {
         case "set":
-          writeFromApp(stmt[1], evaluate(stmt[2], runContext));
+          writeByUser(stmt[1], evaluate(stmt[2], runContext));
           break;
         case "toggle":
-          writeFromApp(stmt[1], !isTruthy(read(stmt[1]) ?? null));
+          writeByUser(stmt[1], !isTruthy(read(stmt[1]) ?? null));
           break;
         case "focus":
           focusRef(stmt[1]);
