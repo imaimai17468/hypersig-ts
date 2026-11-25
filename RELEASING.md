@@ -23,30 +23,16 @@ hypersig-ts is published to npm as [`hypersig-ts`](https://www.npmjs.com/package
 
 ## First release
 
-The package name does not exist on npm until the first publish, and trusted publishing can be configured only for a package that exists. So the first release authenticates with an access token.
+0.1.0 was published by hand on 2026-11-25. An access token that does not bypass two-factor authentication cannot publish from CI (`npm publish` fails with `EOTP`), and npm is restricting tokens that do bypass it, so the release workflow authenticates with trusted publishing only.
 
-### Recommended: publish from the workflow
-
-1. Add the `NPM_TOKEN` secret as described in [Access token](#access-token). The token needs permission to publish new packages (a granular token with read and write access to all packages, or an automation token).
-2. Push the tag for the version in `package.json`:
-
-   ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-The release workflow publishes 0.1.0 with provenance. Afterwards, set up [trusted publishing](#trusted-publishing-recommended), then delete the secret and revoke the token.
-
-### Alternative: publish by hand
-
-From a clean checkout of `main`:
+To publish by hand (only needed if trusted publishing is unavailable), from a clean checkout of the tagged commit:
 
 ```sh
-npm login
-mise exec -- npm publish --access public --no-provenance
+npm login --auth-type=web
+mise exec -- npm publish --access public --no-provenance --auth-type=web
 ```
 
-`publishConfig.provenance` is `true` so that CI publishes with provenance, and a provenance statement can be generated only on a supported CI provider, so `--no-provenance` turns it off for this one local publish. `prepack` rebuilds `dist/` before packing. Tag the commit afterwards (`git tag v0.1.0 && git push origin v0.1.0`) so later tags continue from it; the release workflow that tag starts fails at `npm publish` because 0.1.0 already exists, which is expected for this path only.
+Both commands print a URL to approve in a browser, so they also work when the approval happens on a phone. `--no-provenance` is needed because a provenance statement can be generated only on a supported CI provider. `prepack` rebuilds `dist/` before packing.
 
 ## Later releases (by tag)
 
@@ -61,21 +47,9 @@ git push origin v0.2.0
 
 ## Authenticating the workflow
 
-Use one of the following.
-
-### Trusted publishing (recommended)
-
-npm can trust this repository's workflow through OpenID Connect, so no long-lived token is stored.
+Configure trusted publishing once; the workflow then needs no secret.
 
 1. On npmjs.com, open the package's **Settings** and find **Trusted Publisher**.
 2. Choose **GitHub Actions** and enter the owner `imaimai17468`, the repository `hypersig-ts`, and the workflow file `release.yml`.
-3. Save. The workflow already has `id-token: write`, and the npm CLI bundled with the pinned Node (11.5.1 or later is required) exchanges the workflow's OIDC token for a short-lived publish credential. The `NPM_TOKEN` secret is then not needed; once a trusted release has succeeded, delete the secret and revoke the token.
-
-Trusted publishing can be configured only after the package exists, so set it up after the first release.
-
-### Access token
-
-1. On npmjs.com, create a granular access token with read and write access to `hypersig-ts` (or an automation token).
-2. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add a repository secret named `NPM_TOKEN` with the token.
-
-The workflow passes the secret as `NODE_AUTH_TOKEN`, and the registry configuration step reads it from there.
+3. Save. The workflow already has `id-token: write`, and the npm CLI bundled with the pinned Node exchanges the workflow's OIDC token for a short-lived publish credential.
+4. Delete the `NPM_TOKEN` repository secret and revoke the token on npmjs.com if one was created.

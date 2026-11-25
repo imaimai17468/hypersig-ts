@@ -33,9 +33,6 @@ jobs:
       - run: bun run test
       - run: bun run build
       - name: Configure the npm registry
-        run: |
-          npm config set registry https://registry.npmjs.org/
-          npm config set //registry.npmjs.org/:_authToken '${NODE_AUTH_TOKEN}'
+        run: npm config set registry https://registry.npmjs.org/
+      # Authenticates through trusted publishing (OIDC); see RELEASING.md.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
