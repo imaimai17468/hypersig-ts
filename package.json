@@ -50,6 +50,10 @@
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "import": "./dist/redis.js"
     }
   },
   "publishConfig": {
@@ -57,7 +61,7 @@
     "provenance": true
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig-ts/core\"); await import(\"hypersig-ts\"); await import(\"hypersig-ts/element\")'",
+    "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig-ts/core\"); await import(\"hypersig-ts\"); await import(\"hypersig-ts/element\"); await import(\"hypersig-ts/redis\")'",
     "prepack": "rm -f dist/*.js dist/*.d.ts dist/*.map && bun run build",
     "check": "vp check",
     "format": "vp fmt --check",
@@ -96,6 +100,7 @@
     "jsdom": "30.0.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "redis": "6.3.1",
     "typescript": "7.0.2",
     "valibot": "1.5.0",
     "vite-plus": "1.7.0"
