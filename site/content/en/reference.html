@@ -292,11 +292,13 @@ const href = links.counters[":counterKey"].$path({
   <h2>Browser signals</h2>
   <p>
     Signals hold state that only the browser decides, such as a toggle or an
-    input value. Define a group with <code>signals(initial, { name })</code>, or
-    one group per key, such as a row, with
-    <code>signalFamily(initial, { name }).at(key)</code>. Values must be JSON.
-    Expressions are data that the browser runtime evaluates, so the page needs
-    no <code>eval</code> and works under <code>script-src 'self'</code>.
+    input value. Copying server data into signals and changing it there is not
+    recommended, because the data then has two owners. Define a group with
+    <code>signals(initial, { name })</code>, or one group per key, such as a
+    row, with <code>signalFamily(initial, { name }).at(key)</code>. Values must
+    be JSON. Expressions are data that the browser runtime evaluates, so the
+    page needs no <code>eval</code> and works under
+    <code>script-src 'self'</code>.
   </p>
   <pre><code>const editor = signals(
   { base: 0, published: 0, operation: "" },
@@ -498,6 +500,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
       expression. <code>options.onSuccess(output)</code> and
       <code>options.onError</code> take statements.
       <code>action.form()</code> accepts the same two options.
+      <code>options.pending</code> takes <code>set</code> statements that show a
+      value until the Action is committed (see Showing a value before it is
+      confirmed below).
     </dd>
     <dt>
       <code>action.pending()</code> and <code>action.draftRestored()</code>
@@ -552,33 +557,61 @@ li:has(.row [data-hs-pending]) {
   </p>
   <p><strong>Showing a value before it is confirmed</strong></p>
   <p>
-    A write before a <code>call</code> is an ordinary write: it shows at once
-    and stays when the Action fails. To show the user's own action before the
-    server confirms it, follow the three rules in
+    This is not recommended in most cases: the pending state is enough. Use it
+    only where it is truly needed, such as dragging, frequent personal toggles,
+    and sending your own text. A write before a <code>call</code> is an ordinary
+    write: it shows at once and stays when the Action fails. To show the user's
+    own action until the server confirms it, as in
     <a href="../concepts/#pending-echo"
       >Showing the user's own action as pending</a
-    >. Render the shown value and the last committed value as two signals from
-    the Live View, and in <code>onError</code> set the shown value to the
-    committed one:
+    >, pass <code>set</code> statements as <code>options.pending</code>:
   </p>
-  <pre><code>const f = favoriteState.with({ favorite, committed: favorite });
-on.click([
-  f.favorite.set(f.favorite.not()),
+  <pre><code>const f = favoriteState.with({ favorite });
+on.click(
   saveFavorite.call(
     { favorite: f.favorite },
-    { onError: [f.favorite.set(f.committed)] }
-  ),
-])</code></pre>
+    { pending: f.favorite.set(f.favorite.not()) }
+  )
+)</code></pre>
+  <ul>
+    <li>
+      The statements run when the call runs, and the input is evaluated after
+      them, so the Action receives the value they wrote. The sending control has
+      <code>data-hs-pending</code> as for any call.
+    </li>
+    <li>
+      <code>pending</code> takes <code>set</code> statements only. Its type
+      accepts any statement, and <code>call()</code> throws a
+      <code>TypeError</code> for any other statement.
+    </li>
+    <li>
+      Each path needs a committed value: a field passed to
+      <code>with</code> whose <code>init()</code> is rendered, usually by a Live
+      View. The runtime keeps the latest such value of each path from the first
+      page and every Live View update. When a path has none, the click throws,
+      sends nothing, and runs none of the handler's later statements.
+    </li>
+    <li>
+      A Live View update during the request replaces the shown value at once.
+      When the request fails, the runtime writes the latest committed value back
+      to each path, then runs <code>onError</code>. It does not write back the
+      value from before the click, which is stale once a commit from another tab
+      has arrived during the request.
+    </li>
+    <li>
+      When a later call writes the same path before the earlier one ends, the
+      path follows the later call: the earlier call's failure leaves it alone,
+      and the later call's failure writes the committed value back.
+    </li>
+    <li>
+      A success leaves the shown value as it is. The Action must publish the
+      Topic that renders the value again; otherwise the sent value stays until
+      the next update.
+    </li>
+  </ul>
   <p>
-    A Live View update during the request overwrites both signals. The
-    <code>onError</code> statements are the ones from the click and read signals
-    when they run, so <code>f.committed</code> is the latest committed value. A
-    value written into the statement, such as the one the page was rendered
-    with, is the value from before the click, and is stale once a commit from
-    another tab has arrived. Set a value rather than toggling, so a Live View
-    update that arrived first does not turn the undo into another change. Do not
-    show values early that other people may edit at the same time, values the
-    server decides (such as keys, order, or totals), or input that may fail
+    Do not show values early that other people may edit at the same time, values
+    the server decides (such as keys, order, or totals), or input that may fail
     validation; show the pending state instead.
   </p>
   <p><strong>Known limitations</strong></p>

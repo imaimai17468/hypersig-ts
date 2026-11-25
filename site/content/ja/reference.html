@@ -296,7 +296,10 @@ const href = links.counters[":counterKey"].$path({
 <section id="signals">
   <h2>ブラウザ側の Signal</h2>
   <p>
-    Signal は、トグルや入力値のように、ブラウザだけで決まる状態を持ちます。<code
+    Signal
+    は、トグルや入力値のように、ブラウザだけで決まる状態を持ちます。サーバーのデータを
+    Signal
+    に写して書き換えるのはおすすめしません。データの持ち主が二つになるためです。<code
       >signals(initial, { name })</code
     >
     でグループを定義します。行ごとに持つ場合は
@@ -532,7 +535,9 @@ const e = editor.with({ base: draft.revision });</code></pre>
       と <code>options.onError</code> には文を書きます。<code
         >action.form()</code
       >
-      も同じ二つのオプションを受け取ります。
+      も同じ二つのオプションを受け取ります。<code>options.pending</code>
+      には、Action が確定するまで値を見せる <code>set</code>
+      の文を書きます（下の「確定前の値を表示する」）。
     </dd>
     <dt>
       <code>action.pending()</code> と <code>action.draftRestored()</code>
@@ -587,33 +592,60 @@ li:has(.row [data-hs-pending]) {
   </p>
   <p><strong>確定前の値を表示する</strong></p>
   <p>
-    <code>call</code>
+    基本はおすすめしません。処理中の表示で十分です。ドラッグ、頻繁な個人の切り替え、自分で書いた本文の送信のように、どうしても必要な場面でだけ使います。<code
+      >call</code
+    >
     より前の書き込みは通常の書き込みです。すぐに画面に出て、Action
-    が失敗してもそのまま残ります。利用者自身の操作をサーバーが確定する前に見せるときは、<a
-      href="../concepts/#pending-echo"
+    が失敗してもそのまま残ります。<a href="../concepts/#pending-echo"
       >利用者自身の操作を未確定のまま見せる</a
-    >の三つの規則に従います。表示する値と最後に確定した値を Live View から二つの
-    Signal として描き、<code>onError</code>
-    で表示する値に確定した値を書きます。
+    >のように、利用者自身の操作をサーバーが確定するまで見せるときは、<code
+      >set</code
+    >
+    の文を <code>options.pending</code> に渡します。
   </p>
-  <pre><code>const f = favoriteState.with({ favorite, committed: favorite });
-on.click([
-  f.favorite.set(f.favorite.not()),
+  <pre><code>const f = favoriteState.with({ favorite });
+on.click(
   saveFavorite.call(
     { favorite: f.favorite },
-    { onError: [f.favorite.set(f.committed)] }
-  ),
-])</code></pre>
+    { pending: f.favorite.set(f.favorite.not()) }
+  )
+)</code></pre>
+  <ul>
+    <li>
+      文は呼び出しを実行したときに走り、入力はそのあとで評価するので、Action
+      には文が書いた値が届きます。送信元のコントロールには、ほかの呼び出しと同じく
+      <code>data-hs-pending</code> が付きます。
+    </li>
+    <li>
+      <code>pending</code> には
+      <code>set</code> の文だけを書けます。型はどの文も受け付け、<code
+        >call()</code
+      >
+      はほかの文があると <code>TypeError</code> を投げます。
+    </li>
+    <li>
+      各パスには確定した値が必要です。<code>with</code> に渡した項目で、その
+      <code>init()</code> を描いたもの、ふつうは Live View
+      が描いたものです。ランタイムは、最初のページと Live View
+      の更新のたびに、各パスの最新の確定した値を覚えます。確定した値のないパスがあると、クリックは例外を投げ、何も送らず、ハンドラーのそれより後の文も実行しません。
+    </li>
+    <li>
+      送信中に Live View
+      の更新が届くと、表示する値をすぐに置き換えます。送信が失敗すると、ランタイムは各パスに最新の確定した値を書いてから、<code
+        >onError</code
+      >
+      を実行します。クリックする前の値には戻しません。送信中に別のタブの確定が届いたあとでは、その値は古いためです。
+    </li>
+    <li>
+      前の呼び出しが終わる前に、後の呼び出しが同じパスに書いたときは、そのパスは後の呼び出しに従います。前の呼び出しが失敗しても値は変えず、後の呼び出しが失敗したら確定した値に戻します。
+    </li>
+    <li>
+      成功したときは、表示する値を変えません。Action はその値を描き直す Topic
+      を発行する必要があります。発行しないと、次の更新まで送った値が残ります。
+    </li>
+  </ul>
   <p>
-    送信中に Live View の更新が届くと、両方の Signal を上書きします。<code
-      >onError</code
-    >
-    の文はクリックしたときの文で、Signal の値は実行するときに読むので、<code
-      >f.committed</code
-    >
-    は最新の確定した値です。ページを描画したときの値のように文に直接書いた値はクリックする前の値で、別のタブの確定が届いたあとでは古くなります。切り替えではなく値を書くので、先に届いた
-    Live View
-    の更新があっても、戻す操作が別の変更になりません。ほかの人が同時に編集しうる値、サーバーが決める値
+    ほかの人が同時に編集しうる値、サーバーが決める値
     (key、順序、合計など)、検証で失敗しうる入力は先に表示せず、処理中の表示にしてください。
   </p>
   <p><strong>既知の制約</strong></p>
