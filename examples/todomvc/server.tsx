@@ -24,6 +24,10 @@ const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 const stylesheet = Bun.file(new URL("./style.css", import.meta.url));
+// Demo only: unsigned in-memory session IDs that never expire, with no
+// eviction or rate limit on minting them. See
+// examples/shared-memo or examples/void/session.ts for a signed, expiring
+// session.
 const sessions = new Set<string>();
 const cookie = "todo-session";
 let todos: readonly Todo[] = [];

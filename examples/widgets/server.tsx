@@ -60,6 +60,10 @@ interface Session {
   fruit: Fruit;
   draft: string;
 }
+// Demo only: unsigned in-memory sessions that never expire, with no eviction or
+// rate limit on minting them. See
+// examples/shared-memo or examples/void/session.ts for a signed, expiring
+// session.
 const sessions = new Map<string, Session>();
 
 const fruitChanged = topic("fruit", (sessionId: string) => sessionId);

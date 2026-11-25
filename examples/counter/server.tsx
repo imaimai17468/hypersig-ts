@@ -14,6 +14,10 @@ const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
 const app = new Hono();
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
+// Demo only: the signed session cookie never expires, and nothing limits how
+// many sessions a client mints. See
+// examples/shared-memo or examples/void/session.ts for a signed, expiring
+// session.
 // A fixed secret keeps sessions valid after a restart; without one, they end with the process.
 const sessionSecret = Bun.env.COUNTER_SESSION_SECRET ?? crypto.randomUUID();
 const sessionCookie = "counter-session";

@@ -31,6 +31,10 @@ const initialItems: readonly Item[] = [
 ];
 const lastKey = "deploy";
 // Each session has its own list, shared by that session's tabs.
+// Demo only: one list per unsigned session ID, kept in memory without expiry,
+// eviction or a rate limit on minting sessions. See
+// examples/shared-memo or examples/void/session.ts for a signed, expiring
+// session.
 const lists = new Map<string, readonly Item[]>();
 
 const itemsChanged = topic("task-order", (sessionId: string) => sessionId);

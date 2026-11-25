@@ -20,6 +20,10 @@ const origin = `http://127.0.0.1:${port}`;
 const runtime = Bun.file(new URL("../../dist/runtime.js", import.meta.url));
 // Built from rating.ts by `bun run example:rating:browser`.
 const ratingScript = Bun.file(new URL("./dist/rating.js", import.meta.url));
+// Demo only: unsigned in-memory session IDs that never expire, with no
+// eviction or rate limit on minting them. See
+// examples/shared-memo or examples/void/session.ts for a signed, expiring
+// session.
 const sessions = new Set<string>();
 const cookie = "rating-session";
 const maxScore = 5;
