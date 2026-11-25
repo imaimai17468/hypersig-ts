@@ -44,10 +44,17 @@
   <p>
     A JavaScript library, or a React component, goes in a custom element that
     you declare once as a value and implement with
-    <code>defineElement</code> or <code>reactElement</code>. Such an island is
-    not rendered on the server and does not use Shadow DOM. The server passes it
-    attributes, including JSON, and the element sends events back as typed
-    values.
+    <code>defineElement</code> or <code>reactElement</code>. The declaration
+    types the implementation: its props are the declared attributes, and its
+    <code>emit</code> takes only the declared events. Such an island is not
+    rendered on the server: the server renders the element and the children you
+    give it, such as a fallback, and the element's JavaScript renders the rest
+    in the browser. It does not use Shadow DOM. The server passes it attributes,
+    including JSON, and the element sends events back as typed values. Set
+    <code>ownsChildren</code> when the element's JavaScript renders its
+    children. Such an element needs an <code>id</code> (a type error otherwise),
+    and a Live View update keeps it and its children only when the tag and the
+    <code>id</code> match.
     <a href="../reference/#custom-elements">Custom elements</a>
   </p>
   <p>

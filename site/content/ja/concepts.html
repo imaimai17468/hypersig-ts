@@ -58,9 +58,16 @@
     >
     または
     <code>reactElement</code>
-    で実装します。このアイランドはサーバーで描かず、Shadow DOM
-    も使いません。サーバーは JSON
-    を含む属性を渡し、要素はイベントを型付きの値として返します。<a
+    で実装します。実装の型は宣言から決まり、props は宣言した属性、<code
+      >emit</code
+    >
+    は宣言したイベントだけを受け付けます。このアイランドはサーバーで描きません。サーバーは要素と、代わりに見せる内容などとして渡した子だけを描き、残りはブラウザで要素の
+    JavaScript が描きます。Shadow DOM も使いません。サーバーは JSON
+    を含む属性を渡し、要素はイベントを型付きの値として返します。要素の
+    JavaScript が子を描くときは
+    <code>ownsChildren</code> を指定します。このときは <code>id</code>
+    が必要で（ないと型エラーになります）、Live View の更新は、タグと
+    <code>id</code> が一致するときだけ要素と子を残します。<a
       href="../reference/#custom-elements"
       >カスタム要素</a
     >
