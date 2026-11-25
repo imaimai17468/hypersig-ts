@@ -5,6 +5,10 @@ import { connectRedis } from "./redis.js";
 
 const redisServer = Bun.env.REDIS_SERVER ?? "redis-server";
 const hasRedisServer = Bun.which(redisServer) !== null;
+if (!hasRedisServer && Bun.env.REDIS_REQUIRED === "1")
+  throw new Error(
+    `REDIS_REQUIRED=1 but ${redisServer} was not found. Install Redis or set REDIS_SERVER.`
+  );
 if (!hasRedisServer)
   console.warn(
     `Skipping the Bun.RedisClient check: ${redisServer} was not found. Install Redis or set REDIS_SERVER.`

@@ -680,6 +680,10 @@ test("sends its Content-Security-Policy with the page", async ({ page }) => {
 
 const redisServer = process.env.REDIS_SERVER ?? "redis-server";
 const hasRedisServer = !spawnSync(redisServer, ["--version"]).error;
+if (!hasRedisServer && process.env.REDIS_REQUIRED === "1")
+  throw new Error(
+    `REDIS_REQUIRED=1 but ${redisServer} was not found. Install Redis or set REDIS_SERVER.`
+  );
 if (!hasRedisServer)
   console.warn(
     `Skipping the Redis counter test: ${redisServer} was not found. Install Redis or set REDIS_SERVER.`

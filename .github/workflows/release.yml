@@ -29,8 +29,18 @@ jobs:
             exit 1
           fi
       - run: bun install --frozen-lockfile
+      - name: Install redis-server for the Redis tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends redis-server
+          sudo systemctl disable --now redis-server
       - run: bun run check
       - run: bun run test
+        env:
+          REDIS_REQUIRED: "1"
+      - run: bun run test:redis:bun
+        env:
+          REDIS_REQUIRED: "1"
       - run: bun run build
       - name: Configure the npm registry
         run: npm config set registry https://registry.npmjs.org/
