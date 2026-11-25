@@ -2315,6 +2315,38 @@ it("counts Shift for a character after Control, Alt or Meta and ignores its case
   expect(runtime.read(s.alt.path)).toBe(1);
 });
 
+it("reads a key map again only after its attribute changes", () => {
+  const s = signals({ first: 0, second: 0 }, { name: "changed-map" }).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      children: element("button", {
+        id: "target",
+        ...on.keydown({ Enter: s.first.set(s.first.add(1)), Escape: [] }),
+      }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const target = find("#target");
+
+  press(target, { key: "Enter" });
+  expect(runtime.read(s.first.path)).toBe(1);
+  const parse = vi.spyOn(JSON, "parse");
+  expect(press(target, { key: "Escape" })).toBe(true);
+  expect(press(target, { key: "Escape" })).toBe(true);
+  expect(parse).not.toHaveBeenCalled();
+  parse.mockRestore();
+
+  const [name, value] = Object.entries(
+    on.keydown({ Enter: s.second.set(s.second.add(1)) })
+  )[0] ?? ["", ""];
+  target.setAttribute(name, value);
+  press(target, { key: "Enter" });
+  expect(runtime.read(s.first.path)).toBe(1);
+  expect(runtime.read(s.second.path)).toBe(1);
+  expect(press(target, { key: "Escape" })).toBe(false);
+});
+
 it("passes a key the nearest map lacks to the next map outward", () => {
   const s = signals(
     { inner: 0, outer: 0, escaped: 0 },

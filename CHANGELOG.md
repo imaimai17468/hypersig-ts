@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The browser runtime parses each `data-hs-on-keydown` key map once and reads it again only after the attribute changes, instead of parsing every enclosing map on every keydown.
 - `customElement()` with an attribute kind other than `string`, `number`, `boolean`, or `json` now reports a type error naming the attribute and its kind, instead of a misleading message about attribute names.
 
 ## [0.1.0] - 2026-11-25

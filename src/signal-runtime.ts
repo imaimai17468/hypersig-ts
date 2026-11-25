@@ -241,6 +241,25 @@ function readNamedHandlers(element: Element, name: string): NamedHandler[] {
   return Array.isArray(value) ? value.filter(isNamedHandler) : [];
 }
 
+/** The key map last read from each element, with the text it was read from. */
+const keyMaps = new WeakMap<
+  Element,
+  { readonly text: string; readonly handlers: readonly NamedHandler[] }
+>();
+
+/**
+ * Reads an element's key map, reusing the entries read last time while the
+ * attribute's text is the same, since every keydown reads each enclosing map.
+ */
+function readKeyMap(element: Element): readonly NamedHandler[] {
+  const text = element.getAttribute(eventAttributes.keydown) ?? "";
+  const cached = keyMaps.get(element);
+  if (cached?.text === text) return cached.handlers;
+  const handlers = readNamedHandlers(element, eventAttributes.keydown);
+  keyMaps.set(element, { text, handlers });
+  return handlers;
+}
+
 function readCustomEventHandlers(element: Element): NamedHandler[] {
   return readNamedHandlers(element, customElementAttributes.onCustom).filter(
     ([name]) => isCustomEventName(name)
@@ -726,9 +745,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       handler;
       handler = findOuterHandler(handler, keySelector)
     ) {
-      const entry = readNamedHandlers(handler, eventAttributes.keydown).find(
-        ([name]) => name === key
-      );
+      const entry = readKeyMap(handler).find(([name]) => name === key);
       if (!entry) continue;
       if (!focusMovingKeys.has(key)) event.preventDefault();
       // Like a click, a key does not repeat the writes and calls of a handler
