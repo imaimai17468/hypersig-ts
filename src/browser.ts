@@ -30,6 +30,13 @@ function isUpdate(value: unknown): value is HtmlUpdate {
   );
 }
 
+type ConnectionStatus =
+  | "connecting"
+  | "ready"
+  | "disconnected"
+  | "reload-required"
+  | "too-many-tabs";
+
 /** Matches Chromium's native EventSource retry of 3 s, so reopening never retries a down server faster. */
 const reopenDelayMs = 3_000;
 
@@ -61,26 +68,38 @@ function updateViews(
    */
   const pristine = new Set<string>();
   let hasConnected = false;
+  /** Set once the server evicts this page's stream; only a reload starts again. */
+  let isEvicted = false;
 
-  function setStatus(
-    status: "connecting" | "ready" | "disconnected" | "reload-required"
-  ) {
+  function describeStatus(status: ConnectionStatus) {
+    switch (status) {
+      case "reload-required":
+        return "Live updates require reloading this page. Copy your draft before reloading.";
+      case "too-many-tabs":
+        return "Live updates stopped because this page is open in too many tabs. Reload to resume.";
+      case "disconnected":
+        return views.size ? "Live updates disconnected." : "";
+      case "connecting":
+      case "ready":
+        return "";
+    }
+  }
+
+  function setStatus(status: ConnectionStatus) {
     document.documentElement.dataset.hsConnection = status;
     const outlet = findHandledOutlet(
       document,
       `[${outletAttributes.connectionStatus}]`
     );
-    if (outlet)
-      outlet.textContent =
-        status === "reload-required"
-          ? "Live updates require reloading this page. Copy your draft before reloading."
-          : status === "disconnected" && views.size
-            ? "Live updates disconnected."
-            : "";
+    if (outlet) outlet.textContent = describeStatus(status);
   }
 
-  function synchronize() {
-    if (!active) return;
+  /**
+   * Opens a stream for the views the page shows now. `keepStatus` leaves the
+   * status as it is while a stream the server ended on purpose reopens.
+   */
+  function synchronize({ keepStatus = false } = {}) {
+    if (!active || isEvicted) return;
     const next = new Map<string, HTMLElement>();
     for (const node of document.querySelectorAll<HTMLElement>(
       "[data-hs-view]"
@@ -105,7 +124,7 @@ function updateViews(
       setStatus("disconnected");
       return;
     }
-    setStatus("connecting");
+    if (!keepStatus) setStatus("connecting");
     if (!hasConnected) for (const key of views.keys()) pristine.add(key);
     hasConnected = true;
     const url = new URL(endpoint);
@@ -216,6 +235,18 @@ function updateViews(
       if (source !== connection) return;
       source.close();
       clearViews();
+    });
+    source.addEventListener(events.reconnect, () => {
+      if (source !== connection) return;
+      source.close();
+      connection = undefined;
+      synchronize({ keepStatus: true });
+    });
+    source.addEventListener(events.evicted, () => {
+      if (source !== connection) return;
+      source.close();
+      isEvicted = true;
+      setStatus("too-many-tabs");
     });
     source.addEventListener(events.reset, () => {
       if (source !== connection) return;

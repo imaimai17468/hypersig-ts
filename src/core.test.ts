@@ -1493,22 +1493,39 @@ const settlesWithin = (promise: Promise<void>, ms: number) =>
     new Promise<false>((resolve) => setTimeout(() => resolve(false), ms)),
   ]);
 
-it("ends a stream after maxStreamMs without a reset so the browser reconnects", async () => {
+it("asks the browser to reconnect at a random time in the last tenth of maxStreamMs", async () => {
   const store = { count: 0 };
-  const counter = counterRuntime(store, { maxStreamMs: 50 });
+  const counter = counterRuntime(store, { maxStreamMs: 1_000 });
   const token = await renderCounter(counter);
-  const first = await counter.runtime.openPage(token, counterKeys, viewer);
-  if (first.status !== "open") throw new Error("Expected an open page");
-  const connection = recordingConnection();
-  const started = performance.now();
-  const ended = await settlesWithin(
-    first.connect(connection, () => viewer),
-    1_000
-  );
-  expect(ended).toBe(true);
-  expect(performance.now() - started).toBeGreaterThanOrEqual(45);
-  expect(connection.signal.aborted).toBe(true);
-  expect(connection.messages).toEqual(["update", "ready"]);
+  vi.useFakeTimers();
+  try {
+    for (const [random, endsAt] of [
+      [0, 900],
+      [0.5, 950],
+    ] as const) {
+      vi.spyOn(Math, "random").mockReturnValue(random);
+      const page = await counter.runtime.openPage(token, counterKeys, viewer);
+      if (page.status !== "open") throw new Error("Expected an open page");
+      const connection = recordingConnection();
+      let ended = false;
+      const live = page
+        .connect(connection, () => viewer)
+        .then(() => {
+          ended = true;
+        });
+      await vi.advanceTimersByTimeAsync(endsAt - 1);
+      expect(ended).toBe(false);
+      expect(connection.messages).toEqual(["update", "ready"]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ended).toBe(true);
+      await live;
+      expect(connection.signal.aborted).toBe(true);
+      expect(connection.messages).toEqual(["update", "ready", "reconnect"]);
+    }
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
 
   // The browser reconnects with the same token while it is valid.
   const again = await counter.runtime.openPage(token, counterKeys, viewer);
@@ -1556,8 +1573,13 @@ it("closes a session's oldest stream beyond maxStreamsPerSession", async () => {
 
   const seventeenth = await connect(viewer);
   await expect(settlesWithin(oldest.live, 1_000)).resolves.toBe(true);
+  // The browser stops instead of reconnecting and evicting the next stream.
+  expect(oldest.connection.messages.at(-1)).toBe("evicted");
   expect(oldest.connection.messages).not.toContain("reset");
   expect(oldest.connection.messages).not.toContain("access-denied");
+  // The page reconnected itself, so its old stream just closes.
+  expect(fourth.connection.messages).not.toContain("evicted");
+  expect(fourth.connection.messages).not.toContain("reconnect");
   expect(isOpen(second)).toBe(true);
   expect(isOpen(foreign)).toBe(true);
 

@@ -32,6 +32,10 @@ export const events = {
   viewError: "view-error",
   reset: "reset",
   denied: "access-denied",
+  /** The server ends the stream at its lifetime; the browser opens a new one at once. */
+  reconnect: "reconnect",
+  /** The server closed the stream for a newer one of the session; the browser stops. */
+  evicted: "evicted",
 } as const;
 
 export type SignalPath = readonly string[];

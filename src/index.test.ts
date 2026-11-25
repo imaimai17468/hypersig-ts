@@ -36,7 +36,8 @@ function deferred() {
 }
 
 function setup(
-  pubsub: PubSub<CounterEvent> = createMemoryPubSub<CounterEvent>()
+  pubsub: PubSub<CounterEvent> = createMemoryPubSub<CounterEvent>(),
+  limits: { maxStreamMs?: number; maxStreamsPerSession?: number } = {}
 ) {
   let count = 0;
   let allowed = true;
@@ -45,6 +46,7 @@ function setup(
   const hypersig = createHypersig({
     origin,
     pubsub,
+    ...limits,
     authenticate(request) {
       const sessionId = request.headers.get("X-Session");
       return sessionId && userActive ? { sessionId } : null;
@@ -372,6 +374,41 @@ it("replaces a page connection while its old render is still pending", async () 
   } finally {
     resume.complete();
     await old.close();
+  }
+});
+
+it("sends reconnect before ending a stream at its lifetime", async () => {
+  const { app, pageUrl } = setup(undefined, { maxStreamMs: 50 });
+  const { path } = await pageUrl();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  const stream = await openStream(app, path);
+  try {
+    expect(await stream.read()).toContain('"version":1');
+    expect(await stream.read()).toContain("event: ready");
+    expect(await stream.read()).toContain("event: reconnect");
+    expect(await stream.read()).toBe("");
+  } finally {
+    await stream.close();
+    vi.restoreAllMocks();
+  }
+});
+
+it("sends evicted to the oldest stream beyond maxStreamsPerSession", async () => {
+  const { app, pageUrl } = setup(undefined, { maxStreamsPerSession: 1 });
+  const oldest = await openStream(app, (await pageUrl()).path);
+  try {
+    expect(await oldest.read()).toContain('"version":1');
+    expect(await oldest.read()).toContain("event: ready");
+    const newest = await openStream(app, (await pageUrl()).path);
+    try {
+      expect(await oldest.read()).toContain("event: evicted");
+      expect(await oldest.read()).toBe("");
+      expect(await newest.read()).toContain('"version":1');
+    } finally {
+      await newest.close();
+    }
+  } finally {
+    await oldest.close();
   }
 });
 

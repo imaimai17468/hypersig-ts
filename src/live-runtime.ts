@@ -27,7 +27,7 @@ import type {
   ViewRegistry,
 } from "./render.js";
 import { streamPage } from "./stream.js";
-import type { LiveConnection } from "./stream.js";
+import type { LiveConnection, StreamStop } from "./stream.js";
 import type { PubSub, Topic } from "./topic.js";
 
 type RefreshUser<User> = () => User | null | Promise<User | null>;
@@ -52,11 +52,13 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   /** Close a connection when accepting one frame takes longer (default 30 seconds). */
   sendTimeoutMs?: number;
   /**
-   * End a stream once it has been open this long (default 30 minutes). The
-   * stream ends without `reset` or `access-denied`, so the browser's
-   * EventSource reconnects with the same token while it is valid, and the
-   * adapter authenticates the new request with the browser's current
-   * credentials.
+   * End a stream once it has been open this long (default 30 minutes). Each
+   * stream ends at a uniformly random time from 90% to 100% of this, so
+   * streams that opened together do not reconnect together. The last message
+   * is `reconnect`, on which the browser runtime opens a new stream with the
+   * same token at once, without showing the page as disconnected or reloading
+   * it, and the adapter authenticates the new request with the browser's
+   * current credentials.
    *
    * While a stream stays open, the adapter re-runs authentication against the
    * credentials it received at connect time: `createHypersig` replays the
@@ -70,10 +72,14 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   maxStreamMs?: number;
   /**
    * How many streams one session can hold open in this runtime (default 16).
-   * Opening one more closes the session's oldest stream, ending it as
-   * `maxStreamMs` does. The count is per process, not across instances, so
-   * applications and infrastructure should still rate-limit page renders and
-   * `/_hypersig/stream/*` requests.
+   * Opening one more sends `evicted` to the session's oldest stream and
+   * closes it. The browser runtime then stops instead of reconnecting, which
+   * would evict the next-oldest stream in turn: it keeps the views as they
+   * are, sets the connection status to `too-many-tabs`, and opens a stream
+   * again only when the page is reloaded. A stream that a new stream of the
+   * same page replaces just closes. The count is per process, not across
+   * instances, so applications and infrastructure should still rate-limit
+   * page renders and `/_hypersig/stream/*` requests.
    */
   maxStreamsPerSession?: number;
   /**
@@ -293,9 +299,11 @@ export function createLiveRuntime<
      * user, and answers the stream with `Cache-Control: no-store`. It maps
      * `expired` to a single `reset` message, `denied` (the token belongs to
      * another session) to a 403 response, and `invalid-count` and
-     * `unknown-view` to 400 responses. `refreshUser` re-authenticates the
-     * stream's request throughout the stream, so it should read revocable
-     * server-side state and not extend an idle expiry.
+     * `unknown-view` to 400 responses. Its connection writes the `reconnect`
+     * and `evicted` messages as the SSE events of the same names, which the
+     * browser runtime reads to reopen at once or to stop. `refreshUser`
+     * re-authenticates the stream's request throughout the stream, so it
+     * should read revocable server-side state and not extend an idle expiry.
      */
     async openPage(
       token: string,
@@ -340,16 +348,27 @@ export function createLiveRuntime<
         status: "open",
         async connect(connection, refreshUser) {
           if (connection.signal.aborted) return;
+          let stop: (message: StreamStop) => void = () => {};
+          const stopped = new Promise<StreamStop>((resolve) => {
+            stop = resolve;
+          });
           const stream: OpenStream = {
             token,
             sessionId: claims.sessionId,
-            close: () => connection.close(),
+            end(reason) {
+              // The browser already opened the replacing stream itself.
+              if (reason === "replaced") connection.close();
+              else stop({ type: "evicted" });
+            },
           };
-          for (const displaced of streams.add(stream)) {
+          for (const { stream: displaced, reason } of streams.add(stream)) {
             streams.remove(displaced);
-            displaced.close();
+            displaced.end(reason);
           }
-          const deadline = setTimeout(stream.close, maxStreamMs);
+          const deadline = setTimeout(
+            () => stop({ type: "reconnect" }),
+            streamLifetime(maxStreamMs, Math.random())
+          );
           let version = 0;
           try {
             await streamPage(
@@ -364,6 +383,7 @@ export function createLiveRuntime<
                   return { status: "allowed", user: current };
                 },
                 nextVersion: () => ++version,
+                stopped,
               },
               { pubsub, onDiagnostic, reconcileIntervalMs, sendTimeoutMs }
             );
@@ -401,7 +421,25 @@ export function createLiveRuntime<
 interface OpenStream {
   token: string;
   sessionId: string;
-  close(this: void): void;
+  end(this: void, reason: DisplacedStream["reason"]): void;
+}
+
+/**
+ * A stream another one takes over: `replaced` by a new stream of the same
+ * page, or `evicted` by newer streams of the session beyond the limit.
+ */
+interface DisplacedStream {
+  stream: OpenStream;
+  reason: "replaced" | "evicted";
+}
+
+/**
+ * How long a stream stays open: a uniformly random time from 90% to 100% of
+ * `maxStreamMs`, given `random` from 0 up to 1, so streams that opened
+ * together do not all reconnect together.
+ */
+function streamLifetime(maxStreamMs: number, random: number) {
+  return maxStreamMs * (0.9 + 0.1 * random);
 }
 
 /**
@@ -412,24 +450,26 @@ function createStreamRegistry(maxStreamsPerSession: number) {
   const byToken = new Map<string, OpenStream>();
   const bySession = new Map<string, Set<OpenStream>>();
   return {
-    /** Adds a stream and returns the streams it displaces, which the caller closes. */
-    add(stream: OpenStream): OpenStream[] {
-      const displaced: OpenStream[] = [];
+    /** Adds a stream and returns the streams it displaces, which the caller ends. */
+    add(stream: OpenStream): DisplacedStream[] {
       const replaced = byToken.get(stream.token);
-      if (replaced) displaced.push(replaced);
       byToken.set(stream.token, stream);
       const session = bySession.get(stream.sessionId) ?? new Set();
       bySession.set(stream.sessionId, session);
       session.add(stream);
-      const remaining = [...session].filter(
-        (open) => !displaced.includes(open)
+      const remaining = [...session].filter((open) => open !== replaced);
+      const evicted = remaining.slice(
+        0,
+        Math.max(0, remaining.length - maxStreamsPerSession)
       );
       return [
-        ...displaced,
-        ...remaining.slice(
-          0,
-          Math.max(0, remaining.length - maxStreamsPerSession)
-        ),
+        ...(replaced
+          ? [{ stream: replaced, reason: "replaced" as const }]
+          : []),
+        ...evicted.map((open) => ({
+          stream: open,
+          reason: "evicted" as const,
+        })),
       ];
     },
     remove(stream: OpenStream) {

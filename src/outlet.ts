@@ -8,7 +8,10 @@ export function errorOutlet(): { [outletAttributes.error]: "" } {
   return { [outletAttributes.error]: "" };
 }
 
-/** Marks the element that tells the user when live updates disconnect. */
+/**
+ * Marks the element that tells the user when live updates disconnect, need a
+ * reload, or stop because the page is open in too many tabs.
+ */
 export function connectionStatusOutlet(): {
   [outletAttributes.connectionStatus]: "";
 } {

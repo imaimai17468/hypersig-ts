@@ -239,3 +239,78 @@ it("reloads when the saved reload times are malformed", async () => {
 
   expect(reloads).toBe(1);
 });
+
+it("reopens the stream at once on reconnect without showing it disconnected", async () => {
+  await loadPage(
+    `<p id="status" ${outletAttributes.connectionStatus}></p>` +
+      `<div id="cart" data-hs-view="cart">cart</div>` +
+      `<div id="menu" data-hs-view="menu">menu</div>`
+  );
+  const first = latestSource();
+  first.emit(events.update, { target: "cart", version: 1, html: "new" });
+  first.emit(events.ready);
+  const statuses: (string | undefined)[] = [];
+  const watcher = new MutationObserver(() => {
+    statuses.push(document.documentElement.dataset.hsConnection);
+  });
+  watcher.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-hs-connection"],
+  });
+
+  first.emit(events.reconnect);
+  await settle();
+  watcher.disconnect();
+
+  expect(first.readyState).toBe(FakeEventSource.CLOSED);
+  const second = latestSource();
+  expect(second).not.toBe(first);
+  expect(second.url.searchParams.getAll(streamParams.view)).toEqual([
+    "cart",
+    "menu",
+  ]);
+  // The updated view is no longer the SSR HTML, so the server renders it.
+  expect(second.url.searchParams.getAll(streamParams.pristine)).toEqual([
+    "menu",
+  ]);
+  // The status stays ready, never passing through disconnected or connecting.
+  expect(statuses).toEqual([]);
+  expect(document.documentElement.dataset.hsConnection).toBe("ready");
+  expect(find("#status").textContent).toBe("");
+  expect(find("#cart").textContent).toBe("new");
+  expect(reloads).toBe(0);
+
+  first.emit(events.update, { target: "cart", version: 2, html: "stale" });
+  expect(find("#cart").textContent).toBe("new");
+  second.dispatchEvent(new Event("open"));
+  second.emit(events.update, { target: "cart", version: 1, html: "fresh" });
+  expect(find("#cart").textContent).toBe("fresh");
+});
+
+it("stops live updates on evicted and keeps the views", async () => {
+  vi.useFakeTimers();
+  await loadPage(
+    `<p id="status" ${outletAttributes.connectionStatus}></p>` +
+      `<div id="cart" data-hs-view="cart">cart</div>`
+  );
+  const source = latestSource();
+  source.emit(events.ready);
+
+  source.emit(events.evicted);
+
+  expect(source.readyState).toBe(FakeEventSource.CLOSED);
+  expect(document.documentElement.dataset.hsConnection).toBe("too-many-tabs");
+  expect(find("#status").textContent).toBe(
+    "Live updates stopped because this page is open in too many tabs. Reload to resume."
+  );
+  expect(find("#cart").textContent).toBe("cart");
+  expect(reloads).toBe(0);
+
+  // Neither a retry nor a view the page adds opens another stream.
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div data-hs-view="menu"></div>`
+  );
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(FakeEventSource.opened).toEqual([source]);
+});

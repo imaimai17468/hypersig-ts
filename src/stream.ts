@@ -12,7 +12,17 @@ import type { PubSub, Topic } from "./topic.js";
 export type LiveMessage =
   | { type: "update"; update: HtmlUpdate }
   | { type: "view-error"; target: string }
-  | { type: "ready" | "reset" | "access-denied" | "heartbeat" };
+  | { type: "ready" | "reset" | "access-denied" | "heartbeat" }
+  | StreamStop;
+
+/**
+ * The last message of a stream the runtime ends itself: `reconnect` at the
+ * stream's lifetime, and `evicted` when newer streams of the session take its
+ * slot.
+ */
+export interface StreamStop {
+  type: "reconnect" | "evicted";
+}
 
 export interface LiveConnection {
   readonly signal: AbortSignal;
@@ -33,6 +43,8 @@ interface StreamPage<User, Event> {
   initialSnapshots: ReadonlyMap<string, PageSnapshot>;
   refresh(): Promise<StreamAccess<User>>;
   nextVersion(): number;
+  /** Resolves when the runtime ends the stream, with the message to send last. */
+  stopped: Promise<StreamStop>;
 }
 
 interface TrackedView<User, Event> {
@@ -92,21 +104,23 @@ export async function streamPage<User extends Principal, Event extends Topic>(
     return next;
   }
 
+  /** Sends `message` after the messages already queued, then closes. */
+  async function end(message: LiveMessage) {
+    if (signal.aborted || ending) return;
+    ending = true;
+    terminal = send(message, true);
+    await terminal;
+    connection.close();
+  }
+
   async function refresh() {
     if (signal.aborted || ending) return;
     const access = await page.refresh();
     if (signal.aborted || ending) return;
     if (access.status === "allowed") return access.user;
-    ending = true;
-    terminal = send(
-      {
-        type: access.status === "denied" ? "access-denied" : "reset",
-      },
-      true
-    );
-    await terminal;
-    connection.close();
+    await end({ type: access.status === "denied" ? "access-denied" : "reset" });
   }
+  void page.stopped.then(end).catch(() => connection.close());
 
   let heartbeatPending = false;
   const heartbeat = setInterval(() => {
