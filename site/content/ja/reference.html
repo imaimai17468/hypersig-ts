@@ -29,7 +29,7 @@
     Hono アプリでは
     <code>createHypersig</code>
     を使います。描画や通信を自分で組み合わせる場合は、実行処理を
-    <code>hypersig.ts/core</code> から使えます。
+    <code>hypersig-ts/core</code> から使えます。
   </p>
   <dl>
     <dt><code>createHypersig(options)</code></dt>
@@ -615,7 +615,7 @@ li:has(.row [data-hs-pending]) {
     のライブラリは、カスタム要素で包みます。要素の属性とイベントは、宣言の値として一度だけ書きます。ページはその値から属性を設定してイベントを処理し、ブラウザ側のコードも同じ値で型付けされるので、どれも文字列リテラルで書きません。
   </p>
   <pre><code>// elements.ts（サーバーとブラウザが import する）
-import { customElement, event } from "hypersig.ts/element";
+import { customElement, event } from "hypersig-ts/element";
 
 export const rating = customElement("star-rating", {
   attributes: { value: "number", max: "number" },
@@ -672,7 +672,7 @@ export const rating = customElement("star-rating", {
       <code>data-hs-on-custom</code>
       にあってもランタイムは無視します。この関数と型は、Hono も React も import
       せず DOM のない環境でも import できる
-      <code>hypersig.ts/element</code> と、<code>hypersig.ts</code>
+      <code>hypersig-ts/element</code> と、<code>hypersig-ts</code>
       から export します。
     </dd>
     <dt><code>&lt;CustomTag of={declaration} /&gt;</code></dt>
@@ -772,7 +772,7 @@ export const rating = customElement("star-rating", {
   </dl>
 
   <p><strong>要素を実装する: defineElement</strong></p>
-  <pre><code>import { defineElement } from "hypersig.ts/element";
+  <pre><code>import { defineElement } from "hypersig-ts/element";
 
 defineElement(rating, {
   mount(host, props, emit) {
@@ -843,7 +843,7 @@ defineElement(rating, {
   </p>
 
   <p><strong>React のアイランド</strong></p>
-  <pre><code>import { reactElement } from "hypersig.ts/react";
+  <pre><code>import { reactElement } from "hypersig-ts/react";
 
 reactElement(sortableList, SortableList);
 // SortableList: (props: { items?: Item[]; failures?: number; emit: Emit&lt;...&gt; }) =&gt; ReactNode</code></pre>
@@ -864,7 +864,7 @@ reactElement(sortableList, SortableList);
       >react</code
     >
     と <code>react-dom</code>（^19）は optional の peer dependency で、<code
-      >hypersig.ts/react</code
+      >hypersig-ts/react</code
     >
     を import
     するアプリだけが必要とします。アイランドはサーバーで描きません。サーバーの

@@ -28,7 +28,7 @@
   <h2>Hono adapter</h2>
   <p>
     Use <code>createHypersig</code> in a Hono app. To supply your own renderer
-    and connection handling, use <code>hypersig.ts/core</code>.
+    and connection handling, use <code>hypersig-ts/core</code>.
   </p>
   <dl>
     <dt><code>createHypersig(options)</code></dt>
@@ -586,7 +586,7 @@ li:has(.row [data-hs-pending]) {
     a string literal.
   </p>
   <pre><code>// elements.ts, imported by the server and the browser
-import { customElement, event } from "hypersig.ts/element";
+import { customElement, event } from "hypersig-ts/element";
 
 export const rating = customElement("star-rating", {
   attributes: { value: "number", max: "number" },
@@ -630,9 +630,9 @@ export const rating = customElement("star-rating", {
       <code>submit</code>, which the runtime handles for every element; the type
       rejects these names, and the runtime ignores them in a hand-written
       <code>data-hs-on-custom</code>. The function and the types are exported
-      from <code>hypersig.ts/element</code>, which imports neither Hono nor
+      from <code>hypersig-ts/element</code>, which imports neither Hono nor
       React and can be imported where there is no DOM, and from
-      <code>hypersig.ts</code>.
+      <code>hypersig-ts</code>.
     </dd>
     <dt><code>&lt;CustomTag of={declaration} /&gt;</code></dt>
     <dd>
@@ -716,7 +716,7 @@ export const rating = customElement("star-rating", {
   </dl>
 
   <p><strong>Implementing the element: defineElement</strong></p>
-  <pre><code>import { defineElement } from "hypersig.ts/element";
+  <pre><code>import { defineElement } from "hypersig-ts/element";
 
 defineElement(rating, {
   mount(host, props, emit) {
@@ -775,7 +775,7 @@ defineElement(rating, {
   </p>
 
   <p><strong>React islands</strong></p>
-  <pre><code>import { reactElement } from "hypersig.ts/react";
+  <pre><code>import { reactElement } from "hypersig-ts/react";
 
 reactElement(sortableList, SortableList);
 // SortableList: (props: { items?: Item[]; failures?: number; emit: Emit&lt;...&gt; }) =&gt; ReactNode</code></pre>
@@ -793,7 +793,7 @@ reactElement(sortableList, SortableList);
     because React replaces the children. <code>react</code> and
     <code>react-dom</code>
     (^19) are optional peer dependencies, needed only by apps that import
-    <code>hypersig.ts/react</code>. An island is not rendered on the server: the
+    <code>hypersig-ts/react</code>. An island is not rendered on the server: the
     server's HTML holds only the placeholder children you give
     <code>CustomTag</code>, and <code>mount</code> replaces them. It does not
     use Shadow DOM, so the page's CSS reaches its DOM. The

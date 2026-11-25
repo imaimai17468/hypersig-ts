@@ -1,5 +1,5 @@
 {
-  "name": "hypersig.ts",
+  "name": "hypersig-ts",
   "version": "1.0.0",
   "private": true,
   "license": "ISC",
@@ -29,7 +29,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig.ts/core\"); await import(\"hypersig.ts\"); await import(\"hypersig.ts/element\")'",
+    "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig-ts/core\"); await import(\"hypersig-ts\"); await import(\"hypersig-ts/element\")'",
     "prepack": "rm -f dist/*.js dist/*.d.ts dist/*.map && bun run build",
     "check": "vp check",
     "format": "vp fmt --check",

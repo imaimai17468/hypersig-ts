@@ -16,7 +16,7 @@ import { defineElement } from "./element.js";
  * React replaces the element's children.
  *
  * `react` and `react-dom` are optional peer dependencies; they are needed only
- * by apps that import `hypersig.ts/react`.
+ * by apps that import `hypersig-ts/react`.
  */
 export function reactElement<
   E extends AnyCustomElement & { readonly ownsChildren: true },

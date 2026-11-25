@@ -485,7 +485,7 @@ it("takes read-only arrays for JSON attributes", async () => {
   void CustomTag({ of: list, items: [1] as readonly number[] });
 });
 
-it("exports the element types from hypersig.ts as from hypersig.ts/element", () => {
+it("exports the element types from hypersig-ts as from hypersig-ts/element", () => {
   type Declared = typeof rating;
   expectTypeOf<packageEntry.EventName<Declared>>().toEqualTypeOf<
     elementEntry.EventName<Declared>

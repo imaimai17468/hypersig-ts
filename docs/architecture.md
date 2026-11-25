@@ -82,9 +82,9 @@ Playwright は二つの Cookie セッションに All / Active / Completed の�
 
 ## レンダラーと配信の境界
 
-`hypersig.ts/core` は `createLiveRuntime()`、Live View と Topic の型、インメモリ Pub/Sub を公開する。ページ登録、セッションに紐づく購読、再接続、更新順序、親子の照合はここが所有する。アダプターは `LiveRenderer` で境界の生成とマークアップの直列化を提供し、`LiveConnection` で更新メッセージの送信と切断を実装する。マークアップのエスケープと安全な描画はレンダラーの責務になる。
+`hypersig-ts/core` は `createLiveRuntime()`、Live View と Topic の型、インメモリ Pub/Sub を公開する。ページ登録、セッションに紐づく購読、再接続、更新順序、親子の照合はここが所有する。アダプターは `LiveRenderer` で境界の生成とマークアップの直列化を提供し、`LiveConnection` で更新メッセージの送信と切断を実装する。マークアップのエスケープと安全な描画はレンダラーの責務になる。
 
-`hypersig.ts/core` で独自のアダプターを書く場合、`createHypersig()` が HTTP の層で行っている次の処理はアダプター自身が受け持つ。ランタイムは HTTP のヘッダーやリクエストを扱わないため、これらは型でも実行時にも確かめられない。
+`hypersig-ts/core` で独自のアダプターを書く場合、`createHypersig()` が HTTP の層で行っている次の処理はアダプター自身が受け持つ。ランタイムは HTTP のヘッダーやリクエストを扱わないため、これらは型でも実行時にも確かめられない。
 
 - `renderPage` の前と `openPage` の前に毎回リクエストを認証し、認証できなければ呼ばずに 401 を返す。`openPage` と `connect` の `refreshUser` には、そのリクエストで認証したユーザーを渡す。`refreshUser` は接続中に何度も呼ばれるので、失効できるサーバー側の状態を確かめ、アイドル期限を延ばさない。
 - ページと SSE の応答に `Cache-Control: no-store` を付ける。ページはトークンを、SSE はユーザーごとの HTML を含むので、共有キャッシュに残さない。
@@ -185,7 +185,7 @@ Action に `formResponse(result, request, user)` を定義すると、HTML を�
 地図やエディタのような JavaScript のライブラリは、アプリが読み込むカスタム要素で包む。要素の属性とイベントは、サーバーとブラウザが共有する宣言の値で一度だけ書く。ランタイムは宣言から作った属性の仕様を解釈するだけで、要素の JavaScript は読まない。
 
 ```ts
-import { customElement, event, json } from "hypersig.ts/element";
+import { customElement, event, json } from "hypersig-ts/element";
 
 const sortableList = customElement("sortable-list", {
   attributes: { items: json<Item[]>(), failures: "number" },
@@ -197,7 +197,7 @@ const sortableList = customElement("sortable-list", {
 #### 宣言と入口
 
 - `customElement(tag, { attributes, events, ownsChildren })`（`src/element.ts`）が宣言を値として返す。属性の種類は `"string"`、`"number"`、`"boolean"`、`json<T>()` の4つで、`event<Detail>()` がイベントの `detail` の型を持つ。`json<T>()` の `T` とイベントの `Detail` は JSON にできる型に限る。
-- 入口は3つに分ける。`hypersig.ts/element`（宣言と、ブラウザ側の `defineElement`）は Hono も React も読み込まず、DOM のないサーバーで import しても例外を出さない。`HTMLElement` を継承するクラスは `defineElement` の呼び出し時に作る。`hypersig.ts/react` は `reactElement` を持ち、React を読み込む。`hypersig.ts` は `customElement`、`event`、`json` と宣言の型（`AttributeValues`、`EventName`、`EventDetail`、`Emit`、`ElementImplementation`、`MountedElement` など）を `hypersig.ts/element` から再 export し、React は読み込まない。`react` と `react-dom`（^19）は optional の peerDependency で、`hypersig.ts/react` を使うアプリだけが必要とする。
+- 入口は3つに分ける。`hypersig-ts/element`（宣言と、ブラウザ側の `defineElement`）は Hono も React も読み込まず、DOM のないサーバーで import しても例外を出さない。`HTMLElement` を継承するクラスは `defineElement` の呼び出し時に作る。`hypersig-ts/react` は `reactElement` を持ち、React を読み込む。`hypersig-ts` は `customElement`、`event`、`json` と宣言の型（`AttributeValues`、`EventName`、`EventDetail`、`Emit`、`ElementImplementation`、`MountedElement` など）を `hypersig-ts/element` から再 export し、React は読み込まない。`react` と `react-dom`（^19）は optional の peerDependency で、`hypersig-ts/react` を使うアプリだけが必要とする。
 - サーバーでは `<CustomTag of={declaration} id=... />`（`src/custom-tag.tsx`）が宣言のタグで要素を描き、`declaration.on(...)`、`scope.bindElement(declaration, values)` が属性を作る。
 - タグ名は型（`CustomTagName`）で検査できる範囲を検査し、残りの文字は `customElement()` を呼んだときに実行時に検査する。属性名、イベント名、属性の種類も同じときに実行時に検査するので、打ち間違いは起動時の例外になる。
 - `ownsChildren: true` の宣言の `CustomTag` は `id` を必須の props にする（型で強制する）。`id` がないと Live View の更新のたびに要素が作り直され、`unmount` → `mount` で部品の内部の状態が消える。値はアプリが決める（一覧なら行ごとに一意にする）。
