@@ -1,14 +1,37 @@
 {
   "name": "hypersig-ts",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "A TypeScript web framework that keeps server-rendered pages in sync with committed server state over Server-Sent Events, with every browser-facing name produced from a type.",
+  "keywords": [
+    "hono",
+    "hypermedia",
+    "live-view",
+    "server-rendered",
+    "server-sent-events",
+    "signals",
+    "sse",
+    "typescript"
+  ],
+  "homepage": "https://imaimai17468.github.io/hypersig-ts/",
+  "bugs": {
+    "url": "https://github.com/imaimai17468/hypersig-ts/issues"
+  },
   "license": "ISC",
+  "author": "imaimai17468",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imaimai17468/hypersig-ts.git"
+  },
   "files": [
     "dist/*.js",
     "dist/*.d.ts",
     "dist/*.map"
   ],
   "type": "module",
+  "sideEffects": [
+    "./dist/runtime.js",
+    "./dist/browser.js"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -27,6 +50,10 @@
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && bun build src/browser.ts --target=browser --minify --outfile=dist/runtime.js && node --input-type=module -e 'await import(\"hypersig-ts/core\"); await import(\"hypersig-ts\"); await import(\"hypersig-ts/element\")'",
