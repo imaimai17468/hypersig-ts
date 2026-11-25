@@ -165,6 +165,22 @@ type JsonDataAttributeName<Attributes extends AttributeSpecs> = {
     : never;
 }[keyof Attributes & string];
 
+/**
+ * What `customElement` accepts for its attributes, so that a kind outside the
+ * four reaches `CheckedTag` instead of failing the constraint. `string & {}`
+ * keeps the four kinds as editor suggestions.
+ */
+type DeclaredAttributeSpecs = Record<
+  string,
+  AttributeSpec | (string & Record<never, never>)
+>;
+
+type InvalidAttributeKind<Attributes extends DeclaredAttributeSpecs> = {
+  [K in keyof Attributes & string]: Attributes[K] extends AttributeSpec
+    ? never
+    : K;
+}[keyof Attributes & string];
+
 type InvalidEventName<Events extends EventSpecs> = {
   [K in keyof Events & string]: IsCustomEventName<K> extends true ? never : K;
 }[keyof Events & string];
@@ -175,6 +191,14 @@ type InvalidEventName<Events extends EventSpecs> = {
  * the error.
  */
 type CheckedTag<
+  Tag extends string,
+  Attributes extends DeclaredAttributeSpecs,
+  Events extends EventSpecs,
+> = Attributes extends AttributeSpecs
+  ? CheckedNames<Tag, Attributes, Events>
+  : `Attribute "${InvalidAttributeKind<Attributes>}" has kind "${Attributes[InvalidAttributeKind<Attributes>] & string}", not string, number, boolean or json`;
+
+type CheckedNames<
   Tag extends string,
   Attributes extends AttributeSpecs,
   Events extends EventSpecs,
@@ -266,10 +290,12 @@ function readEventNames(events: Readonly<Record<string, unknown>>): string[] {
  * The tag name starts with a lowercase letter, holds a `-`, and has only
  * lowercase letters, digits, `-`, `.` and `_`. An attribute name is lowercase
  * and is not `on*`, `style`, `id` or `data-hs-*`. An event name is lowercase
- * and is not `click`, `input`, `change` or `submit`. TypeScript checks what it
- * can on literal names; characters other than letters, the names HTML
- * reserves such as `font-face`, and an attribute kind other than the four
- * throw when this is called. A `data-*` attribute cannot be `json`.
+ * and is not `click`, `input`, `change` or `submit`. An attribute kind is
+ * `string`, `number`, `boolean` or `json`. TypeScript checks what it can on
+ * literal names and kinds, and names the attribute whose kind is not one of
+ * the four; characters other than letters, the names HTML reserves such as
+ * `font-face`, and a kind TypeScript cannot see throw when this is called. A
+ * `data-*` attribute cannot be `json`.
  *
  * With `ownsChildren`, the element's JavaScript renders its children, and a
  * Live View update keeps them while it updates the element's attributes. The
@@ -278,13 +304,18 @@ function readEventNames(events: Readonly<Record<string, unknown>>): string[] {
  */
 export function customElement<
   const Tag extends string,
-  const Attributes extends AttributeSpecs = Record<never, never>,
+  const Attributes extends DeclaredAttributeSpecs = Record<never, never>,
   const Events extends EventSpecs = Record<never, never>,
   const Owns extends boolean = false,
 >(
   tag: CheckedTag<Tag, Attributes, Events>,
   options?: { attributes?: Attributes; events?: Events; ownsChildren?: Owns }
-): CustomElement<Tag, Attributes, Events, Owns>;
+): CustomElement<
+  Tag,
+  Attributes extends AttributeSpecs ? Attributes : never,
+  Events,
+  Owns
+>;
 export function customElement(
   tag: string,
   options?: {

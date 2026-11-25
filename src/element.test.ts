@@ -277,6 +277,11 @@ it("checks declared attribute and event names", () => {
       { attributes: { size: "integer" } }
     )
   ).toThrow("integer");
+  expectTypeOf<
+    Parameters<
+      typeof customElement<"kind-box", { readonly size: "integer" }>
+    >[0]
+  >().toEqualTypeOf<'Attribute "size" has kind "integer", not string, number, boolean or json'>();
   expect(() =>
     customElement(
       // @ts-expect-error A data-* attribute cannot be json.
