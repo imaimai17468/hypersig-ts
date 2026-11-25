@@ -1,12 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
-const counterPort = 3217;
 const todoPort = 3218;
 const memoPort = 3221;
 const ratingPort = 3222;
 const sortablePort = 3225;
 const widgetsPort = 3226;
-const counter = `http://127.0.0.1:${counterPort}`;
 const todo = `http://127.0.0.1:${todoPort}`;
 const memo = `http://127.0.0.1:${memoPort}`;
 const rating = `http://127.0.0.1:${ratingPort}`;
@@ -16,11 +14,8 @@ const widgets = `http://127.0.0.1:${widgetsPort}`;
 export default defineConfig({
   testDir: "./browser-tests",
   projects: [
-    {
-      name: "counter",
-      testMatch: "counter.spec.ts",
-      use: { baseURL: counter },
-    },
+    // counter.spec.ts starts a counter server for each worker.
+    { name: "counter", testMatch: "counter.spec.ts" },
     { name: "todomvc", testMatch: "todomvc.spec.ts", use: { baseURL: todo } },
     { name: "memo", testMatch: "memo.spec.ts", use: { baseURL: memo } },
     { name: "rating", testMatch: "rating.spec.ts", use: { baseURL: rating } },
@@ -36,15 +31,6 @@ export default defineConfig({
     },
   ],
   webServer: [
-    {
-      command: "bun examples/counter/server.tsx",
-      env: {
-        PORT: String(counterPort),
-        COUNTER_METRICS: "1",
-        ORDER_PRICE_DELAY_MS: "120",
-      },
-      url: counter + "/metrics",
-    },
     {
       command: "bun examples/todomvc/server.tsx",
       env: { PORT: String(todoPort) },

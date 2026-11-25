@@ -1,12 +1,100 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
-import { expect, test } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 const main = '[data-count="main"]';
 const ready = "html[data-hs-connection=ready]";
 const stream = "**/_hypersig/stream/**";
+
+/**
+ * Asks the OS for a port no other process holds, so repeated and parallel
+ * runs do not collide. The restart tests reuse it for the second server,
+ * because the page's stream URL and cookies belong to that origin.
+ */
+async function findFreePort(): Promise<number> {
+  const probe = createServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const address = probe.address();
+  probe.close();
+  await once(probe, "close");
+  if (address === null || typeof address === "string")
+    throw new Error("Expected a TCP address");
+  return address.port;
+}
+
+/** Starts a counter process of its own, which a test can stop and start again. */
+async function startCounter(port: number) {
+  const url = `http://127.0.0.1:${port}`;
+  const server = spawn("bun", ["examples/counter/server.tsx"], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HYPERSIG_PAGE_KEY: Buffer.alloc(32, 7).toString("base64"),
+      COUNTER_SESSION_SECRET: "restart-test-session-secret",
+      COUNTER_METRICS: "1",
+      ORDER_PRICE_DELAY_MS: "120",
+    },
+    stdio: "ignore",
+  });
+  const exited = once(server, "exit");
+  let stopped = false;
+  const stop = async () => {
+    if (!stopped) {
+      stopped = true;
+      server.kill();
+    }
+    await exited;
+  };
+  const deadline = Date.now() + 15_000;
+  try {
+    for (;;) {
+      if (server.exitCode !== null || server.signalCode !== null)
+        throw new Error("Counter server exited before it was ready");
+      if (Date.now() > deadline)
+        throw new Error("Counter server did not start");
+      try {
+        const response = await fetch(url + "/runtime.js", {
+          signal: AbortSignal.timeout(1_000),
+        });
+        if (response.ok) break;
+      } catch {
+        // The server is not listening yet.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return { url, stop };
+}
+
+/**
+ * The counter example keeps one count, layout and order for every session,
+ * so each worker starts a server of its own. Tests that run in parallel then
+ * do not see each other's increments.
+ */
+const test = base.extend<object, { counterUrl: string }>({
+  counterUrl: [
+    // Playwright reads the fixtures a fixture uses from its first parameter.
+    // oxlint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const server = await startCounter(await findFreePort());
+      try {
+        await use(server.url);
+      } finally {
+        await server.stop();
+      }
+    },
+    { scope: "worker" },
+  ],
+  baseURL: async ({ counterUrl }, use) => {
+    await use(counterUrl);
+  },
+});
 
 test("keeps order lines and total on the same snapshot during a delayed price read", async ({
   page,
@@ -513,68 +601,6 @@ test("retains a moved child View's DOM and SSR snapshot until its own Topic chan
   await page.getByRole("button", { name: "Hide counter" }).click();
   await expect(page.locator(main)).toHaveCount(0);
 });
-
-/** Starts a counter process of its own, which a test can stop and start again. */
-/**
- * Asks the OS for a port no other process holds, so repeated and parallel
- * runs do not collide. The restart tests reuse it for the second server,
- * because the page's stream URL and cookies belong to that origin.
- */
-async function findFreePort(): Promise<number> {
-  const probe = createServer();
-  probe.listen(0, "127.0.0.1");
-  await once(probe, "listening");
-  const address = probe.address();
-  probe.close();
-  await once(probe, "close");
-  if (address === null || typeof address === "string")
-    throw new Error("Expected a TCP address");
-  return address.port;
-}
-
-async function startCounter(port: number) {
-  const url = `http://127.0.0.1:${port}`;
-  const server = spawn("bun", ["examples/counter/server.tsx"], {
-    env: {
-      ...process.env,
-      PORT: String(port),
-      HYPERSIG_PAGE_KEY: Buffer.alloc(32, 7).toString("base64"),
-      COUNTER_SESSION_SECRET: "restart-test-session-secret",
-    },
-    stdio: "ignore",
-  });
-  const exited = once(server, "exit");
-  let stopped = false;
-  const stop = async () => {
-    if (!stopped) {
-      stopped = true;
-      server.kill();
-    }
-    await exited;
-  };
-  const deadline = Date.now() + 15_000;
-  try {
-    for (;;) {
-      if (server.exitCode !== null || server.signalCode !== null)
-        throw new Error("Counter server exited before it was ready");
-      if (Date.now() > deadline)
-        throw new Error("Counter server did not start");
-      try {
-        const response = await fetch(url + "/runtime.js", {
-          signal: AbortSignal.timeout(1_000),
-        });
-        if (response.ok) break;
-      } catch {
-        // The server is not listening yet.
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  } catch (error) {
-    await stop();
-    throw error;
-  }
-  return { url, stop };
-}
 
 test("applies updates from a restarted server process that counts versions from 1 again", async ({
   browser,
