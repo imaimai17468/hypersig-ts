@@ -187,3 +187,10 @@ test("writes Action errors only to outlets outside the element", async ({
   await expect(page.locator("p[role=alert]")).not.toHaveText("");
   await expect(page.locator("#forged-outlet")).toHaveText("");
 });
+
+test("sends its Content-Security-Policy with the page", async ({ page }) => {
+  const response = await page.goto("/");
+  expect(response?.headers()["content-security-policy"]).toBe(
+    "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  );
+});

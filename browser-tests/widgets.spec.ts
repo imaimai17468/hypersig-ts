@@ -426,3 +426,10 @@ test("typing saves the draft once, after the input stops", async ({ page }) => {
   await expect(page.locator(ready)).toHaveCount(1);
   await expect(draft).toHaveValue("abc");
 });
+
+test("sends its Content-Security-Policy with the page", async ({ page }) => {
+  const response = await page.goto("/");
+  expect(response?.headers()["content-security-policy"]).toBe(
+    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  );
+});

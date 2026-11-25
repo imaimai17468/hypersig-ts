@@ -273,11 +273,7 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
     const { pathname, search } = new URL(c.req.url);
     return c.redirect(pathname + search);
   }
-  c.header(
-    "Content-Security-Policy",
-    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-  );
-  return hypersig.page(c.req.raw, (page) => (
+  const response = await hypersig.page(c.req.raw, (page) => (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
@@ -314,6 +310,11 @@ async function renderTodos(c: Context, filter: Filter): Promise<Response> {
       </body>
     </html>
   ));
+  response.headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  );
+  return response;
 }
 
 Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: app.fetch });

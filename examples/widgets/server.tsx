@@ -486,11 +486,7 @@ async function renderWidgets(c: Context): Promise<Response> {
     return c.redirect(links.index.$path());
   }
   const { session } = current;
-  c.header(
-    "Content-Security-Policy",
-    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-  );
-  return hypersig.page(c.req.raw, (page) => (
+  const response = await hypersig.page(c.req.raw, (page) => (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
@@ -517,6 +513,11 @@ async function renderWidgets(c: Context): Promise<Response> {
       </body>
     </html>
   ));
+  response.headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  );
+  return response;
 }
 
 Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: app.fetch });

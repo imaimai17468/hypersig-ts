@@ -643,3 +643,10 @@ test("redraws a view whose access returned while the browser was offline", async
     await server.stop();
   }
 });
+
+test("sends its Content-Security-Policy with the page", async ({ page }) => {
+  const response = await page.goto("/");
+  expect(response?.headers()["content-security-policy"]).toBe(
+    "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  );
+});

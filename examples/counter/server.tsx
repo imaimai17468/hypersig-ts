@@ -229,13 +229,9 @@ app.on("GET", ["/", "/nested", "/order"], async (c) => {
     );
     return c.redirect(new URL(c.req.url).pathname);
   }
-  c.header(
-    "Content-Security-Policy",
-    "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-  );
   const isOrder = c.req.path === "/order";
   const title = isOrder ? "注文サマリー" : "hypersig Counter";
-  return hypersig.page(c.req.raw, (page) => (
+  const response = await hypersig.page(c.req.raw, (page) => (
     <html lang={isOrder ? "ja" : "en"}>
       <head>
         <meta charSet="utf-8" />
@@ -271,6 +267,11 @@ app.on("GET", ["/", "/nested", "/order"], async (c) => {
       </body>
     </html>
   ));
+  response.headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  );
+  return response;
 });
 
 app.get("/runtime.js", (c) =>
