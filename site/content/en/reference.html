@@ -55,10 +55,13 @@
     </dd>
     <dt><code>pageLifetimeMs</code></dt>
     <dd>
-      Optional. How long a page registration is valid in milliseconds, counted
-      from when the HTML is rendered. Defaults to 12 hours. A connected stream
-      continues past expiry, and only a connection made after expiry gets
-      <code>reset</code> and fetches the page again.
+      Optional. How long a page token is valid in milliseconds, counted from
+      when the HTML is rendered or the token was renewed. Defaults to 12 hours.
+      Each <code>reconnect</code> at <code>maxStreamMs</code> carries a renewed
+      token while the user can still read every top-level view on the page, so a
+      connected page keeps receiving updates past expiry. A connection made
+      after the page's last token expired gets <code>reset</code> and fetches
+      the page again.
     </dd>
     <dt><code>pageContext</code></dt>
     <dd>
@@ -77,7 +80,15 @@
       value with a <code>reconnect</code> event, and the browser runtime opens a
       new stream at once without reloading or showing the page as disconnected.
       The new request carries the browser's current credentials. Until then, the
-      stream authenticates with the request it opened with.
+      stream authenticates with the request it opened with. Right before
+      <code>reconnect</code>, the server authenticates the stream's user again.
+      If they are in the same session and can still read every top-level view on
+      the page, the event carries the page token sealed again with a new
+      <code>pageLifetimeMs</code>, keeping the views, params, and SSR snapshots,
+      and the browser opens the next stream with it. Otherwise it carries no
+      token, and the browser reopens with the token it has. The browser accepts
+      only data shaped like a page token, which replaces the last path segment
+      of the stream URL, so the stream never moves to another path or origin.
     </dd>
     <dt><code>maxStreamsPerSession</code></dt>
     <dd>
@@ -85,8 +96,18 @@
       Defaults to 16. One more stream sends <code>evicted</code> to the
       session's oldest stream and closes it. That page keeps its views, stops
       live updates, and sets the connection status to
-      <code>too-many-tabs</code> until it is reloaded. The count is per process,
-      so also rate-limit page renders and <code>/_hypersig/stream/*</code>.
+      <code>too-many-tabs</code> until it is reloaded. Unless the page renders
+      <code>connectionStatusOutlet()</code>, only
+      <code>data-hs-connection</code> changes, so render the outlet to tell the
+      user. The count is per process, so also rate-limit page renders and
+      <code>/_hypersig/stream/*</code>. Sessions that share a
+      <code>sessionId</code>, such as <code>"anonymous"</code>, share one count,
+      so give every session its own id. Send <code>frame-ancestors</code> (or
+      <code>X-Frame-Options</code>) and set session cookies
+      <code>SameSite=Lax</code> or <code>Strict</code>, so a cross-site page
+      cannot open your pages in frames that evict the user's tabs;
+      <code>Strict</code> also keeps a popup another site opens from carrying
+      the session.
     </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
@@ -172,7 +193,10 @@ const href = links.counters[":counterKey"].$path({
     form contents, and sets the status to <code>reload-required</code> instead
     of reloading. <code>too-many-tabs</code> means the server evicted the page's
     stream because the session has more than <code>maxStreamsPerSession</code>
-    streams open.
+    streams open. Only the outlet tells the user about it: without
+    <code>connectionStatusOutlet()</code>, the page just stops updating and
+    changes <code>data-hs-connection</code>, so render the outlet on every live
+    page.
   </p>
   <p>
     <code>action.control(name)</code> returns the field name together with

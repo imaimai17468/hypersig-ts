@@ -43,7 +43,14 @@
   </p>
   <p>
     トークンは HTML を生成してから 12 時間（<code>pageLifetimeMs</code>
-    で変更できます）で期限が切れます。接続中の画面は期限後も更新を受け続け、期限後に接続し直したときだけページを取得し直します。インスタンスを順に入れ替えるときは、鍵の入れ替えを
+    で変更できます）で期限が切れます。接続中の画面は期限後も更新を受け続けます。接続が
+    <code>maxStreamMs</code>
+    で終わるたびに、サーバーは利用者を認証し直し、ページのトップレベルの View
+    をすべて今も読めるなら、期限を新しくしたトークンを送り、ブラウザは次の接続をそのトークンで開くためです。最後のトークンから
+    <code>pageLifetimeMs</code>
+    の間接続できなかったページ（オフライン、スリープ、bfcache
+    にあるページなど）や、接続が終わる時点で View
+    のどれかを読めなくなっていたページは、そのトークンの期限後に接続し直したときにページを取得し直します。インスタンスを順に入れ替えるときは、鍵の入れ替えを
     2
     回の配備に分けます。まず新しい鍵を現在の鍵の後ろに足して、すべてのインスタンスに配備します。この段階の新しい鍵は復号にだけ使われます。次に新しい鍵を先頭に移して配備し、最後のインスタンスが旧い鍵での暗号化をやめてから
     <code>pageLifetimeMs</code> が過ぎたら旧い鍵を外します。1
@@ -91,10 +98,39 @@
     </li>
     <li>
       セッションの Cookie には <code>Secure</code>、<code>HttpOnly</code>、<code
-        >SameSite</code
+        >SameSite=Lax</code
       >
-      を付けます。<code>Domain</code> が不要で <code>Path=/</code> にできる
-      Cookie には <code>__Host-</code> 接頭辞を使います。
+      か <code>Strict</code> を付けます。<code>Domain</code> が不要で
+      <code>Path=/</code> にできる Cookie には <code>__Host-</code>
+      接頭辞を使います。
+    </li>
+    <li>
+      すべてのページの Content-Security-Policy に
+      <code>frame-ancestors</code>（または
+      <code>X-Frame-Options</code>）を付けます。これと
+      <code>SameSite</code>
+      の Cookie があれば、別サイトのページが利用者のページをフレームで開いて
+      <code>maxStreamsPerSession</code>
+      の枠を使い切り、利用者のタブを追い出すことはできません。<code>Lax</code>
+      の Cookie は別サイトが開くポップアップには送られるので、それも防ぐには
+      <code>Strict</code> にします。
+    </li>
+    <li>
+      セッションごとに一意の
+      <code>sessionId</code> を使います。未ログインの訪問者すべてに
+      <code>"anonymous"</code> を使うように <code>sessionId</code>
+      を共有するセッションは
+      <code>maxStreamsPerSession</code>
+      の枠も共有し、ある訪問者のタブが別の訪問者のタブを追い出します。
+    </li>
+    <li>
+      更新を受けるページには
+      <code>connectionStatusOutlet()</code> を描画します。<code
+        >maxStreamsPerSession</code
+      >
+      を超えたタブは更新を止めますが、表示先がなければ変わるのは
+      <code>data-hs-connection</code>
+      だけで、再読み込みが必要なことが利用者に伝わりません。
     </li>
     <li>
       すべてのページに Content-Security-Policy を付けます。<code

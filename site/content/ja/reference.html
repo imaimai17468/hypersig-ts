@@ -59,9 +59,13 @@
     </dd>
     <dt><code>pageLifetimeMs</code></dt>
     <dd>
-      省略できます。ページの登録が有効な時間（ミリ秒）で、HTML
-      の生成から数えます。既定は 12
-      時間です。接続中のストリームは期限後も続き、期限後に接続し直したときだけ
+      省略できます。ページのトークンが有効な時間（ミリ秒）で、HTML
+      の生成か、トークンを新しくした時刻から数えます。既定は 12 時間です。<code
+        >maxStreamMs</code
+      >
+      ごとの <code>reconnect</code>
+      は、利用者がページのトップレベルの View
+      をすべて今も読めるかぎり新しいトークンを運ぶので、接続中のページは期限後も更新を受け続けます。ページの最後のトークンの期限後に接続し直したときは
       <code>reset</code> でページを取得し直します。
     </dd>
     <dt><code>pageContext</code></dt>
@@ -81,7 +85,15 @@
       省略できます。1 本の SSE 接続を開いておく時間（ミリ秒）です。既定は 30
       分です。各接続はこの値の 90% から 100% の間のランダムな時刻に
       <code>reconnect</code>
-      イベントを送って終わり、ブラウザのランタイムは再読み込みせず、切断も表示せずに、すぐ新しい接続を開きます。新しいリクエストにはブラウザの現在の資格情報が載ります。それまでの間、接続は開いたときのリクエストで認証します。
+      イベントを送って終わり、ブラウザのランタイムは再読み込みせず、切断も表示せずに、すぐ新しい接続を開きます。新しいリクエストにはブラウザの現在の資格情報が載ります。それまでの間、接続は開いたときのリクエストで認証します。サーバーは
+      <code>reconnect</code>
+      の直前に接続の利用者を認証し直します。同じセッションで、ページのトップレベルの
+      View をすべて今も読めるなら、View、params、SSR
+      のスナップショットはそのままに期限を新しい
+      <code>pageLifetimeMs</code>
+      にしたページのトークンをイベントに載せ、ブラウザは次の接続をそのトークンで開きます。そうでなければトークンを載せず、ブラウザは手元のトークンで接続し直します。ブラウザが受け付けるのはページのトークンの形をしたデータだけで、それは接続先の
+      URL
+      の最後のパスだけを置き換えるので、接続先が別のパスや別のオリジンに移ることはありません。
     </dd>
     <dt><code>maxStreamsPerSession</code></dt>
     <dd>
@@ -92,8 +104,19 @@
       を送って閉じます。そのページは View
       の表示を残したまま更新を止め、再読み込みされるまで接続状態を
       <code>too-many-tabs</code>
-      にします。数はプロセスごとなので、ページの描画と
-      <code>/_hypersig/stream/*</code> にもレート制限をかけます。
+      にします。ページが
+      <code>connectionStatusOutlet()</code> を描画していなければ変わるのは
+      <code>data-hs-connection</code>
+      だけなので、利用者に伝えるには表示先を描画します。数はプロセスごとなので、ページの描画と
+      <code>/_hypersig/stream/*</code>
+      にもレート制限をかけます。<code>"anonymous"</code> のように
+      <code>sessionId</code>
+      を共有するセッションは数も共有するので、セッションごとに一意の値を使います。別サイトのページが利用者のページをフレームで開いてタブを追い出せないように、<code>frame-ancestors</code>（または
+      <code>X-Frame-Options</code>）を付け、セッションの Cookie を
+      <code>SameSite=Lax</code> か <code>Strict</code> にします。<code
+        >Strict</code
+      >
+      なら、別サイトが開くポップアップにもセッションが載りません。
     </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
@@ -196,7 +219,11 @@ const href = links.counters[":counterKey"].$path({
     <code>reload-required</code>
     にします。<code>too-many-tabs</code> は、セッションが
     <code>maxStreamsPerSession</code>
-    を超える接続を開いたため、サーバーがそのページの接続を閉じたことを表します。
+    を超える接続を開いたため、サーバーがそのページの接続を閉じたことを表します。これを利用者に伝えるのは表示先だけです。<code
+      >connectionStatusOutlet()</code
+    >
+    がなければ、ページは更新を止めて <code>data-hs-connection</code>
+    を変えるだけなので、更新を受けるページには表示先を描画します。
   </p>
   <p>
     <code>action.control(name)</code>

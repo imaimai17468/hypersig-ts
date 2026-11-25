@@ -42,16 +42,22 @@
   <p>
     A token expires 12 hours after the HTML was rendered (change it with
     <code>pageLifetimeMs</code>). A connected page keeps receiving updates past
-    expiry, and only a connection made after expiry fetches the page again. When
-    instances are replaced one by one, rotate keys in two deploys. First add the
-    new key after the current one on every instance; in this phase it only opens
-    tokens. Then move the new key to the front, and remove the old key once
-    <code>pageLifetimeMs</code> has passed since the last instance stopped
-    sealing with it. Adding the new key in front in one deploy resets pages
-    whose tokens an instance without the new key receives. Each token uses a
-    random 96-bit nonce, so one key can safely encrypt about 2^32 tokens. Rotate
-    well before a key reaches that count: at least once a year for a busy
-    service.
+    expiry: each time a stream ends at <code>maxStreamMs</code>, the server
+    authenticates the user again and, while they can still read every top-level
+    view on the page, sends a renewed token with a new lifetime, and the browser
+    opens the next stream with it. A page that could not connect for
+    <code>pageLifetimeMs</code> after its last token, such as one offline,
+    asleep, or in the back/forward cache, or whose user could no longer read one
+    of its views when its stream ended, fetches the page again on its next
+    connection after that token expires. When instances are replaced one by one,
+    rotate keys in two deploys. First add the new key after the current one on
+    every instance; in this phase it only opens tokens. Then move the new key to
+    the front, and remove the old key once <code>pageLifetimeMs</code> has
+    passed since the last instance stopped sealing with it. Adding the new key
+    in front in one deploy resets pages whose tokens an instance without the new
+    key receives. Each token uses a random 96-bit nonce, so one key can safely
+    encrypt about 2^32 tokens. Rotate well before a key reaches that count: at
+    least once a year for a busy service.
   </p>
   <p>
     For cross-instance changes, use a Pub/Sub adapter that delivers
@@ -93,8 +99,29 @@
     </li>
     <li>
       Set session cookies with <code>Secure</code>, <code>HttpOnly</code>, and
-      <code>SameSite</code>. Use the <code>__Host-</code> prefix where the
-      cookie needs no <code>Domain</code> and can use <code>Path=/</code>.
+      <code>SameSite=Lax</code> or <code>Strict</code>. Use the
+      <code>__Host-</code> prefix where the cookie needs no
+      <code>Domain</code> and can use <code>Path=/</code>.
+    </li>
+    <li>
+      Send <code>frame-ancestors</code> in the Content-Security-Policy (or
+      <code>X-Frame-Options</code>) with every page. With it and
+      <code>SameSite</code> cookies, a cross-site page cannot open your pages in
+      frames that use up <code>maxStreamsPerSession</code> and evict the user's
+      tabs. A <code>Lax</code> cookie still goes with a popup another site
+      opens, so use <code>Strict</code> to stop that as well.
+    </li>
+    <li>
+      Give every session its own <code>sessionId</code>. Sessions that share
+      one, such as <code>"anonymous"</code> for every signed-out visitor, share
+      one <code>maxStreamsPerSession</code> budget, so one visitor's tabs evict
+      another's.
+    </li>
+    <li>
+      Render <code>connectionStatusOutlet()</code> on every live page. A tab
+      past <code>maxStreamsPerSession</code> stops updating, and without the
+      outlet only <code>data-hs-connection</code> changes, so the user is not
+      told to reload.
     </li>
     <li>
       Send a Content-Security-Policy with every page. Set it on the
