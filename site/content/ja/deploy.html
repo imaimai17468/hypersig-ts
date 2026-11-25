@@ -76,10 +76,14 @@
     の呼び出しを渡します。購読中の接続はほかのコマンドを送れないため、接続を 2
     本使います。Topic ごとのチャンネル名は、<code>hypersig:</code> に Topic
     の名前とキーを続けたものです。1 つの Redis
-    を複数のアプリで共有するときは、<code>channelPrefix</code> で分けます。Redis
-    Cluster と Sentinel は、クライアントが対応する範囲で動きます。Workers からは
-    Redis に TCP で接続できないため、<a href="#void">Void に組み込む場合</a>の
-    Durable Object の構成を使います。
+    を複数のアプリで共有するときは、<code>channelPrefix</code>
+    で分けます。Pub/Sub のチャンネルは
+    <code>SELECT</code>
+    で選んだデータベース番号に関係なく共有されるので、1 つの Redis
+    の別々のデータベースを使うアプリや環境でも、接頭辞を分けます。Redis Cluster
+    と Sentinel は、クライアントが対応する範囲で動きます。Workers からは Redis
+    に TCP で接続できないため、<a href="#void">Void に組み込む場合</a>の Durable
+    Object の構成を使います。
   </p>
   <p>node-redis の場合：</p>
   <pre><code>import { createClient } from "redis";
@@ -107,6 +111,8 @@ import { createRedisPubSub } from "hypersig-ts/redis";
 
 const client = new Redis(process.env.REDIS_URL);
 const subscriber = client.duplicate();
+client.on("error", console.error);
+subscriber.on("error", console.error);
 const listeners = new Map&lt;string, Set&lt;() =&gt; void&gt;&gt;();
 subscriber.on("message", (channel: string) =&gt; {
   for (const listener of listeners.get(channel) ?? []) listener();
@@ -127,13 +133,21 @@ const pubsub = createRedisPubSub&lt;AppEvent&gt;({
     try {
       await subscriber.subscribe(channel);
     } catch (error) {
-      await end();
+      await end().catch(() =&gt; {});
       throw error;
     }
     return end;
   },
 });
-subscriber.on("close", () =&gt; pubsub.disconnected());</code></pre>
+let isClosing = false;
+// quit() と disconnect() でも close が起きるので、終了するときは呼びません。
+subscriber.on("close", () =&gt; {
+  if (!isClosing) pubsub.disconnected();
+});
+async function closeRedis() {
+  isClosing = true;
+  await Promise.all([subscriber.quit(), client.quit()]);
+}</code></pre>
   <p><code>Bun.RedisClient</code> の場合：</p>
   <pre><code>import { RedisClient } from "bun";
 import { createRedisPubSub } from "hypersig-ts/redis";
@@ -149,14 +163,35 @@ const pubsub = createRedisPubSub&lt;AppEvent&gt;({
     return () =&gt; subscriber.unsubscribe(channel, listener);
   },
 });
-// Bun は再接続しても購読し直しません。
-subscriber.onconnect = () =&gt; pubsub.disconnected();
-subscriber.onclose = () =&gt; pubsub.disconnected();</code></pre>
+// Bun 1.3.1 は再接続しても購読し直さないので、再接続はすべての購読を
+// 失ったことを表します。close() でも onclose が呼ばれるので、終了するときは呼びません。
+let isClosing = false;
+subscriber.onconnect = subscriber.onclose = () =&gt; {
+  if (!isClosing) pubsub.disconnected();
+};
+function closeRedis() {
+  isClosing = true;
+  subscriber.close();
+  client.close();
+}</code></pre>
   <p>
     カウンターのサンプルは、<code>REDIS_URL</code> があると
     <code>Bun.RedisClient</code> でつなぎます。node-redis と
     <code>Bun.RedisClient</code> のつなぎ方は実際の Redis
-    で試験しています。ioredis のつなぎ方は試験していません。
+    で試験しています。ioredis のつなぎ方は、Bun 上の ioredis 5.11
+    で手で確かめましたが、試験には含めていません。
+  </p>
+  <p>
+    node-redis と ioredis は再接続に失敗するたびに知らせるので、切断中は
+    <code>disconnected()</code>
+    が繰り返し呼ばれます。それぞれの呼び出しが終えるのは前の呼び出しのあとにできた購読だけなので、これは想定どおりです。再接続しても購読し直さない動きは
+    Bun 1.3.1 で見たものです。今後の Bun
+    が自分で購読し直すようになっても、ランタイムがその購読を終えて作り直すので、上のつなぎ方のままで正しく動きます。Bun
+    1.3.1 では、再接続に成功しても再接続までの待ち時間が戻らず（約 50 ms から約
+    2 秒の上限まで延びるのを確認しました）、その後の切断では
+    <code>onconnect</code> まで最大で約 2 秒、View
+    が古いままになります。その間に取りこぼした変更は
+    <code>reconcileIntervalMs</code> で補えます。
   </p>
   <p>
     Redis

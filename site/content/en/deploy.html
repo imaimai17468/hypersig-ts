@@ -72,10 +72,12 @@
     <code>subscribe</code> calls of the client you use. Use two connections,
     since a connection in subscriber mode cannot send other commands. Each Topic
     is the channel <code>hypersig:</code> followed by its name and key; set
-    <code>channelPrefix</code> to keep apps that share one Redis apart. Redis
-    Cluster and Sentinel work as far as the client supports them. Workers cannot
-    open TCP connections to Redis; use the Durable Object setup in
-    <a href="#void">Running with Void</a> there.
+    <code>channelPrefix</code> to keep apps that share one Redis apart. Pub/Sub
+    channels ignore the database number chosen with <code>SELECT</code>, so apps
+    or environments on different databases of one Redis still need different
+    prefixes. Redis Cluster and Sentinel work as far as the client supports
+    them. Workers cannot open TCP connections to Redis; use the Durable Object
+    setup in <a href="#void">Running with Void</a> there.
   </p>
   <p>With node-redis:</p>
   <pre><code>import { createClient } from "redis";
@@ -103,6 +105,8 @@ import { createRedisPubSub } from "hypersig-ts/redis";
 
 const client = new Redis(process.env.REDIS_URL);
 const subscriber = client.duplicate();
+client.on("error", console.error);
+subscriber.on("error", console.error);
 const listeners = new Map&lt;string, Set&lt;() =&gt; void&gt;&gt;();
 subscriber.on("message", (channel: string) =&gt; {
   for (const listener of listeners.get(channel) ?? []) listener();
@@ -123,13 +127,21 @@ const pubsub = createRedisPubSub&lt;AppEvent&gt;({
     try {
       await subscriber.subscribe(channel);
     } catch (error) {
-      await end();
+      await end().catch(() =&gt; {});
       throw error;
     }
     return end;
   },
 });
-subscriber.on("close", () =&gt; pubsub.disconnected());</code></pre>
+let isClosing = false;
+// quit() and disconnect() emit close too, so shutting down skips it.
+subscriber.on("close", () =&gt; {
+  if (!isClosing) pubsub.disconnected();
+});
+async function closeRedis() {
+  isClosing = true;
+  await Promise.all([subscriber.quit(), client.quit()]);
+}</code></pre>
   <p>With <code>Bun.RedisClient</code>:</p>
   <pre><code>import { RedisClient } from "bun";
 import { createRedisPubSub } from "hypersig-ts/redis";
@@ -145,14 +157,36 @@ const pubsub = createRedisPubSub&lt;AppEvent&gt;({
     return () =&gt; subscriber.unsubscribe(channel, listener);
   },
 });
-// Bun reconnects without subscribing again.
-subscriber.onconnect = () =&gt; pubsub.disconnected();
-subscriber.onclose = () =&gt; pubsub.disconnected();</code></pre>
+// Bun 1.3.1 reconnects without subscribing again, so a reconnect means
+// every subscription was lost. close() calls onclose too, so shutting down
+// skips it.
+let isClosing = false;
+subscriber.onconnect = subscriber.onclose = () =&gt; {
+  if (!isClosing) pubsub.disconnected();
+};
+function closeRedis() {
+  isClosing = true;
+  subscriber.close();
+  client.close();
+}</code></pre>
   <p>
     The Counter example uses the <code>Bun.RedisClient</code> wiring when
     <code>REDIS_URL</code> is set. The node-redis and
     <code>Bun.RedisClient</code> wiring are tested against a real Redis; the
-    ioredis wiring is not.
+    ioredis wiring was checked by hand against ioredis 5.11 under Bun and is not
+    part of the tests.
+  </p>
+  <p>
+    node-redis and ioredis report every failed reconnect attempt, so
+    <code>disconnected()</code> runs repeatedly during an outage; each call ends
+    only the subscriptions made since the previous one, which is expected. The
+    reconnect without subscribing again was seen on Bun 1.3.1; if a later Bun
+    subscribes again by itself, the wiring above stays correct, since the
+    runtime ends those subscriptions and makes new ones. On Bun 1.3.1 the
+    reconnect delay also does not reset after a successful reconnect (it was
+    seen growing from about 50 ms to a cap of about 2 s), so after later drops
+    the views stay stale for up to about 2 seconds until <code>onconnect</code>;
+    <code>reconcileIntervalMs</code> covers changes missed meanwhile.
   </p>
   <p>
     Redis delivers each message once, to the instances subscribed when it
