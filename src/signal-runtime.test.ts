@@ -992,6 +992,22 @@ it("does not write bound text into script or style elements", async () => {
   expect(find("#span").textContent).toBe("alert(1)");
 });
 
+it("does not write bound text into SVG script or style elements", async () => {
+  const code = signals({ text: "alert(1)" }, { name: "svg-script-text" });
+  const c = code.with({});
+  const { page, find } = createPage(
+    render("div", { ...c.init() }) +
+      `<svg><script id="script" data-hs-text='${JSON.stringify(c.text.node)}'></script>` +
+      `<style id="style" data-hs-text='${JSON.stringify(c.text.node)}'></style></svg>`
+  );
+  startSignals({ root: page });
+  await settle();
+
+  expect(find("#script").namespaceURI).toBe("http://www.w3.org/2000/svg");
+  expect(find("#script").textContent).toBe("");
+  expect(find("#style").textContent).toBe("");
+});
+
 it("binds the checked property so a clicked checkbox follows the signal", async () => {
   const filter = signals({ all: true }, { name: "checked-attr" });
   const f = filter.with({});
@@ -1126,6 +1142,27 @@ it("refuses to send a form while it is pending, without running its submit state
   void runtime.sendForm(form, addTodo.url, null);
   expect(requests).toHaveLength(2);
   expect(runtime.read(e.newKey.path)).toBe("f2");
+});
+
+it("sends a call input field named __proto__ as an ordinary key", () => {
+  const rename = hypersig.action("rename-proto", {
+    input: v.object({ ["__proto__"]: v.string() }),
+    output: v.null(),
+    authorize: () => true,
+    execute: () => null,
+  });
+  const { page, click } = createPage(
+    render("button", {
+      id: "rename",
+      ...on.click(rename.call({ ["__proto__"]: "x" })),
+    })
+  );
+  const { requests, request, send } = createSend();
+  startSignals({ root: page, send });
+
+  click("#rename");
+  expect(requests).toHaveLength(1);
+  expect(request(0).body).toBe('{"__proto__":"x"}');
 });
 
 it("keeps data-hs-pending on a control until its last send ends", async () => {

@@ -7,6 +7,7 @@ import {
   streamParams,
 } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
+import { claimReload } from "./reload-budget.js";
 import { sanitizeFragment } from "./sanitize.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
 import { isOwnedChild, startSignals } from "./signal-runtime.js";
@@ -65,7 +66,8 @@ function updateViews(
     status: "connecting" | "ready" | "disconnected" | "reload-required"
   ) {
     document.documentElement.dataset.hsConnection = status;
-    const outlet = document.querySelector(
+    const outlet = findHandledOutlet(
+      document,
       `[${outletAttributes.connectionStatus}]`
     );
     if (outlet)
@@ -84,7 +86,7 @@ function updateViews(
       "[data-hs-view]"
     )) {
       const key = node.dataset.hsView;
-      if (key && !key.includes("/")) next.set(key, node);
+      if (key && !key.includes("/") && !isOwnedChild(node)) next.set(key, node);
     }
     if (
       next.size === views.size &&
@@ -119,17 +121,23 @@ function updateViews(
     source.addEventListener("open", () => {
       if (source === connection) versions = new WeakMap();
     });
+    /**
+     * Searches only the root view, so an element elsewhere with a nested
+     * view's id does not hide it.
+     */
     function findView(target: string) {
       const root = views.get(target.split("/", 1)[0] ?? "");
-      const node = target.includes("/")
-        ? document.getElementById(`hs-view-${target}`)
-        : root;
-      if (
-        node?.isConnected &&
-        root?.contains(node) &&
-        node.dataset.hsView === target
-      )
-        return node;
+      if (!root?.isConnected) return;
+      if (!target.includes("/"))
+        return root.dataset.hsView === target ? root : undefined;
+      for (const node of root.querySelectorAll<HTMLElement>("[data-hs-view]")) {
+        if (
+          node.dataset.hsView === target &&
+          node.id === `hs-view-${target}` &&
+          !isOwnedChild(node)
+        )
+          return node;
+      }
     }
     source.addEventListener(events.update, (event) => {
       if (source !== connection) return;
@@ -149,6 +157,7 @@ function updateViews(
           target.slice(update.target.length + 1).includes("/") ||
           child.tagName !== "DIV" ||
           child.id !== `hs-view-${target}` ||
+          isOwnedChild(child) ||
           !childTargets.delete(target)
         ) {
           child.removeAttribute("data-hs-view");
@@ -211,7 +220,8 @@ function updateViews(
     source.addEventListener(events.reset, () => {
       if (source !== connection) return;
       source.close();
-      if (preserveDrafts(draftScope)) location.reload();
+      if (preserveDrafts(draftScope) && claimReload(Date.now()))
+        location.reload();
       else {
         clearViews();
         setStatus("reload-required");

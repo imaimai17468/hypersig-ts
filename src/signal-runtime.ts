@@ -157,7 +157,7 @@ export function isTextControl(element: Element | null): element is Field {
 }
 
 /** Elements whose text the browser runs or applies as code. */
-const codeElementNames: ReadonlySet<string> = new Set(["SCRIPT", "STYLE"]);
+const codeElementNames: ReadonlySet<string> = new Set(["script", "style"]);
 
 function isInputKind(value: unknown): value is InputKind {
   return value === "string" || value === "number" || value === "boolean";
@@ -517,7 +517,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       if (isCustomElement(element)) listenToCustomEvents(element);
     }
     for (const element of findHandled(root, `[${signalAttributes.text}]`)) {
-      if (codeElementNames.has(element.tagName)) continue;
+      if (codeElementNames.has(element.localName)) continue;
       const node = readExpr(element, signalAttributes.text);
       if (!node) continue;
       const text = formatText(evaluate(node, context));
@@ -630,10 +630,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         case "call": {
           if (!control) break;
           const [, url, input, onSuccess, onError] = stmt;
-          const body: Record<string, JsonValue> = {};
-          for (const [field, node] of Object.entries(input)) {
-            body[field] = evaluate(node, runContext);
-          }
+          // Defining each entry keeps a field named `__proto__` as a key.
+          const body = Object.fromEntries(
+            Object.entries(input).map(([field, node]) => [
+              field,
+              evaluate(node, runContext),
+            ])
+          );
           void sendAction(
             control,
             url,
