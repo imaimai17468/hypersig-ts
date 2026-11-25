@@ -136,9 +136,13 @@ type BindableAttribute = (typeof bindableAttributes)[number] | `data-${string}`;
 
 /**
  * An expression of any JSON type. `Expr<JsonValue>` does not accept one whose
- * type is a union such as `string | null`, because its `eq` takes `T`.
+ * type is a union such as `string | null`, because its `eq` takes `T`, so
+ * `eq` is required with parameters that any expression's `eq` accepts. That
+ * still keeps out a plain object that only carries a `node`.
  */
-type AnyJsonExpr = Pick<ExprBase<JsonValue>, "node" | typeof valueType>;
+type AnyJsonExpr = Pick<ExprBase<JsonValue>, "node" | typeof valueType> & {
+  eq(other: never): Expr<boolean>;
+};
 
 type AttributeBindings<Attrs> = {
   readonly [K in keyof Attrs]: K extends `data-hs-${string}`

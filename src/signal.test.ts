@@ -13,6 +13,7 @@ import {
   uuid,
   when,
 } from "./index.js";
+import type { ExprNode } from "./protocol.js";
 import { exprOf } from "./signal.js";
 
 it("renders evaluated values for the request", () => {
@@ -176,6 +177,9 @@ it("binds only allowed attributes", () => {
       hidden: ["lit", null],
     }),
   });
+  const notAnExpression: { readonly node: ExprNode } = { node: ["lit", "x"] };
+  // @ts-expect-error Only expressions built by hypersig bind an attribute.
+  shown.bindAttr({ "aria-label": notAnExpression });
   // @ts-expect-error href could navigate to a value from a signal.
   expect(() => shown.bindAttr({ href: lit("/") })).toThrow("href");
   // @ts-expect-error data-hs-* attributes belong to the runtime.
