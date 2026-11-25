@@ -1,4 +1,7 @@
+// The automatic JSX runtime that `<button {...props} />` compiles to.
+import { jsx } from "hono/jsx/jsx-runtime";
 import { expect, it } from "vite-plus/test";
+import { refs } from "./index.js";
 import { sanitizeFragment } from "./sanitize.js";
 
 const serialize = (fragment: DocumentFragment) => {
@@ -55,4 +58,15 @@ it("still removes scripts and templates", () => {
   expect(container.querySelector("script")).toBeNull();
   expect(container.querySelector("template")).toBeNull();
   expect(container.querySelector("p")?.textContent).toBe("kept");
+});
+
+it("keeps a keyed ref whose key holds markup, quotes and spaces", () => {
+  const key = `<b> "a" 'b' & c`;
+  const attrs = refs({ name: "sanitized-row" }).attr(key);
+  const value = attrs["data-hs-ref"];
+  const container = serialize(sanitizeFragment(String(jsx("button", attrs))));
+
+  expect(container.querySelector("button")?.getAttribute("data-hs-ref")).toBe(
+    value
+  );
 });

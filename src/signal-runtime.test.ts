@@ -1668,6 +1668,23 @@ it("ignores hypersig attributes inside the children of an owned element", async 
   expect(find("#inner-text").textContent).toBe("server");
 });
 
+it("focuses a keyed ref outside the children of an owned element", () => {
+  const rows = refs({ name: "owned-rows" });
+  const { page, find, click } = createPage(
+    render("star-rating", {
+      id: "rating",
+      "data-hs-owns-children": "",
+      children: element("button", { id: "inner", ...rows.attr("a") }),
+    }) +
+      render("button", { id: "outer", ...rows.attr("a") }) +
+      render("button", { id: "go", ...on.click(rows.focus("a")) })
+  );
+  startSignals({ root: page });
+
+  click("#go");
+  expect(page.activeElement).toBe(find("#outer"));
+});
+
 it("sends no Action or form from the children of an owned element", async () => {
   const s = signals({ submitted: 0 }, { name: "owned-actions" }).with({});
   const forged = (prefix: string) => [
