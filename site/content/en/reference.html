@@ -948,3 +948,57 @@ await hypersig.publish(changed(id));</code></pre>
     >
   </p>
 </section>
+
+<section id="redis">
+  <h2>Redis Pub/Sub</h2>
+  <p>
+    <code>hypersig-ts/redis</code> delivers publications between processes
+    through Redis Pub/Sub. Pass the result as <code>pubsub</code> to
+    <code>createHypersig</code> or <code>createLiveRuntime</code>. See
+    <a href="../deploy/#redis">Deliver changes through Redis</a> for the wiring
+    of node-redis, ioredis, and <code>Bun.RedisClient</code>.
+  </p>
+  <dl>
+    <dt><code>createRedisPubSub(options)</code></dt>
+    <dd>
+      Returns a Pub/Sub with <code>disconnected()</code>. Within one adapter,
+      the views that subscribe to the same Topic share one Redis subscription,
+      which ends with the last of them.
+    </dd>
+    <dt><code>publish(channel, message)</code></dt>
+    <dd>
+      Required. Sends <code>PUBLISH</code> from a connection that is not in
+      subscriber mode. The adapter's <code>publish</code> resolves when this
+      resolves, which should be once Redis has accepted the command. The message
+      is empty, since subscribers read the current value again.
+    </dd>
+    <dt><code>subscribe(channel, onMessage)</code></dt>
+    <dd>
+      Required. Subscribes on a connection in subscriber mode, calls
+      <code>onMessage</code> for each message on the channel, and resolves once
+      Redis has confirmed the subscription, with a function that ends it. A
+      rejection reaches the runtime, which reports
+      <code>subscribe-error</code> and tries again after a second. A channel can
+      be subscribed again before ending the previous subscription has finished,
+      so the returned function must end only the subscription it came from.
+      TypeScript does not check this: a function that ends every listener on the
+      channel stops the newer subscription, and its views stop updating.
+    </dd>
+    <dt><code>channelPrefix</code></dt>
+    <dd>
+      Optional. Defaults to <code>"hypersig:"</code>. A Topic's channel is this
+      prefix followed by the JSON of its name and key, such as
+      <code>hypersig:["counter","main"]</code>.
+    </dd>
+    <dt><code>disconnected()</code></dt>
+    <dd>
+      Call when the client reports that the subscriber connection dropped or
+      came back. Every subscription made so far, including one still waiting for
+      Redis, ends and calls its <code>onDisconnect</code>, so the live runtime
+      subscribes again and reads its views again. A message published while the
+      connection was down is not delivered later, and nothing checks that the
+      application calls this; without it, the views on that process stay stale
+      until the next change or <code>reconcileIntervalMs</code>.
+    </dd>
+  </dl>
+</section>

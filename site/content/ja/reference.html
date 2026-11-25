@@ -1023,6 +1023,63 @@ await hypersig.publish(changed(id));</code></pre>
   </p>
 </section>
 
+<section id="redis">
+  <h2>Redis の Pub/Sub</h2>
+  <p>
+    <code>hypersig-ts/redis</code> は、Redis の Pub/Sub
+    を使ってプロセスの間で発行を届けます。戻り値を
+    <code>createHypersig</code> か <code>createLiveRuntime</code> の
+    <code>pubsub</code> に渡します。node-redis、ioredis、<code
+      >Bun.RedisClient</code
+    >
+    のつなぎ方は<a href="../deploy/#redis">Redis で変更を届ける</a
+    >を見てください。
+  </p>
+  <dl>
+    <dt><code>createRedisPubSub(options)</code></dt>
+    <dd>
+      <code>disconnected()</code> を持つ Pub/Sub を返します。1
+      つのアダプターの中では、同じ Topic を購読する View が Redis の購読を 1
+      つ共有し、最後の View が購読をやめると終わります。
+    </dd>
+    <dt><code>publish(channel, message)</code></dt>
+    <dd>
+      必須です。購読中でない接続から
+      <code>PUBLISH</code> を送ります。アダプターの <code>publish</code>
+      はこれが終わったときに終わるので、Redis
+      がコマンドを受け付けた時点で終わるようにします。購読者は現在の値を読み直すので、メッセージは空です。
+    </dd>
+    <dt><code>subscribe(channel, onMessage)</code></dt>
+    <dd>
+      必須です。購読用の接続で購読し、チャンネルのメッセージごとに
+      <code>onMessage</code> を呼び、Redis
+      が購読を確かめた時点で、その購読を終える関数で終わります。失敗するとランタイムに伝わり、ランタイムは
+      <code>subscribe-error</code>
+      を知らせて 1
+      秒後に試し直します。前の購読を終える処理が終わる前に、同じチャンネルをもう一度購読することがあるので、返す関数は自分の購読だけを終えます。TypeScript
+      はこれを検査しません。チャンネルのリスナーをすべて外す関数にすると、新しい購読も止まり、その
+      View は更新されなくなります。
+    </dd>
+    <dt><code>channelPrefix</code></dt>
+    <dd>
+      省略できます。既定は <code>"hypersig:"</code> です。Topic
+      のチャンネル名は、この接頭辞に、名前とキーの JSON を続けたもので、<code
+        >hypersig:["counter","main"]</code
+      >
+      のようになります。
+    </dd>
+    <dt><code>disconnected()</code></dt>
+    <dd>
+      購読の接続が切れた、または戻ったとクライアントが知らせたときに呼びます。それまでのすべての購読が、Redis
+      の応答を待っているものも含めて終わり、それぞれの
+      <code>onDisconnect</code>
+      を呼ぶので、ランタイムが購読し直して View
+      を読み直します。切断中に発行したメッセージが後から届くことはありません。アプリがこれを呼ぶことは検査されず、呼ばないと、そのプロセスの
+      View は次の変更か <code>reconcileIntervalMs</code> まで古いままです。
+    </dd>
+  </dl>
+</section>
+
 <section id="live-views">
   <h2>変更に合わせて更新する画面の一部</h2>
   <p>

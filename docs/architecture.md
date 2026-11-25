@@ -110,6 +110,8 @@ Playwright は二つの Cookie セッションに All / Active / Completed の�
 
 外部アダプターを `shareTopicSubscriptions(upstream)` で包むと、一つのアダプター内で同じ Topic の外部購読を共有できる。最後の購読者が離れたときに外部購読を解除する。外部側の切断は購読中の View に伝え、最初の再購読で外部購読を張り直す。各 View の認可と SSE 配信は接続ごとに実行する。
 
+`hypersig-ts/redis` の `createRedisPubSub({ publish, subscribe, channelPrefix })` は、この形の外部アダプターを Redis の Pub/Sub で作る。Redis のクライアントには依存せず、アプリが `PUBLISH` と購読の 2 つの呼び出しを渡す。チャンネル名は `channelPrefix`（既定は `hypersig:`）と `topicKey` をつないだもので、メッセージは空にする。購読は `shareTopicSubscriptions` で Topic ごとに 1 本にまとめる。クライアントの切断や再接続のイベントからアプリが `disconnected()` を呼ぶと、それまでの購読をすべて `onDisconnect` で終え、ランタイムが購読し直して読み直す。Redis は切断中の通知を残さないので、取りこぼしはこの読み直しと、定期再同期や Outbox で埋める。複数プロセスでの配信の計測は `bench/README.md` にある。
+
 ページ登録は暗号化トークンに入っており、同じ `pageKeys` を持つランタイムならどれでも SSE を受けられる。分散配備では、全インスタンスに同じ鍵と、インスタンス間で届く `PubSub` を渡す。各入口の SSR・Action・SSE を共有リソースの担当にルーティングする構成は、状態の置き場所を一か所にしたいときに選べる。Workers 実証は、同じ Durable Object を二つの入口から使い、再起動後も古いストリームが現在値から続き、別入口の更新が届くことを確かめる。Outbox、永続ストア、外部の配送基盤の配置は配備先で決める。
 
 ## HTML フォームと一時的な操作状態

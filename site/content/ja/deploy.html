@@ -62,8 +62,124 @@
     個のトークンを暗号化します。その数に届くよりずっと前に、利用の多いサービスでは少なくとも年に
     1 回、鍵を入れ替えます。
   </p>
+  <h3 id="redis">Redis で変更を届ける</h3>
   <p>
-    別のインスタンスでデータが変わったときは、変更の通知を購読先に配る仕組み（Pub/Sub）を使って、画面を配信しているインスタンスにも通知します。プロキシを使う場合は、SSE
+    あるインスタンスで発行した変更は、その変更を購読する View
+    を配信しているインスタンスに届ける必要があります。<code
+      >createMemoryPubSub()</code
+    >
+    が届けるのは自分のプロセスの中だけです。<code>hypersig-ts/redis</code> の
+    <code>createRedisPubSub()</code> は、Redis の Pub/Sub を使って、同じ Redis
+    につないだすべてのインスタンスに発行を届けます。このパッケージは Redis
+    のクライアントに依存しないので、使うクライアントの <code>publish</code> と
+    <code>subscribe</code>
+    の呼び出しを渡します。購読中の接続はほかのコマンドを送れないため、接続を 2
+    本使います。Topic ごとのチャンネル名は、<code>hypersig:</code> に Topic
+    の名前とキーを続けたものです。1 つの Redis
+    を複数のアプリで共有するときは、<code>channelPrefix</code> で分けます。Redis
+    Cluster と Sentinel は、クライアントが対応する範囲で動きます。Workers からは
+    Redis に TCP で接続できないため、<a href="#void">Void に組み込む場合</a>の
+    Durable Object の構成を使います。
+  </p>
+  <p>node-redis の場合：</p>
+  <pre><code>import { createClient } from "redis";
+import { createRedisPubSub } from "hypersig-ts/redis";
+
+const client = createClient({ url: process.env.REDIS_URL });
+const subscriber = client.duplicate();
+const pubsub = createRedisPubSub&lt;AppEvent&gt;({
+  publish: (channel, message) =&gt; client.publish(channel, message),
+  async subscribe(channel, onMessage) {
+    const listener = () =&gt; onMessage();
+    await subscriber.subscribe(channel, listener);
+    return () =&gt; subscriber.unsubscribe(channel, listener);
+  },
+});
+client.on("error", console.error);
+// node-redis は自動で再接続し、新しい購読を再接続まで待たせます。
+subscriber.on("error", () =&gt; pubsub.disconnected());
+await Promise.all([client.connect(), subscriber.connect()]);
+
+const hypersig = createHypersig({ origin, pageKeys, pubsub, authenticate });</code></pre>
+  <p>すべてのメッセージを 1 つのリスナーで受け取る ioredis の場合：</p>
+  <pre><code>import Redis from "ioredis";
+import { createRedisPubSub } from "hypersig-ts/redis";
+
+const client = new Redis(process.env.REDIS_URL);
+const subscriber = client.duplicate();
+const listeners = new Map&lt;string, Set&lt;() =&gt; void&gt;&gt;();
+subscriber.on("message", (channel: string) =&gt; {
+  for (const listener of listeners.get(channel) ?? []) listener();
+});
+const pubsub = createRedisPubSub&lt;AppEvent&gt;({
+  publish: (channel, message) =&gt; client.publish(channel, message),
+  async subscribe(channel, onMessage) {
+    const channelListeners = listeners.get(channel) ?? new Set();
+    const listener = () =&gt; onMessage();
+    channelListeners.add(listener);
+    listeners.set(channel, channelListeners);
+    const end = async () =&gt; {
+      channelListeners.delete(listener);
+      if (channelListeners.size &gt; 0) return;
+      listeners.delete(channel);
+      await subscriber.unsubscribe(channel);
+    };
+    try {
+      await subscriber.subscribe(channel);
+    } catch (error) {
+      await end();
+      throw error;
+    }
+    return end;
+  },
+});
+subscriber.on("close", () =&gt; pubsub.disconnected());</code></pre>
+  <p><code>Bun.RedisClient</code> の場合：</p>
+  <pre><code>import { RedisClient } from "bun";
+import { createRedisPubSub } from "hypersig-ts/redis";
+
+const client = new RedisClient(process.env.REDIS_URL);
+await client.connect();
+const subscriber = await client.duplicate();
+const pubsub = createRedisPubSub&lt;AppEvent&gt;({
+  publish: (channel, message) =&gt; client.publish(channel, message),
+  async subscribe(channel, onMessage) {
+    const listener = () =&gt; onMessage();
+    await subscriber.subscribe(channel, listener);
+    return () =&gt; subscriber.unsubscribe(channel, listener);
+  },
+});
+// Bun は再接続しても購読し直しません。
+subscriber.onconnect = () =&gt; pubsub.disconnected();
+subscriber.onclose = () =&gt; pubsub.disconnected();</code></pre>
+  <p>
+    カウンターのサンプルは、<code>REDIS_URL</code> があると
+    <code>Bun.RedisClient</code> でつなぎます。node-redis と
+    <code>Bun.RedisClient</code> のつなぎ方は実際の Redis
+    で試験しています。ioredis のつなぎ方は試験していません。
+  </p>
+  <p>
+    Redis
+    はメッセージを受け取った時点で購読しているインスタンスに一度だけ届け、後のために残しません。あるインスタンスの購読の接続が切れている間に発行したメッセージは、そのインスタンスには届きません。クライアントが切断を知らせたときに
+    <code>disconnected()</code>
+    を呼ぶと、すべての購読が終わり、ランタイムが購読し直して、そのインスタンスで開いている
+    View
+    をすべて読み直すので、切断中の変更も画面に出ます。上の例のように、クライアントの切断か再接続のイベントから呼びます。呼ばないと、それらの
+    View は次の変更か再読み込みまで古いままです。<code>publish</code>
+    が終わるのは Redis
+    がメッセージを受け付けた時点で、ほかのインスタンスが描画した時点ではありません。
+  </p>
+  <p>
+    それでも取りこぼす場合が 2
+    つ残ります。保存のあと通知を発行する前にプロセスが止まった場合と、クライアントが気づかないまま通知が失われた場合です。それでも追いつく必要がある
+    View には、開いている View を一定間隔で読み直す
+    <code>reconcileIntervalMs</code>
+    を設定するか、<a href="#notification-retry"
+      >保存した変更の通知を再試行する</a
+    >のように、通知を保存と一緒に記録して再試行します。
+  </p>
+  <p>
+    プロキシを使う場合は、SSE
     の応答が途中でまとめられずに転送され、長時間の接続が維持されることを確認します。
   </p>
 </section>

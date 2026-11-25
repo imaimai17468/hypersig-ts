@@ -16,6 +16,7 @@ You write the app with Hono and run it on Node, Bun, or Cloudflare Workers. With
 | `hypersig-ts/core`    | The core, for combining rendering and transport yourself                                   |
 | `hypersig-ts/element` | Custom element declarations and their browser implementation (no Hono or React dependency) |
 | `hypersig-ts/react`   | Mounts React components as custom elements (needs `react` and `react-dom` ^19)             |
+| `hypersig-ts/redis`   | Delivers publications between processes through Redis Pub/Sub (bring your own client)      |
 
 [English documentation](https://imaimai17468.github.io/hypersig-ts/) · [日本語ドキュメント](https://imaimai17468.github.io/hypersig-ts/ja/) · [Migrating from htmx](https://imaimai17468.github.io/hypersig-ts/from-htmx/)
 

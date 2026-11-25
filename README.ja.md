@@ -16,6 +16,7 @@ hypersig.ts は、サーバーが描いた画面を、保存されたデータ�
 | `hypersig-ts/core`    | 描画と通信を自分で組み合わせるための中核                                    |
 | `hypersig-ts/element` | カスタム要素の宣言と、ブラウザ側の実装（Hono にも React にも依存しない）    |
 | `hypersig-ts/react`   | React の部品をカスタム要素として載せる（`react` と `react-dom` ^19 が必要） |
+| `hypersig-ts/redis`   | Redis の Pub/Sub でプロセスの間に発行を届ける（クライアントはアプリが渡す） |
 
 [日本語ドキュメント](https://imaimai17468.github.io/hypersig-ts/ja/) · [English documentation](https://imaimai17468.github.io/hypersig-ts/) · [htmx からの移行](https://imaimai17468.github.io/hypersig-ts/ja/from-htmx/)
 
