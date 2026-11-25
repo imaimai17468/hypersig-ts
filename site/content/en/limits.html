@@ -71,11 +71,14 @@
     <li>
       Values, including new list rows, appear once the server confirms them.
       Until then the page shows that the action is in progress, with
-      <code>pending()</code> or the <code>data-hs-pending</code> attribute.
-      Writing a signal before a <code>call</code> shows a value before it is
-      confirmed and is meant for the exceptions. In the TodoMVC example,
-      toggling, adding, and deleting a task show as in progress at once, and the
-      values change when the confirmed update arrives.
+      <code>pending()</code> or the <code>data-hs-pending</code> attribute. The
+      exception is the user's own action, which may show before it is confirmed
+      as a pending echo; see
+      <a href="../concepts/#pending-echo"
+        >Showing the user's own action as pending</a
+      >. In the TodoMVC example, toggling, adding, and deleting a task show as
+      in progress at once, and the values change when the confirmed update
+      arrives.
     </li>
     <li>
       Pages need a connection to the server. Committed data arrives over SSE, so

@@ -69,6 +69,48 @@
   </p>
 </section>
 
+<section id="pending-echo">
+  <h2>Showing the user's own action as pending</h2>
+  <p>
+    A page does not predict the server's result: new row keys, totals, stock, or
+    the outcome of other people's edits appear once the server commits them. It
+    may show the user's own action before it is confirmed, as a pending echo:
+    the favorite they just toggled, the position they dropped an item at, or the
+    chat text they just sent. Use it for direct manipulation such as dragging,
+    for frequent low-stakes personal toggles where a round trip of more than
+    about 300 ms feels broken, and for sending your own text. Do not use it for
+    values other people edit at the same time, values the server decides (keys,
+    prices, stock, permissions), input that validation may reject, or actions
+    that cannot be undone, such as payments; show the pending state alone for
+    those.
+  </p>
+  <p>A pending echo follows three rules:</p>
+  <ol>
+    <li>
+      Mark the shown value as pending: style the <code>data-hs-pending</code>
+      attribute the runtime puts on the sending control, and show text with
+      <code>action.pending()</code> for assistive technology.
+    </li>
+    <li>
+      On failure, set the latest committed value, not the value from before the
+      click. A commit from another tab can arrive while the request is in
+      flight.
+    </li>
+    <li>Let the committed value from the Live View replace the echo.</li>
+  </ol>
+  <p>
+    The favorite button in the
+    <a
+      href="https://github.com/imaimai17468/hypersig-ts/blob/main/examples/widgets/server.tsx"
+      >Widgets example</a
+    >
+    renders the shown value and the last committed value as two signals from its
+    Live View, toggles the first and calls the Action, and in
+    <code>onError</code> sets the first to the second.
+    <a href="../reference/#signals">Browser signals</a>
+  </p>
+</section>
+
 <section id="connections">
   <h2>Connection recovery</h2>
   <p>

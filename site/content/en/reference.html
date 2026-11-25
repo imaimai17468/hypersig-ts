@@ -553,25 +553,33 @@ li:has(.row [data-hs-pending]) {
   <p><strong>Showing a value before it is confirmed</strong></p>
   <p>
     A write before a <code>call</code> is an ordinary write: it shows at once
-    and stays when the Action fails. To show a value before the server confirms
-    it, undo the write yourself in <code>onError</code> by setting the value the
-    page was rendered with:
+    and stays when the Action fails. To show the user's own action before the
+    server confirms it, follow the three rules in
+    <a href="../concepts/#pending-echo"
+      >Showing the user's own action as pending</a
+    >. Render the shown value and the last committed value as two signals from
+    the Live View, and in <code>onError</code> set the shown value to the
+    committed one:
   </p>
-  <pre><code>on.click([
-  r.completed.toggle(),
-  toggle.call(
-    { todoKey: todo.key, completed: r.completed },
-    { onError: [r.completed.set(todo.completed)] }
+  <pre><code>const f = favoriteState.with({ favorite, committed: favorite });
+on.click([
+  f.favorite.set(f.favorite.not()),
+  saveFavorite.call(
+    { favorite: f.favorite },
+    { onError: [f.favorite.set(f.committed)] }
   ),
 ])</code></pre>
   <p>
-    A Live View update during the request overwrites the early value;
-    <code>onError</code> sets the value the page was rendered with. Set that
-    value rather than toggling, so a Live View update that arrived first does
-    not turn the undo into another change. Do not show values early that other
-    people may edit at the same time, values the server decides (such as keys,
-    order, or totals), or input that may fail validation; show the pending state
-    instead.
+    A Live View update during the request overwrites both signals. The
+    <code>onError</code> statements are the ones from the click and read signals
+    when they run, so <code>f.committed</code> is the latest committed value. A
+    value written into the statement, such as the one the page was rendered
+    with, is the value from before the click, and is stale once a commit from
+    another tab has arrived. Set a value rather than toggling, so a Live View
+    update that arrived first does not turn the undo into another change. Do not
+    show values early that other people may edit at the same time, values the
+    server decides (such as keys, order, or totals), or input that may fail
+    validation; show the pending state instead.
   </p>
   <p><strong>Known limitations</strong></p>
   <ul>

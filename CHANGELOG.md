@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Guidance on showing the user's own action before the server confirms it, as a pending echo, in the concepts page and `docs/architecture.md`: the line between predicting the server's result (not done) and echoing the user's own action, when to use it, and three rules (mark it pending, revert to the latest committed value on failure, let the committed value replace it). The reference no longer advises reverting to the value the page was rendered with, which is stale once another tab commits during the request. No API was added.
+- The Widgets example has a Favorite toggle that shows the click as a pending echo, with a "Fail next save" control and browser tests for the pending state, the revert, a commit from another tab during the request, and a second tab.
 - `hypersig-ts/core` exports the `JsonValue` type, for typing Live View params that hold any JSON. A param property typed `unknown` is rejected by `PageRenderContext.view`.
 
 ### Changed
