@@ -130,3 +130,13 @@ input:not([type="checkbox"]) {
   box-sizing: border-box;
   font: inherit;
 }
+
+.favorite[aria-pressed="true"] {
+  font-weight: bold;
+}
+
+/* A pending echo: the shown state is the user's own click, not yet committed. */
+.favorite[data-hs-pending] {
+  opacity: 0.6;
+  border-style: dashed;
+}

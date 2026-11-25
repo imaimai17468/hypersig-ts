@@ -5,6 +5,7 @@ import { hc } from "hono/client";
 import { getCookie, setCookie } from "hono/cookie";
 import * as v from "valibot";
 import {
+  ActionError,
   connectionStatusOutlet,
   createHypersig,
   createMemoryPubSub,
@@ -59,6 +60,9 @@ const messageLength = 80;
 interface Session {
   fruit: Fruit;
   draft: string;
+  favorite: boolean;
+  // Demo only: makes the next favorite save fail, to show the revert.
+  failNextSave: boolean;
 }
 // Demo only: unsigned in-memory sessions that never expire, with no eviction or
 // rate limit on minting them. See
@@ -68,9 +72,16 @@ const sessions = new Map<string, Session>();
 
 const fruitChanged = topic("fruit", (sessionId: string) => sessionId);
 const draftChanged = topic("draft", (sessionId: string) => sessionId);
+const favoriteChanged = topic("favorite", (sessionId: string) => sessionId);
+const failNextSaveChanged = topic(
+  "fail-next-save",
+  (sessionId: string) => sessionId
+);
 type WidgetEvent =
   | ReturnType<typeof fruitChanged>
-  | ReturnType<typeof draftChanged>;
+  | ReturnType<typeof draftChanged>
+  | ReturnType<typeof favoriteChanged>
+  | ReturnType<typeof failNextSaveChanged>;
 
 function readSession(request: Request) {
   const sessionId = getCookie(new Context(request), cookie);
@@ -127,6 +138,60 @@ const saveDraft = hypersig.action("save-draft", {
   },
 });
 
+const saveFavorite = hypersig.action("save-favorite", {
+  input: v.object({ favorite: v.boolean() }),
+  output: v.literal(true),
+  authorize: () => true,
+  async execute({ favorite }, { sessionId, session }) {
+    // A failed save commits nothing, so it does not publish the favorite.
+    if (session.failNextSave) {
+      session.failNextSave = false;
+      await hypersig.publish(failNextSaveChanged(sessionId));
+      throw new ActionError(409, "The favorite was not saved (demo failure).");
+    }
+    if (session.favorite !== favorite) {
+      session.favorite = favorite;
+      await hypersig.publish(favoriteChanged(sessionId));
+    }
+    return true as const;
+  },
+});
+
+const failNextSave = hypersig.action("fail-next-save", {
+  input: v.object({}),
+  output: v.literal(true),
+  authorize: () => true,
+  async execute(_input, { sessionId, session }) {
+    session.failNextSave = true;
+    await hypersig.publish(failNextSaveChanged(sessionId));
+    return true as const;
+  },
+});
+
+const favoriteToggle = hypersig.live({
+  name: "favorite-toggle",
+  subscribe: (_params: Record<string, never>, { sessionId }) => [
+    favoriteChanged(sessionId),
+  ],
+  authorize: () => true,
+  load: (_params, { session }) => session.favorite,
+  render: (favorite) => <FavoriteToggle favorite={favorite} />,
+});
+
+const failNextSaveNote = hypersig.live({
+  name: "fail-next-save-note",
+  subscribe: (_params: Record<string, never>, { sessionId }) => [
+    failNextSaveChanged(sessionId),
+  ],
+  authorize: () => true,
+  load: (_params, { session }) => session.failNextSave,
+  render: (failsNext) => (
+    <p id="favorite-fails-next" hidden={!failsNext}>
+      The next save fails.
+    </p>
+  ),
+});
+
 const savedFruit = hypersig.live({
   name: "saved-fruit",
   subscribe: (_params: Record<string, never>, { sessionId }) => [
@@ -175,6 +240,47 @@ const toastTimer = timer({ name: "toast-hide" });
 const countryFilter = signals({ query: "" }, { name: "country-filter" });
 const draft = signals({ text: "" }, { name: "draft" });
 const draftTimer = timer({ name: "draft-save" });
+const favoriteState = signals(
+  { favorite: false, committed: false },
+  { name: "favorite" }
+);
+
+// Shows the user's own toggle before the server commits it, as a pending echo
+// (docs/architecture.md, 確定してから表示する). `favorite` is what the button
+// shows and `committed` the last committed value. The Live View renders both as
+// committed values, so its update replaces the echo; a failed save writes back
+// `committed`, which a commit from another tab may have changed meanwhile, not
+// the value from before the click.
+function FavoriteToggle({ favorite }: { favorite: boolean }) {
+  const f = favoriteState.with({ favorite, committed: favorite });
+  return (
+    <p {...f.init()}>
+      <button
+        type="button"
+        class="favorite"
+        {...f.bindAttr({ "aria-pressed": f.favorite })}
+        {...on.click([
+          f.favorite.set(f.favorite.not()),
+          saveFavorite.call(
+            { favorite: f.favorite },
+            { onError: [f.favorite.set(f.committed)] }
+          ),
+        ])}
+      >
+        <span
+          aria-hidden="true"
+          {...f.bindText(f.favorite.choose("\u2605", "\u2606"))}
+        />{" "}
+        Favorite
+      </button>{" "}
+      <span role="status">
+        <span id="favorite-unsaved" {...f.bindShow(saveFavorite.pending())}>
+          Not saved yet
+        </span>
+      </span>
+    </p>
+  );
+}
 
 // The APG select-only combobox, without type-ahead or PageUp and PageDown.
 function FruitCombobox({ fruit }: { fruit: Fruit }) {
@@ -484,7 +590,12 @@ async function renderWidgets(c: Context): Promise<Response> {
   const current = readSession(c.req.raw);
   if (!current) {
     const sessionId = crypto.randomUUID();
-    sessions.set(sessionId, { fruit: "apple", draft: "" });
+    sessions.set(sessionId, {
+      fruit: "apple",
+      draft: "",
+      favorite: false,
+      failNextSave: false,
+    });
     setCookie(c, cookie, sessionId, {
       httpOnly: true,
       sameSite: "Strict",
@@ -514,6 +625,15 @@ async function renderWidgets(c: Context): Promise<Response> {
           <CountryFilter />
           <DraftEditor text={session.draft} />
           {page.view(savedDraft, {})}
+          <section aria-labelledby="favorite-heading" class="widget">
+            <h2 id="favorite-heading">Pending echo</h2>
+            {page.view(favoriteToggle, {})}
+            {/* Demo only: a way to see a failed save revert. */}
+            <button type="button" {...on.click([failNextSave.call({})])}>
+              Fail next save
+            </button>
+            {page.view(failNextSaveNote, {})}
+          </section>
           <p role="status" {...connectionStatusOutlet()}></p>
           <p role="alert" {...errorOutlet()}></p>
         </main>

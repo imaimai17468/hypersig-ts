@@ -130,14 +130,14 @@ mise exec -- bun run example:counter
 
 Open `http://127.0.0.1:3000` in two tabs and press **Increment main** in one of them; both counters update. [Counter source](examples/counter/server.tsx)
 
-| Example                                        | Command                                                                    | What it shows                                                                              |
-| ---------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [TodoMVC](examples/todomvc/server.tsx)         | `mise exec -- bun run example:todomvc`                                     | An action shows as pending at once, and values change once they are committed              |
-| [Shared memo](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`                                        | The revision an edit started from and draft restoration, with no hand-written JavaScript   |
-| [Reviews](examples/rating/server.tsx)          | `mise exec -- bun run example:rating`                                      | Typed attributes and events on a custom element, whose children survive Live View updates  |
-| [Sortable](examples/sortable/server.tsx)       | `mise exec -- bun run example:sortable`                                    | A React and dnd-kit component mounted as a custom element, saving the new order            |
-| [Widgets](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`                                     | A combobox, tabs, a disclosure panel, a character counter, and a toast, with Signals alone |
-| [Void](examples/void/README.md)                | `cd examples/void && mise exec -- bun install && mise exec -- bun run dev` | The same Hono app plugged into Void through a middleware, also deployed to Workers         |
+| Example                                        | Command                                                                    | What it shows                                                                                                                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [TodoMVC](examples/todomvc/server.tsx)         | `mise exec -- bun run example:todomvc`                                     | An action shows as pending at once, and values change once they are committed                                                                     |
+| [Shared memo](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`                                        | The revision an edit started from and draft restoration, with no hand-written JavaScript                                                          |
+| [Reviews](examples/rating/server.tsx)          | `mise exec -- bun run example:rating`                                      | Typed attributes and events on a custom element, whose children survive Live View updates                                                         |
+| [Sortable](examples/sortable/server.tsx)       | `mise exec -- bun run example:sortable`                                    | A React and dnd-kit component mounted as a custom element, saving the new order                                                                   |
+| [Widgets](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`                                     | A combobox, tabs, a disclosure panel, a character counter, and a toast, with Signals alone, and a favorite button that shows the click as pending |
+| [Void](examples/void/README.md)                | `cd examples/void && mise exec -- bun install && mise exec -- bun run dev` | The same Hono app plugged into Void through a middleware, also deployed to Workers                                                                |
 
 To run one alongside Counter, set `PORT=3001` on one of them. [Running on Void](examples/void/README.md) · [Deploying to Workers](examples/void/worker/README.md)
 

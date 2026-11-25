@@ -429,6 +429,118 @@ test("typing saves the draft once, after the input stops", async ({ page }) => {
   await expect(draft).toHaveValue("abc");
 });
 
+test.describe("pending echo", () => {
+  const favoriteAction = "**/_hypersig/actions/save-favorite";
+  const failAction = "**/_hypersig/actions/fail-next-save";
+
+  function favorite(page: Page): Locator {
+    return page.getByRole("button", { name: "Favorite" });
+  }
+
+  /** Holds every favorite save until `release` runs. */
+  async function holdSaves(page: Page) {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(favoriteAction, async (route) => {
+      await held;
+      await route.continue();
+    });
+    return () => release();
+  }
+
+  async function armFailure(page: Page) {
+    await Promise.all([
+      page.waitForResponse(failAction),
+      page.getByRole("button", { name: "Fail next save" }).click(),
+    ]);
+    await expect(page.locator("#favorite-fails-next")).toBeVisible();
+  }
+
+  test("shows the click as pending, then the committed value", async ({
+    page,
+  }) => {
+    await open(page);
+    const other = await page.context().newPage();
+    await open(other);
+    const button = favorite(page);
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#favorite-unsaved")).toBeHidden();
+
+    const release = await holdSaves(page);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(button).toHaveAttribute("data-hs-pending");
+    await expect(page.locator("#favorite-unsaved")).toBeVisible();
+    // Nothing is committed while the save is held.
+    await expect(favorite(other)).toHaveAttribute("aria-pressed", "false");
+
+    release();
+    await expect(button).not.toHaveAttribute("data-hs-pending");
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#favorite-unsaved")).toBeHidden();
+    await expect(favorite(other)).toHaveAttribute("aria-pressed", "true");
+
+    // A reload renders the committed value.
+    await page.reload();
+    await expect(page.locator(ready)).toHaveCount(1);
+    await expect(favorite(page)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("a failed save reverts to the committed value", async ({ page }) => {
+    await open(page);
+    const button = favorite(page);
+    await armFailure(page);
+    const release = await holdSaves(page);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(button).toHaveAttribute("data-hs-pending");
+
+    release();
+    await expect(page.getByRole("alert")).toHaveText(
+      "The favorite was not saved (demo failure)."
+    );
+    await expect(button).not.toHaveAttribute("data-hs-pending");
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#favorite-fails-next")).toBeHidden();
+  });
+
+  test("a failed save reverts to a value another tab committed meanwhile", async ({
+    page,
+  }) => {
+    await open(page);
+    const other = await page.context().newPage();
+    await open(other);
+    const button = favorite(page);
+    const release = await holdSaves(page);
+    await button.click();
+    await expect(button).toHaveAttribute("data-hs-pending");
+
+    // The other tab commits while this tab's save is held. Its update
+    // replaces this tab's echo with the committed value.
+    await Promise.all([
+      other.waitForResponse(favoriteAction),
+      favorite(other).click(),
+    ]);
+    await expect(favorite(other)).toHaveAttribute("aria-pressed", "true");
+    await armFailure(other);
+    await expect(page.locator("#favorite-fails-next")).toBeVisible();
+    await expect(button).toHaveAttribute("data-hs-pending");
+
+    release();
+    await expect(page.getByRole("alert")).toHaveText(
+      "The favorite was not saved (demo failure)."
+    );
+    await expect(button).not.toHaveAttribute("data-hs-pending");
+    // The value from before the click was false and the committed one is
+    // true. With the previous test, where nothing else commits, this shows
+    // that the failure writes the latest committed value.
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(favorite(other)).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
 test("sends its Content-Security-Policy with the page", async ({ page }) => {
   const response = await page.goto("/");
   expect(response?.headers()["content-security-policy"]).toBe(
