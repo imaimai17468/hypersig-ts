@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-25
+
 ### Added
 
 - `hypersig-ts/redis` exports `createRedisPubSub({ publish, subscribe, channelPrefix })`, a Pub/Sub that delivers publications between processes through Redis Pub/Sub. The application passes the `PUBLISH` and subscribe calls of its Redis client, so the package adds no dependency; the deployment guide shows node-redis, ioredis, and `Bun.RedisClient`. Each Topic is the channel `channelPrefix` (default `"hypersig:"`) followed by the JSON of its name and key, with an empty message, and the views of one adapter share one Redis subscription per Topic. `publish` resolves once Redis has accepted the message. `disconnected()`, called from the client's disconnect or reconnect event, ends every subscription, so the live runtime subscribes again and re-reads its views. Redis keeps no message for a disconnected subscriber; the guide points to `reconcileIntervalMs` and the outbox pattern for views that must catch up anyway.
@@ -21,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Breaking:** `on.keydown` counts Shift for a character key when Control, Alt, or Meta is held, so `"Control+Shift+z"` and `"Control+z"` are different keys. The character after Control, Alt, or Meta is compared in either case and must be written in lowercase; `"Control+Z"` is now a type error and throws. Without Control, Alt, or Meta, Shift is still ignored for a character key and `"Shift+?"` is still rejected. As a result, `"Meta+z"` no longer also matches Cmd+Shift+Z on macOS; map `"Shift+Meta+z"` for that.
 - **Breaking:** `bindAttr` leaves out a non-boolean attribute whose expression evaluates to `null` on the server and removes it in the browser, where it used to render the attribute empty. An attribute such as `aria-activedescendant` can now be absent instead of empty, and `bindAttr` accepts expressions of a union type such as `string | null`. An empty string still renders the attribute empty. The Widgets combobox no longer renders `aria-activedescendant=""` while closed.
 - The browser runtime parses each `data-hs-on-keydown` key map once and reads it again only after the attribute changes, instead of parsing every enclosing map on every keydown.
+- The README overview is shorter, lists the packages, and presents Void as a host; the rating example is called Reviews.
 - The "Live View page token is too long" error says that the SSR snapshots of shared views count toward the limit as well as params.
 
 ### Fixed
@@ -41,5 +44,6 @@ First public release on npm as `hypersig-ts`. Earlier internal versions, includi
 - **Security defaults.** Actions compare the request's `Origin` header with the configured origin and validate input on the server. Live View HTML is sanitized with DOMPurify before it enters the page. `bindAttr` rejects `href`, `src`, `on*`, and `style`. Each session holds at most `maxStreamsPerSession` streams per process, and automatic reloads after a reset are limited.
 - A Hono adapter (`createHypersig`), a renderer-agnostic core (`hypersig-ts/core`), typed outlets (`errorOutlet()`, `connectionStatusOutlet()`), diagnostics events, and examples: Counter, TodoMVC, Shared memo, Rating, Sortable, Widgets, and Void with Cloudflare Workers.
 
-[Unreleased]: https://github.com/imaimai17468/hypersig-ts/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/imaimai17468/hypersig-ts/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/imaimai17468/hypersig-ts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/imaimai17468/hypersig-ts/releases/tag/v0.1.0

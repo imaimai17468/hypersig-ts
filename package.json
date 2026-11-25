@@ -1,6 +1,6 @@
 {
   "name": "hypersig-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A TypeScript web framework that keeps server-rendered pages in sync with committed server state over Server-Sent Events, with every browser-facing name produced from a type.",
   "keywords": [
     "hono",
