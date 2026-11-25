@@ -240,32 +240,26 @@ const toastTimer = timer({ name: "toast-hide" });
 const countryFilter = signals({ query: "" }, { name: "country-filter" });
 const draft = signals({ text: "" }, { name: "draft" });
 const draftTimer = timer({ name: "draft-save" });
-const favoriteState = signals(
-  { favorite: false, committed: false },
-  { name: "favorite" }
-);
+const favoriteState = signals({ favorite: false }, { name: "favorite" });
 
 // Shows the user's own toggle before the server commits it, as a pending echo
-// (docs/architecture.md, 確定してから表示する). `favorite` is what the button
-// shows and `committed` the last committed value. The Live View renders both as
-// committed values, so its update replaces the echo; a failed save writes back
-// `committed`, which a commit from another tab may have changed meanwhile, not
-// the value from before the click.
+// (docs/architecture.md, 確定してから表示する). The Live View renders
+// `favorite` as a committed value, so its update replaces the echo, and the
+// runtime writes the latest committed value back when the save fails.
 function FavoriteToggle({ favorite }: { favorite: boolean }) {
-  const f = favoriteState.with({ favorite, committed: favorite });
+  const f = favoriteState.with({ favorite });
   return (
     <p {...f.init()}>
       <button
         type="button"
         class="favorite"
         {...f.bindAttr({ "aria-pressed": f.favorite })}
-        {...on.click([
-          f.favorite.set(f.favorite.not()),
+        {...on.click(
           saveFavorite.call(
             { favorite: f.favorite },
-            { onError: [f.favorite.set(f.committed)] }
-          ),
-        ])}
+            { pending: f.favorite.set(f.favorite.not()) }
+          )
+        )}
       >
         <span
           aria-hidden="true"
