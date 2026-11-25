@@ -2121,6 +2121,38 @@ it("binds roving focus attributes in the browser", async () => {
   expect(p.getAttribute("tabindex")).toBe("0");
 });
 
+it("removes a bound attribute whose value is null in the browser", async () => {
+  const s = signals({ open: false, label: "" }, { name: "null-attrs" });
+  const c = s.with({});
+  const { page, find, click } = createPage(
+    render("div", {
+      ...c.init(),
+      children: [
+        element("p", {
+          id: "p",
+          "aria-activedescendant": "stale",
+          ...c.bindAttr({
+            "aria-activedescendant": s.open.choose<string | null>("x", null),
+            "aria-label": s.label,
+          }),
+        }),
+        element("button", { id: "flip", ...on.click(s.open.toggle()) }),
+      ],
+    })
+  );
+  startSignals({ root: page });
+  const p = find("#p");
+  expect(p.hasAttribute("aria-activedescendant")).toBe(false);
+  // An empty string still renders the attribute empty.
+  expect(p.getAttribute("aria-label")).toBe("");
+  click("#flip");
+  await settle();
+  expect(p.getAttribute("aria-activedescendant")).toBe("x");
+  click("#flip");
+  await settle();
+  expect(p.hasAttribute("aria-activedescendant")).toBe(false);
+});
+
 interface KeyPress {
   key: string;
   ctrlKey?: boolean;

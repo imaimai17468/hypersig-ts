@@ -56,6 +56,8 @@ test.describe("select-only combobox", () => {
     await expect(box).toHaveText("Apple");
     await expect(box).toHaveAttribute("aria-expanded", "false");
     await expect(box).toHaveAttribute("aria-controls", "fruit-listbox");
+    // The server leaves aria-activedescendant out while the list is closed.
+    await expect(box).not.toHaveAttribute("aria-activedescendant");
     await expect(listbox).toBeHidden();
 
     await box.focus();
@@ -88,7 +90,7 @@ test.describe("select-only combobox", () => {
     await expect(listbox).toBeHidden();
     await expect(box).toHaveText("Cherry");
     await expect(box).toHaveAttribute("aria-expanded", "false");
-    await expect(box).toHaveAttribute("aria-activedescendant", "");
+    await expect(box).not.toHaveAttribute("aria-activedescendant");
     await expect(box).toBeFocused();
     await waitForSaved(page);
 

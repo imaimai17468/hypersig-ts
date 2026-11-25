@@ -234,9 +234,9 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
             {...comboRef.attr()}
             {...c.bindAttr({
               "aria-expanded": c.open,
-              "aria-activedescendant": c.open.choose(
+              "aria-activedescendant": c.open.choose<string | null>(
                 optionIds.at(c.active, ""),
-                ""
+                null
               ),
             })}
             {...on.click([c.active.set(c.selected), c.open.toggle()])}

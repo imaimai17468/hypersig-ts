@@ -159,6 +159,23 @@ it("binds only allowed attributes", () => {
       "data-note": ["sig", ["attr-group-1", "note"]],
     }),
   });
+  const removed = shown.bindAttr({
+    "aria-activedescendant": lit(null),
+    "data-note": shown.flag.choose<string | null>(null, "x"),
+    hidden: lit(null),
+  });
+  expect(removed).toEqual({
+    "data-hs-attr": JSON.stringify({
+      "aria-activedescendant": ["lit", null],
+      "data-note": [
+        "if",
+        ["sig", ["attr-group-1", "flag"]],
+        ["lit", null],
+        ["lit", "x"],
+      ],
+      hidden: ["lit", null],
+    }),
+  });
   // @ts-expect-error href could navigate to a value from a signal.
   expect(() => shown.bindAttr({ href: lit("/") })).toThrow("href");
   // @ts-expect-error data-hs-* attributes belong to the runtime.

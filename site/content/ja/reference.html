@@ -338,7 +338,15 @@ const e = editor.with({ base: draft.revision });</code></pre>
       です。<code>href</code>、<code>src</code>、<code>on*</code>、<code
         >style</code
       >
-      は、型でも実行時にも受け付けません。<code>bindValue</code>
+      は、型でも実行時にも受け付けません。<code>disabled</code>、<code>checked</code>、<code
+        >hidden</code
+      >
+      は値が真のときだけ付きます。ほかの属性は値を文字列で書き、値が
+      <code>null</code> なら属性を付けません。たとえば
+      <code>open.choose&lt;string | null&gt;(id, null)</code>
+      は、開いている間だけ <code>aria-activedescendant</code> を付けます。<code
+        >bindValue</code
+      >
       は、テキスト、数値、チェックボックスの入力欄を、<code>string</code>、<code>number</code>、<code
         >boolean</code
       >
@@ -606,7 +614,8 @@ li:has(.row [data-hs-pending]) {
   <ul>
     <li>
       <code>bindAttr</code>
-      は真偽値でない属性を取り除けません。式が空文字列になると、属性は空の値で残ります
+      が真偽値でない属性を取り除くのは、式が <code>null</code>
+      になったときだけです。式が空文字列になると、属性は空の値で残ります
       (<code>aria-activedescendant=""</code>)。
     </li>
     <li>

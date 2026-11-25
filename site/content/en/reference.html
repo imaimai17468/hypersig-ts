@@ -329,12 +329,17 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <code>tabindex</code>, <code>hidden</code>, and <code>data-*</code> other
       than <code>data-hs-*</code>. It rejects <code>href</code>,
       <code>src</code>, <code>on*</code>, and <code>style</code> in the type and
-      at run time. <code>bindValue</code> binds a text, number, or checkbox
-      input to a <code>string</code>, <code>number</code>, or
-      <code>boolean</code> signal. It also binds a hidden input, so a signal can
-      decide the value a form submits. The runtime reads a bound hidden input
-      when it starts, so a value restored from a draft replaces the rendered
-      one.
+      at run time. <code>disabled</code>, <code>checked</code>, and
+      <code>hidden</code> are present while the value is truthy. The others
+      render the value as text, and a <code>null</code> value leaves the
+      attribute out, so
+      <code>open.choose&lt;string | null&gt;(id, null)</code> names an
+      <code>aria-activedescendant</code> only while open.
+      <code>bindValue</code> binds a text, number, or checkbox input to a
+      <code>string</code>, <code>number</code>, or <code>boolean</code> signal.
+      It also binds a hidden input, so a signal can decide the value a form
+      submits. The runtime reads a bound hidden input when it starts, so a value
+      restored from a draft replaces the rendered one.
     </dd>
     <dt>Expressions</dt>
     <dd>
@@ -571,9 +576,10 @@ li:has(.row [data-hs-pending]) {
   <p><strong>Known limitations</strong></p>
   <ul>
     <li>
-      <code>bindAttr</code> cannot remove a non-boolean attribute. When the
-      expression becomes an empty string, the attribute stays with an empty
-      value (<code>aria-activedescendant=""</code>).
+      <code>bindAttr</code> removes a non-boolean attribute only when the
+      expression evaluates to <code>null</code>. When it becomes an empty
+      string, the attribute stays with an empty value
+      (<code>aria-activedescendant=""</code>).
     </li>
     <li>
       The <code>detail.data</code> of the

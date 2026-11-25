@@ -134,11 +134,17 @@ export type SignalGroup<Values extends SignalValues> = {
 
 type BindableAttribute = (typeof bindableAttributes)[number] | `data-${string}`;
 
+/**
+ * An expression of any JSON type. `Expr<JsonValue>` does not accept one whose
+ * type is a union such as `string | null`, because its `eq` takes `T`.
+ */
+type AnyJsonExpr = Pick<ExprBase<JsonValue>, "node" | typeof valueType>;
+
 type AttributeBindings<Attrs> = {
   readonly [K in keyof Attrs]: K extends `data-hs-${string}`
     ? never
     : K extends BindableAttribute
-      ? Expr<JsonValue>
+      ? AnyJsonExpr
       : never;
 };
 
@@ -177,9 +183,13 @@ export type SignalScope<Values extends SignalValues> = SignalGroup<Values> & {
    * `aria-expanded`, `aria-current`, `aria-hidden`, `aria-invalid`,
    * `aria-busy`, `aria-activedescendant`, `aria-selected`, `aria-controls`,
    * `aria-label`, and `data-*` attributes other than `data-hs-*`. Throws for
-   * any other name.
+   * any other name. `disabled`, `checked` and `hidden` are present while the
+   * value is truthy. The others render the value as text, except that `null`
+   * leaves the attribute out, and in the browser removes it, so
+   * `open.choose<string | null>(id, null)` names an `aria-activedescendant`
+   * only while open. An empty string renders the attribute empty.
    */
-  bindAttr<Attrs extends Partial<Record<BindableAttribute, Expr<JsonValue>>>>(
+  bindAttr<Attrs extends Partial<Record<BindableAttribute, AnyJsonExpr>>>(
     attrs: Attrs & AttributeBindings<Attrs>
   ): Record<string, string | true> & { [signalAttributes.attr]: string };
   /**
@@ -531,8 +541,11 @@ function bindAttributes(
     }
     nodes[name] = expr.node;
     const value = valueOf(expr);
-    if (!booleanAttributeNames.has(name)) rendered[name] = formatText(value);
-    else if (isTruthy(value)) rendered[name] = true;
+    if (booleanAttributeNames.has(name)) {
+      if (isTruthy(value)) rendered[name] = true;
+    } else if (value !== null) {
+      rendered[name] = formatText(value);
+    }
   }
   rendered[signalAttributes.attr] = JSON.stringify(nodes);
   return rendered;

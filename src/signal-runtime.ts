@@ -462,6 +462,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         if (name === "checked" && isField(element) && "checked" in element) {
           element.checked = isTruthy(value);
         }
+      } else if (value === null) {
+        element.removeAttribute(name);
       } else {
         writeAttribute(element, name, formatText(value));
       }

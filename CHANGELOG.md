@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `bindAttr` leaves out a non-boolean attribute whose expression evaluates to `null` on the server and removes it in the browser, so an attribute such as `aria-activedescendant` can be absent instead of empty. `bindAttr` also accepts expressions of a union type such as `string | null`. An empty string still renders the attribute empty. The Widgets combobox no longer renders `aria-activedescendant=""` while closed.
 - **Breaking:** `on.keydown` counts Shift for a character key when Control, Alt, or Meta is held, so `"Control+Shift+z"` and `"Control+z"` are different keys. The character after Control, Alt, or Meta is compared in either case and must be written in lowercase; `"Control+Z"` is now a type error and throws. Without Control, Alt, or Meta, Shift is still ignored for a character key and `"Shift+?"` is still rejected.
 
 ### Fixed
