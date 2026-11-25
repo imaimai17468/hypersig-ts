@@ -1075,7 +1075,10 @@ await hypersig.publish(changed(id));</code></pre>
       <code>onDisconnect</code>
       を呼ぶので、ランタイムが購読し直して View
       を読み直します。切断中に発行したメッセージが後から届くことはありません。アプリがこれを呼ぶことは検査されず、呼ばないと、そのプロセスの
-      View は次の変更か <code>reconcileIntervalMs</code> まで古いままです。
+      View は次の変更か <code>reconcileIntervalMs</code>
+      まで古いままです。もう一度呼ぶと、前の呼び出しのあとにできた購読だけが終わるので、切断中に繰り返し知らせても問題ありません。例外を投げた
+      <code>onDisconnect</code> は <code>console.error</code>
+      で記録し、残りも呼びます。
     </dd>
   </dl>
 </section>

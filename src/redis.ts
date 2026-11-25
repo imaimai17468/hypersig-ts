@@ -33,7 +33,10 @@ export interface RedisPubSub<Event extends Topic> extends PubSub<Event> {
    * so far, including one still waiting for Redis, ends and calls its
    * `onDisconnect`, so the live runtime subscribes again and re-reads the
    * views, which then show the changes published while the connection was
-   * down. Call it from the client's connection error or close event.
+   * down. Call it from the client's connection error or close event. A later
+   * call reaches only the subscriptions made since, so repeated reports during
+   * an outage are harmless. A callback that throws is logged with
+   * `console.error`, and the rest are still called.
    */
   disconnected(): void;
 }
@@ -66,10 +69,14 @@ export function createRedisPubSub<Event extends Topic>(
           notify()
         );
       } catch (error) {
+        // Nothing will end this subscription, so it leaves the set here
+        // instead of staying until the next disconnected().
         disconnects.delete(disconnect);
         throw error;
       }
       return () => {
+        // Every ended subscription leaves the set, including one ended by
+        // disconnected(), since shareTopicSubscriptions ends it in response.
         disconnects.delete(disconnect);
         Promise.resolve()
           .then(unsubscribe)
@@ -83,9 +90,15 @@ export function createRedisPubSub<Event extends Topic>(
     subscribe: (event, listener, onDisconnect) =>
       pubsub.subscribe(event, listener, onDisconnect),
     disconnected() {
-      const lost = [...disconnects];
-      disconnects.clear();
-      for (const disconnect of lost) disconnect();
+      // Each callback ends its subscription, which leaves the set; a Set
+      // iterator skips nothing when the visited entry is deleted.
+      for (const disconnect of disconnects) {
+        try {
+          disconnect();
+        } catch (error) {
+          console.error(error);
+        }
+      }
     },
   };
 }

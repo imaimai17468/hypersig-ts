@@ -178,20 +178,69 @@ it("ends every subscription on disconnected(), including one waiting for Redis",
   expect(lost).toEqual(["main", "other"]);
 });
 
-it("rejects a failed subscription and leaves it out of disconnected()", async () => {
+it("rejects a failed subscription and lets the Topic be subscribed again", async () => {
   const redis = createFakeRedis();
   const pubsub = createRedisPubSub<CounterEvent>(redis.options);
-  const lost: string[] = [];
+  const received: string[] = [];
   redis.failNextSubscribe(new Error("broker unavailable"));
   await expect(
     pubsub.subscribe(
       counterChanged("main"),
-      () => {},
-      () => lost.push("failed")
+      () => received.push("failed"),
+      () => received.push("failed lost")
     )
   ).rejects.toThrow("broker unavailable");
+  await pubsub.subscribe(
+    counterChanged("main"),
+    () => received.push("retried"),
+    () => received.push("retried lost")
+  );
+  await pubsub.publish(counterChanged("main"));
   pubsub.disconnected();
-  expect(lost).toEqual([]);
+  expect(received).toEqual(["retried", "retried lost"]);
+});
+
+it("reaches every subscription on disconnected() when one callback throws", async () => {
+  const redis = createFakeRedis();
+  const pubsub = createRedisPubSub<CounterEvent>(redis.options);
+  const lost: string[] = [];
+  await pubsub.subscribe(
+    counterChanged("main"),
+    () => {},
+    () => {
+      lost.push("main");
+      throw new Error("listener failed");
+    }
+  );
+  await pubsub.subscribe(
+    counterChanged("other"),
+    () => {},
+    () => lost.push("other")
+  );
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    pubsub.disconnected();
+    expect(lost).toEqual(["main", "other"]);
+    expect(log).toHaveBeenCalledWith(new Error("listener failed"));
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it("calls disconnected() callbacks once, so repeated reports reach only newer subscriptions", async () => {
+  const redis = createFakeRedis();
+  const pubsub = createRedisPubSub<CounterEvent>(redis.options);
+  const lost: string[] = [];
+  await pubsub.subscribe(
+    counterChanged("main"),
+    () => {},
+    () => lost.push("first")
+  );
+  pubsub.disconnected();
+  pubsub.disconnected();
+  await flush();
+  expect(lost).toEqual(["first"]);
+  expect(redis.channels.size).toBe(0);
 });
 
 it("logs a failure to end a subscription instead of throwing it", async () => {

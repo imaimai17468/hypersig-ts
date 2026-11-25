@@ -998,7 +998,10 @@ await hypersig.publish(changed(id));</code></pre>
       subscribes again and reads its views again. A message published while the
       connection was down is not delivered later, and nothing checks that the
       application calls this; without it, the views on that process stay stale
-      until the next change or <code>reconcileIntervalMs</code>.
+      until the next change or <code>reconcileIntervalMs</code>. Calling it
+      again ends only the subscriptions made since, so repeated reports during
+      an outage are harmless. An <code>onDisconnect</code> that throws is logged
+      with <code>console.error</code>, and the others are still called.
     </dd>
   </dl>
 </section>
