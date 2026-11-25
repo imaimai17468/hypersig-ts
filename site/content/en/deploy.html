@@ -56,7 +56,9 @@
     passed since the last instance stopped sealing with it. Adding the new key
     in front in one deploy resets pages whose tokens an instance without the new
     key receives. Each token uses a random 96-bit nonce, so one key can safely
-    encrypt about 2^32 tokens. Rotate well before a key reaches that count: at
+    encrypt about 2^32 tokens. Renewals count too: besides the token each page
+    render seals, every connected tab seals about one token per
+    <code>maxStreamMs</code>. Rotate well before a key reaches that count: at
     least once a year for a busy service.
   </p>
   <p>

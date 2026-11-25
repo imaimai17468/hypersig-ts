@@ -65,7 +65,10 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * `reconnect` carries that token, and the browser opens the next stream
    * with it, so a page that stays connected keeps updating past its first
    * token's expiry. Otherwise `reconnect` carries no token and the browser
-   * reopens with the token it has.
+   * reopens with the token it has. The renewal waits at most `sendTimeoutMs`
+   * for `authenticate` and `authorize`; past that, the stream ends with a
+   * `reconnect` without a token and ignores the late result, so a stalled
+   * check cannot keep a stream open past this limit.
    *
    * While a stream stays open, the adapter re-runs authentication against the
    * credentials it received at connect time: `createHypersig` replays the
@@ -110,8 +113,10 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * it renders when their streams reach an instance without it. Without keys,
    * the runtime makes one at startup, and only this process can open its pages.
    * Each token takes a random 96-bit AES-GCM nonce, which stays safe for about
-   * 2^32 tokens per key, so put a new key in front well before a key seals
-   * that many pages: at least once a year for a busy service. A key that is
+   * 2^32 tokens per key. Renewals count too: each connected tab seals about
+   * one token per `maxStreamMs` besides the one SSR seals. So put a new key
+   * in front well before a key seals that many tokens: at least once a year
+   * for a busy service. A key that is
    * not a string, such as an unset environment variable, throws the same
    * `RangeError` as a key of the wrong length.
    */
@@ -411,6 +416,7 @@ export function createLiveRuntime<
             });
           }
           let deadline: ReturnType<typeof setTimeout> | undefined;
+          let renewalTimeout: ReturnType<typeof setTimeout> | undefined;
           let version = 0;
           try {
             for (const { stream: displaced, reason } of streams.add(stream)) {
@@ -423,17 +429,28 @@ export function createLiveRuntime<
             }
             deadline = setTimeout(
               () => {
-                void renewToken()
-                  .catch((error: unknown) => {
+                // A stalled `authenticate` or `authorize` must not keep the
+                // stream past its lifetime, so the renewal gets
+                // `sendTimeoutMs`, and a result after that is ignored.
+                const timedOut = new Promise<undefined>((resolve) => {
+                  renewalTimeout = setTimeout(
+                    () => resolve(undefined),
+                    sendTimeoutMs
+                  );
+                });
+                void Promise.race([
+                  renewToken().catch((error: unknown) => {
                     console.error(error);
                     return undefined;
-                  })
-                  .then((renewed) =>
-                    stop({
-                      type: "reconnect",
-                      ...(renewed && { token: renewed }),
-                    })
-                  );
+                  }),
+                  timedOut,
+                ]).then((renewed) => {
+                  clearTimeout(renewalTimeout);
+                  stop({
+                    type: "reconnect",
+                    ...(renewed && { token: renewed }),
+                  });
+                });
               },
               streamLifetime(maxStreamMs, Math.random())
             );
@@ -455,6 +472,7 @@ export function createLiveRuntime<
             );
           } finally {
             clearTimeout(deadline);
+            clearTimeout(renewalTimeout);
             streams.remove(stream);
           }
         },

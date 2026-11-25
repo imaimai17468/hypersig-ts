@@ -86,9 +86,13 @@
       the page, the event carries the page token sealed again with a new
       <code>pageLifetimeMs</code>, keeping the views, params, and SSR snapshots,
       and the browser opens the next stream with it. Otherwise it carries no
-      token, and the browser reopens with the token it has. The browser accepts
-      only data shaped like a page token, which replaces the last path segment
-      of the stream URL, so the stream never moves to another path or origin.
+      token, and the browser reopens with the token it has. The server waits at
+      most <code>sendTimeoutMs</code> for that check, and past it ends the
+      stream without a token, so a stalled <code>authenticate</code> or
+      <code>authorize</code> cannot keep a stream open longer. The browser
+      accepts only data shaped like a page token, which replaces the last path
+      segment of the stream URL, so the stream never moves to another path or
+      origin.
     </dd>
     <dt><code>maxStreamsPerSession</code></dt>
     <dd>

@@ -1713,6 +1713,55 @@ it("renews no token for a stream whose user lost access at its lifetime", async 
   }
 });
 
+it("ends a stream at its lifetime without a token when renewing it stalls", async () => {
+  const store = { count: 0 };
+  const counter = counterRuntime(store, {
+    maxStreamMs: 1_000,
+    sendTimeoutMs: 500,
+  });
+  const token = await renderCounter(counter);
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  try {
+    const page = await counter.runtime.openPage(token, counterKeys, viewer);
+    if (page.status !== "open") throw new Error("Expected an open page");
+    const connection = recordingConnection();
+    let stalled = false;
+    let settle: (user: Principal) => void = () => {};
+    let ended = false;
+    const live = page
+      .connect(connection, () => {
+        if (!stalled) return viewer;
+        return new Promise<Principal>((resolve) => {
+          settle = resolve;
+        });
+      })
+      .then(() => {
+        ended = true;
+      });
+    await vi.advanceTimersByTimeAsync(899);
+    expect(connection.messages).toEqual(["update", "ready"]);
+    // Authentication stalls from the renewal at 900 ms on.
+    stalled = true;
+    await vi.advanceTimersByTimeAsync(1 + 499);
+    expect(ended).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ended).toBe(true);
+    await live;
+    expect(connection.received.at(-1)).toEqual({ type: "reconnect" });
+
+    // A renewal that settles after the stream ended sends nothing more.
+    const count = connection.received.length;
+    settle(viewer);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(connection.received).toHaveLength(count);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
+});
+
 it("keeps streaming and unregisters a stream whose displaced stream fails to close", async () => {
   const store = { count: 0 };
   const counter = counterRuntime(store);
