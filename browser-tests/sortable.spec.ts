@@ -201,15 +201,20 @@ test("rejects keys that do not reorder the list", async ({ page }) => {
     }
   }, inputs);
 
+  const alert = page.locator("p[role=alert]");
   for (const id of Object.keys(inputs)) {
+    // The message is the same for every key, so it is cleared first to see
+    // that this response wrote it.
+    await alert.evaluate((element) => {
+      element.textContent = "";
+    });
+    await expect(alert).toBeEmpty();
     const [response] = await Promise.all([
       page.waitForResponse(reorderAction),
       page.locator(`#${id}`).click(),
     ]);
     expect(response.status()).toBe(409);
-    await expect(page.locator("p[role=alert]")).toHaveText(
-      "The list changed. Reload the page."
-    );
+    await expect(alert).toHaveText("The list changed. Reload the page.");
   }
   await page.reload();
   await expect(rows(page)).toHaveText(initial);
