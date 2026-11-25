@@ -39,15 +39,19 @@ const redisUrl = Bun.env.REDIS_URL;
 // With REDIS_URL, processes that share the Redis share the counts and their
 // publications. The layout and order demos stay in each process.
 const redis = redisUrl ? await connectRedis<CounterEvent>(redisUrl) : undefined;
+// For a one-process benchmark of the Redis Pub/Sub alone: publish through
+// Redis but keep the counts in this process.
+const countStore =
+  Bun.env.COUNTER_COUNTS_IN_MEMORY === "1" ? undefined : redis?.client;
 const memoryCounts = { main: 0, other: 0 };
 const counts = {
   async read(id: CounterId) {
-    if (!redis) return memoryCounts[id];
-    return Number((await redis.client.get(`counter:${id}`)) ?? 0);
+    if (!countStore) return memoryCounts[id];
+    return Number((await countStore.get(`counter:${id}`)) ?? 0);
   },
   async increment(id: CounterId) {
-    if (!redis) return ++memoryCounts[id];
-    return redis.client.incr(`counter:${id}`);
+    if (!countStore) return ++memoryCounts[id];
+    return countStore.incr(`counter:${id}`);
   },
 };
 

@@ -13,17 +13,23 @@ const connectionCounts = (process.env.BENCH_CONNECTIONS ?? "100,300,1000")
   .split(",")
   .map(Number);
 const redisServer = process.env.REDIS_SERVER ?? "redis-server";
-/** Each setup is a Pub/Sub and a number of counter processes. */
+/**
+ * Each setup is a kind and a number of counter processes: `memory` (memory
+ * Pub/Sub, counts in the process), `redis` (Redis Pub/Sub, counts in Redis),
+ * or `redis-pubsub` (Redis Pub/Sub, counts in the process, one process only).
+ */
 const setups = (process.env.BENCH_SETUPS ?? "memory:1,redis:1,redis:2,redis:3")
   .split(",")
   .map((entry) => {
     const [pubsub, count] = entry.split(":");
     const processes = Number(count);
     if (
-      (pubsub !== "memory" && pubsub !== "redis") ||
+      (pubsub !== "memory" &&
+        pubsub !== "redis" &&
+        pubsub !== "redis-pubsub") ||
       !Number.isSafeInteger(processes) ||
       processes < 1 ||
-      (pubsub === "memory" && processes !== 1)
+      (pubsub !== "redis" && processes !== 1)
     )
       throw new Error(`Invalid setup ${entry}`);
     return { pubsub, processes } as const;
@@ -250,7 +256,8 @@ async function runSetup(
     // Processes that share the key can stream each other's pages.
     HYPERSIG_PAGE_KEY: Buffer.alloc(32, 7).toString("base64"),
     COUNTER_SESSION_SECRET: "multi-instance-bench",
-    ...(setup.pubsub === "redis" && redisUrl && { REDIS_URL: redisUrl }),
+    ...(setup.pubsub !== "memory" && redisUrl && { REDIS_URL: redisUrl }),
+    ...(setup.pubsub === "redis-pubsub" && { COUNTER_COUNTS_IN_MEMORY: "1" }),
   };
   const counters: Counter[] = [];
   const peers: Connection[][] = [];
@@ -306,7 +313,7 @@ async function runSetup(
     for (let i = 0; i < warmup; i++) await sample(++value);
     const before = await Promise.all(counters.map((c) => c.metrics(true)));
     const redisCpuBefore =
-      redisUrl && setup.pubsub === "redis"
+      redisUrl && setup.pubsub !== "memory"
         ? await readRedisCpuMs(redisUrl)
         : undefined;
     const samples: Awaited<ReturnType<typeof sample>>[] = [];
@@ -316,7 +323,7 @@ async function runSetup(
     const wallMs = performance.now() - measured;
     const driverCpu = process.cpuUsage(driverCpuBefore);
     const redisCpuAfter =
-      redisUrl && setup.pubsub === "redis"
+      redisUrl && setup.pubsub !== "memory"
         ? await readRedisCpuMs(redisUrl)
         : undefined;
     const after = await Promise.all(counters.map((c) => c.metrics(true)));
@@ -368,7 +375,7 @@ async function runSetup(
   }
 }
 
-const needsRedis = setups.some((setup) => setup.pubsub === "redis");
+const needsRedis = setups.some((setup) => setup.pubsub !== "memory");
 const redisPort = await findFreePort();
 const redis = needsRedis
   ? await startProcess(redisServer, [
@@ -413,7 +420,7 @@ try {
   );
   for (const connections of connectionCounts) {
     for (const setup of setups) {
-      if (redisUrl && setup.pubsub === "redis") {
+      if (redisUrl && setup.pubsub !== "memory") {
         const client = createClient({ url: redisUrl });
         await client.connect();
         await client.flushAll();
