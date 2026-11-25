@@ -221,6 +221,23 @@ it("stops reloading after three resets within a minute", async () => {
   expect(reloads).toBe(4);
 });
 
+it("does not count reloads from a time ahead of the clock", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  await resetAt(600_000);
+  await resetAt(601_000);
+  await resetAt(602_000);
+  expect(reloads).toBe(3);
+
+  // The clock moved back ten minutes, so those reloads cannot be recent.
+  await resetAt(0);
+  expect(reloads).toBe(4);
+  // The reload at the earlier clock still counts toward the limit.
+  await resetAt(1_000);
+  await resetAt(2_000);
+  await resetAt(3_000);
+  expect(reloads).toBe(6);
+});
+
 it("asks for a reload when it cannot count reloads in session storage", async () => {
   await loadPage(`<div id="cart" data-hs-view="cart">cart</div>`);
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {

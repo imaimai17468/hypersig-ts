@@ -10,13 +10,16 @@ type ReloadDecision =
 /**
  * Allows an automatic reload while fewer than `maxReloads` happened in the
  * last `windowMs`, so a stream that keeps resetting cannot reload the tab in
- * a loop.
+ * a loop. A time later than `now`, left by a clock that moved back, is not
+ * recent, so it cannot block reloads until the clock catches up.
  */
 function decideReload(
   previousTimes: readonly number[],
   now: number
 ): ReloadDecision {
-  const recent = previousTimes.filter((time) => now - time < windowMs);
+  const recent = previousTimes.filter(
+    (time) => time <= now && now - time < windowMs
+  );
   return recent.length < maxReloads
     ? { kind: "reload", reloadTimes: [...recent, now] }
     : { kind: "ask-user" };
