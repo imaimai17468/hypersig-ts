@@ -404,10 +404,18 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <ul>
         <li>
           修飾キーは完全に一致したときだけ当てはまります (<code>Enter</code> は
-          <code>Shift+Enter</code> に当てはまりません)。スペース以外の 1
-          文字のキーは Shift を照合に使いません。<code>"?"</code> や
-          <code>"A"</code> は Shift の有無に関わらず当てはまり、<code
-            >"Shift+?"</code
+          <code>Shift+Enter</code> に当てはまりません)。Control、Alt、Meta
+          のどれも押していないとき、スペース以外の 1 文字のキーは Shift
+          を照合に使いません。<code>"?"</code> や <code>"A"</code> は Shift
+          の有無に関わらず当てはまり、<code>"Shift+?"</code>
+          は型エラーと例外になります。Control、Alt、Meta
+          のどれかを押しているときは Shift
+          も照合に使い、文字は大小を区別せずに比べるので、小文字で書きます。<code
+            >"Control+z"</code
+          >
+          は Shift なしのときだけ、<code>"Control+Shift+z"</code> と
+          <code>"Shift+Meta+z"</code> は Shift ありのときだけ当てはまり、<code
+            >"Control+Z"</code
           >
           は型エラーと例外になります。
         </li>
@@ -427,11 +435,12 @@ const e = editor.with({ base: draft.revision });</code></pre>
           がすでに既定の動作を止めたキーでは、どの対応表も実行しません。子を自分で描くカスタム要素の中の対応表は無視します。
         </li>
         <li>
-          型で検査できない制約があります。macOS では Meta を押すと文字の
-          <code>key</code> が小文字になるため、<code>Meta+z</code> は
-          Cmd+Shift+Z にも当てはまります。Caps Lock
-          が有効だと文字の大小が変わります。macOS の Option
-          は文字を合成するので、<code>Alt+&lt;文字&gt;</code>
+          型で検査できない制約があります。Control、Alt、Meta
+          なしで打つ文字は、Caps Lock が有効だと大小が変わります。キー配列で
+          Shift が要る記号 (US 配列の
+          <code>"?"</code> など) は、Control と組み合わせると
+          <code>"Control+Shift+?"</code> と書かないと当てはまりません。macOS の
+          Option は文字を合成するので、<code>Alt+&lt;文字&gt;</code>
           は届かないことがあります。容器に <code>Enter</code> や
           <code>" "</code>
           を割り当てると、中のボタンの押下による起動を止めます。1

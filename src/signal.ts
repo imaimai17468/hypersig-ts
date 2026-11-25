@@ -810,23 +810,40 @@ type WithoutModifiers<
     : WithoutModifiers<Text, Rest>
   : Text;
 
-/** Whether `Shift+` comes before a character key other than Space. */
-type ShiftsCharacter<Key extends string> =
-  Key extends `${"" | "Control+"}${"" | "Alt+"}Shift+${infer After}`
-    ? (
-        After extends `Meta+${infer Name}` ? Name : After
-      ) extends infer Name extends string
-      ? Name extends " "
-        ? false
-        : IsOneCharacter<Name>
-      : false
-    : false;
+/** Whether `Control+`, `Alt+` or `Meta+` comes before the key name. */
+type HoldsCommandModifier<Key extends string> = Key extends
+  | `Control+${string}`
+  | `Alt+${string}`
+  | `${"" | "Shift+"}Meta+${string}`
+  ? true
+  : false;
+
+/** Whether `Shift+` alone comes before a character key other than Space. */
+type ShiftsCharacter<Key extends string> = Key extends `Shift+${infer Name}`
+  ? Name extends " "
+    ? false
+    : IsOneCharacter<Name>
+  : false;
+
+/**
+ * Resolves to `Key` when its character is lowercase, and to a message naming
+ * the lowercase combination otherwise.
+ */
+type LowercaseCharacter<Key extends string, Name extends string> =
+  Name extends Lowercase<Name>
+    ? Key
+    : Key extends `${infer Modifiers}${Name}`
+      ? `Write the character in lowercase after Control, Alt or Meta: "${Modifiers}${Lowercase<Name>}"`
+      : never;
 
 /**
  * Accepts a key name after any of `Control+`, `Alt+`, `Shift+` and `Meta+`
  * in that order, such as `"Shift+Tab"`, and resolves to a message type
- * otherwise. A character key other than Space takes no `Shift+`: the runtime
- * ignores Shift for it, so `"?"` and `"A"` match however they are typed. A
+ * otherwise. With none of Control, Alt and Meta, a character key other than
+ * Space takes no `Shift+`: the runtime ignores Shift for it, so `"?"` and
+ * `"A"` match however they are typed. After Control, Alt or Meta, Shift
+ * counts and the character is written in lowercase, such as
+ * `"Control+Shift+z"`, since the runtime compares it in either case. A
  * `string` that is not a literal passes, and `on.keydown` checks it when
  * called.
  */
@@ -834,9 +851,13 @@ export type KeyCombination<Key extends string> = string extends Key
   ? Key
   : [KeyName<WithoutModifiers<Key>>] extends [never]
     ? "Use a named key or one character, after modifiers in the order Control, Alt, Shift, Meta"
-    : ShiftsCharacter<Key> extends true
-      ? 'Write a character key without Shift+, such as "?" or "A"'
-      : Key;
+    : HoldsCommandModifier<Key> extends true
+      ? IsOneCharacter<WithoutModifiers<Key>> extends true
+        ? LowercaseCharacter<Key, WithoutModifiers<Key>>
+        : Key
+      : ShiftsCharacter<Key> extends true
+        ? 'Write a character key without Shift+ unless Control, Alt or Meta is held, such as "?" or "A"'
+        : Key;
 
 type KeyMap = { readonly [key: string | number]: Statements };
 
@@ -859,19 +880,25 @@ type CheckedKeyMap<Keys extends KeyMap> = {
     : never;
 };
 
-const keyCombinationPattern =
-  /^(?:Control\+)?(?:Alt\+)?(Shift\+)?(?:Meta\+)?(.+)$/s;
+const keyCombinationPattern = /^(Control\+)?(Alt\+)?(Shift\+)?(Meta\+)?(.+)$/s;
 
 /** Describes why `key` is not a key combination, or `undefined` when it is. */
 function findKeyCombinationError(key: string): string | undefined {
-  const [, shift, name] = keyCombinationPattern.exec(key) ?? [];
+  const [, control, alt, shift, meta, name] =
+    keyCombinationPattern.exec(key) ?? [];
   if (name === undefined || !(namedKeySet.has(name) || name.length === 1)) {
     return `${JSON.stringify(key)} is not a key name after modifiers in the order Control, Alt, Shift, Meta`;
   }
-  if (shift && name.length === 1 && name !== " ") {
-    return `${JSON.stringify(key)} has Shift+, which a character key ignores: write ${JSON.stringify(name)} itself`;
+  if (name.length !== 1 || name === " ") return undefined;
+  if (control || alt || meta) {
+    const lowercase = name.toLowerCase();
+    return lowercase === name
+      ? undefined
+      : `${JSON.stringify(key)} has an uppercase character after Control, Alt or Meta, which is matched in either case: write ${JSON.stringify(key.slice(0, -1) + lowercase)}`;
   }
-  return undefined;
+  return shift
+    ? `${JSON.stringify(key)} has Shift+, which a character key ignores unless Control, Alt or Meta is held: write ${JSON.stringify(name)} itself`
+    : undefined;
 }
 
 /** Runs statements in order when the element receives the event. */
@@ -890,8 +917,12 @@ export const on = {
    * outward through each enclosing key map until one has the key. A key is
    * the `KeyboardEvent.key` value, and the pressed modifiers must be exactly
    * the ones the key names, except that Shift is ignored for a character key
-   * other than Space: `"?"` and `"A"` match with or without Shift, since which
-   * characters need it depends on the keyboard layout. A number key is one
+   * other than Space while none of Control, Alt and Meta is held: `"?"` and
+   * `"A"` match with or without Shift, since which characters need it depends
+   * on the keyboard layout. With Control, Alt or Meta, Shift counts and the
+   * character is compared in either case, so it is written in lowercase:
+   * `"Control+z"` matches only without Shift and `"Control+Shift+z"` only
+   * with it, whether the browser reports `"z"` or `"Z"`. A number key is one
    * digit, such as `1`. A handled key does not do its default action, except
    * `Tab` and `Shift+Tab`. Keys pressed while an IME is composing, or while the
    * element's Action is in flight, run nothing, and so does a key whose

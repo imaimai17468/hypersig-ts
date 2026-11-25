@@ -249,18 +249,20 @@ function readCustomEventHandlers(element: Element): NamedHandler[] {
 
 /**
  * Writes the pressed key the way a key map names it, with the modifiers in
- * the order Control, Alt, Shift, Meta. Shift is left out for a character key
- * other than Space, since which characters need it depends on the layout.
+ * the order Control, Alt, Shift, Meta. Without Control, Alt or Meta, Shift is
+ * left out for a character key other than Space, since which characters need
+ * it depends on the layout. With one of them, Shift is kept and the character
+ * is lowercased, since browsers differ in which case they report.
  */
 function formatKeyCombination(event: KeyboardEvent): string {
+  const isCharacter = event.key.length === 1 && event.key !== " ";
+  const holdsCommand = event.ctrlKey || event.altKey || event.metaKey;
   return (
     (event.ctrlKey ? "Control+" : "") +
     (event.altKey ? "Alt+" : "") +
-    (event.shiftKey && (event.key.length !== 1 || event.key === " ")
-      ? "Shift+"
-      : "") +
+    (event.shiftKey && (holdsCommand || !isCharacter) ? "Shift+" : "") +
     (event.metaKey ? "Meta+" : "") +
-    event.key
+    (holdsCommand && isCharacter ? event.key.toLowerCase() : event.key)
   );
 }
 

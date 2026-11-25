@@ -400,6 +400,9 @@ it("writes key maps and focus handlers as statements per key", () => {
       ArrowDown: down,
       "Shift+Tab": [s.open.set(false)],
       "Control+Alt+Shift+Meta+Home": [],
+      "Control+Shift+z": [],
+      "Alt+Shift+Meta+?": [],
+      "Control+ä": [],
       a: [],
       "+": [],
       " ": [],
@@ -413,6 +416,9 @@ it("writes key maps and focus handlers as statements per key", () => {
       ["ArrowDown", [down]],
       ["Shift+Tab", [s.open.set(false)]],
       ["Control+Alt+Shift+Meta+Home", []],
+      ["Control+Shift+z", []],
+      ["Alt+Shift+Meta+?", []],
+      ["Control+ä", []],
       ["a", []],
       ["+", []],
       [" ", []],
@@ -444,9 +450,11 @@ it("rejects key names outside the named keys, single characters and the modifier
   expect(() => on.keydown({ "": [] })).toThrow('""');
   // @ts-expect-error Shift is ignored for a character key, written as the character.
   expect(() => on.keydown({ "Shift+?": [] })).toThrow('write "?" itself');
-  // @ts-expect-error Shift is ignored for a character key, also after other modifiers.
-  expect(() => on.keydown({ "Control+Shift+Meta+a": [] })).toThrow(
-    'write "a" itself'
+  // @ts-expect-error A character after Control, Alt or Meta is written in lowercase.
+  expect(() => on.keydown({ "Control+Z": [] })).toThrow('write "Control+z"');
+  // @ts-expect-error Shift does not change how the character is written.
+  expect(() => on.keydown({ "Shift+Meta+Z": [] })).toThrow(
+    'write "Shift+Meta+z"'
   );
   // @ts-expect-error A number key is one digit.
   expect(() => on.keydown({ 12: [] })).toThrow('"12"');
@@ -461,6 +469,9 @@ it("rejects key names outside the named keys, single characters and the modifier
   const character: string = "A";
   expect(() => on.keydown({ ["Shift+" + character]: [] })).toThrow(
     'write "A" itself'
+  );
+  expect(() => on.keydown({ ["Alt+" + character]: [] })).toThrow(
+    'write "Alt+a"'
   );
 });
 

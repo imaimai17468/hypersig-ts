@@ -385,9 +385,15 @@ const e = editor.with({ base: draft.revision });</code></pre>
       <ul>
         <li>
           Modifiers must match exactly (<code>Enter</code> does not match
-          <code>Shift+Enter</code>). A one-character key other than Space
-          ignores Shift: <code>"?"</code> and <code>"A"</code> match with or
-          without Shift, and <code>"Shift+?"</code> is a type error and throws.
+          <code>Shift+Enter</code>). Without Control, Alt, or Meta, a
+          one-character key other than Space ignores Shift: <code>"?"</code> and
+          <code>"A"</code> match with or without Shift, and
+          <code>"Shift+?"</code> is a type error and throws. With Control, Alt,
+          or Meta, Shift counts and the character is compared in either case, so
+          write it in lowercase: <code>"Control+z"</code> matches only without
+          Shift, <code>"Control+Shift+z"</code> and
+          <code>"Shift+Meta+z"</code> only with it, and
+          <code>"Control+Z"</code> is a type error and throws.
         </li>
         <li>
           The runtime searches from the element that was pressed outward and
@@ -405,13 +411,14 @@ const e = editor.with({ base: draft.revision });</code></pre>
           that renders its own children is ignored.
         </li>
         <li>
-          Some limits are not checked by types. On macOS, holding Meta makes a
-          letter's <code>key</code> lowercase, so <code>Meta+z</code> also
-          matches Cmd+Shift+Z. Caps Lock changes a letter's case. macOS Option
-          composes characters, so <code>Alt+&lt;letter&gt;</code> may never
-          arrive. Mapping <code>Enter</code> or <code>" "</code> on a container
-          stops the buttons inside from activating, and mapping one character
-          stops that character from being typed in the inputs inside.
+          Some limits are not checked by types. Caps Lock changes the case of a
+          letter typed without Control, Alt, or Meta. A symbol that needs Shift
+          on the keyboard layout, such as <code>"?"</code> on a US layout,
+          matches with Control only as <code>"Control+Shift+?"</code>. macOS
+          Option composes characters, so <code>Alt+&lt;letter&gt;</code> may
+          never arrive. Mapping <code>Enter</code> or <code>" "</code> on a
+          container stops the buttons inside from activating, and mapping one
+          character stops that character from being typed in the inputs inside.
         </li>
       </ul>
     </dd>

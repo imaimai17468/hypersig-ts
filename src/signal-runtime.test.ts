@@ -2238,9 +2238,9 @@ it("matches a key only when the pressed modifiers are exactly the mapped ones", 
   expect(runtime.read(s.all.path)).toBe(1);
 });
 
-it("ignores Shift for a character key but not for a named key or Space", () => {
+it("ignores Shift for a character key alone but not for a named key or Space", () => {
   const s = signals(
-    { help: 0, upper: 0, saved: 0, space: 0, shiftSpace: 0, home: 0 },
+    { help: 0, upper: 0, space: 0, shiftSpace: 0, home: 0 },
     { name: "character-keys" }
   ).with({});
   const { page, find } = createPage(
@@ -2249,7 +2249,6 @@ it("ignores Shift for a character key but not for a named key or Space", () => {
       ...on.keydown({
         "?": s.help.set(s.help.add(1)),
         A: s.upper.set(s.upper.add(1)),
-        "Control+S": s.saved.set(s.saved.add(1)),
         " ": s.space.set(s.space.add(1)),
         "Shift+ ": s.shiftSpace.set(s.shiftSpace.add(1)),
         Home: s.home.set(s.home.add(1)),
@@ -2265,14 +2264,55 @@ it("ignores Shift for a character key but not for a named key or Space", () => {
   expect(runtime.read(s.help.path)).toBe(2);
   expect(press(target, { key: "A", shiftKey: true })).toBe(true);
   expect(runtime.read(s.upper.path)).toBe(1);
-  expect(press(target, { key: "S", ctrlKey: true, shiftKey: true })).toBe(true);
-  expect(press(target, { key: "S", shiftKey: true })).toBe(false);
-  expect(runtime.read(s.saved.path)).toBe(1);
   press(target, { key: " ", shiftKey: true });
   expect(runtime.read(s.space.path)).toBe(0);
   expect(runtime.read(s.shiftSpace.path)).toBe(1);
   expect(press(target, { key: "Home", shiftKey: true })).toBe(false);
   expect(runtime.read(s.home.path)).toBe(0);
+});
+
+it("counts Shift for a character after Control, Alt or Meta and ignores its case", () => {
+  const s = signals(
+    { undo: 0, redo: 0, metaRedo: 0, alt: 0 },
+    { name: "shortcut-keys" }
+  ).with({});
+  const { page, find } = createPage(
+    render("div", {
+      ...s.init(),
+      ...on.keydown({
+        "Control+z": s.undo.set(s.undo.add(1)),
+        "Control+Shift+z": s.redo.set(s.redo.add(1)),
+        "Shift+Meta+z": s.metaRedo.set(s.metaRedo.add(1)),
+        "Alt+x": s.alt.set(s.alt.add(1)),
+      }),
+      children: element("button", { id: "target" }),
+    })
+  );
+  const runtime = startSignals({ root: page });
+  const target = find("#target");
+
+  expect(press(target, { key: "z", ctrlKey: true })).toBe(true);
+  expect(runtime.read(s.undo.path)).toBe(1);
+  expect(runtime.read(s.redo.path)).toBe(0);
+  expect(press(target, { key: "Z", ctrlKey: true, shiftKey: true })).toBe(true);
+  expect(runtime.read(s.undo.path)).toBe(1);
+  expect(runtime.read(s.redo.path)).toBe(1);
+  // Caps Lock gives "Z" without Shift, which is still Control+z.
+  press(target, { key: "Z", ctrlKey: true });
+  expect(runtime.read(s.undo.path)).toBe(2);
+
+  // macOS reports "z" for Shift+Meta+z, other platforms "Z".
+  press(target, { key: "z", metaKey: true, shiftKey: true });
+  press(target, { key: "Z", metaKey: true, shiftKey: true });
+  expect(runtime.read(s.metaRedo.path)).toBe(2);
+  expect(press(target, { key: "z", metaKey: true })).toBe(false);
+
+  expect(press(target, { key: "x", altKey: true, shiftKey: true })).toBe(false);
+  expect(press(target, { key: "x", altKey: true, ctrlKey: true })).toBe(false);
+  expect(press(target, { key: "x" })).toBe(false);
+  expect(runtime.read(s.alt.path)).toBe(0);
+  expect(press(target, { key: "x", altKey: true })).toBe(true);
+  expect(runtime.read(s.alt.path)).toBe(1);
 });
 
 it("passes a key the nearest map lacks to the next map outward", () => {
