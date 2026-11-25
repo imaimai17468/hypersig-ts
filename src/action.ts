@@ -6,7 +6,11 @@ import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Principal } from "./live.js";
 import type { ExprNode, JsonValue, StmtNode } from "./protocol.js";
-import { outletAttributes, signalAttributes } from "./protocol.js";
+import {
+  isSetStmtNode,
+  outletAttributes,
+  signalAttributes,
+} from "./protocol.js";
 import type { Expr } from "./signal.js";
 import { exprOf, listStmts, nodeOf, serializeStmts } from "./signal.js";
 
@@ -79,6 +83,21 @@ type CallInput<Wire> = [Wire] extends [JsonValue]
   : "This Action's input is not JSON. Submit it with form() instead";
 
 type Statements = StmtNode | readonly StmtNode[];
+
+export interface CallOptions<Output> extends ResultHandlers<Output> {
+  /**
+   * `set` statements that show the user's own action until it is committed.
+   * They run when the call runs, before its input is evaluated, and the
+   * runtime sends nothing when one of their paths has no committed value from
+   * a `data-hs-signals` load. A failed request writes each path it still owns
+   * back to the latest committed value before `onError` runs; a later call
+   * that writes the same path takes it over. A success leaves the value until
+   * a Live View brings the committed one, so the Action must publish the Topic
+   * that renders it. Only `set` is checked at runtime: any other statement is
+   * a `TypeError` here.
+   */
+  pending?: Statements;
+}
 
 /** An Action's output as an expression, or `never` when it is not JSON. */
 type OutputExpr<Output> = [Output] extends [JsonValue] ? Expr<Output> : never;
@@ -286,17 +305,21 @@ function createActionMethods<Wire, Output>(url: string, name: string) {
      * A statement that sends the input, evaluating signal values in the
      * browser when it runs. The input type must be JSON.
      */
-    call(
-      input: CallInput<Wire>,
-      options: ResultHandlers<Output> = {}
-    ): StmtNode {
-      return [
-        "call",
-        url,
-        nodesOfCallInput<Wire>(input),
-        options.onSuccess ? listStmts(callSuccess(options.onSuccess)) : [],
-        options.onError ? listStmts(options.onError) : [],
-      ];
+    call(input: CallInput<Wire>, options: CallOptions<Output> = {}): StmtNode {
+      const pending = listStmts(options.pending ?? []);
+      if (!pending.every(isSetStmtNode)) {
+        throw new TypeError(
+          `The pending statements of "${name}" can only be set statements`
+        );
+      }
+      const nodes = nodesOfCallInput<Wire>(input);
+      const onSuccess = options.onSuccess
+        ? listStmts(callSuccess(options.onSuccess))
+        : [];
+      const onError = options.onError ? listStmts(options.onError) : [];
+      return pending.length
+        ? ["call", url, nodes, onSuccess, onError, pending]
+        : ["call", url, nodes, onSuccess, onError];
     },
     /** True in the browser while a request to this Action is in flight. */
     pending(): Expr<boolean> {

@@ -884,6 +884,28 @@ it("passes the action output to onSuccess and runs onError on failure", () => {
   expect(statement[4]).toEqual([["set", s.base.path, ["lit", 0]]]);
 });
 
+it("puts pending set statements in the call and rejects any other statement", () => {
+  const { increment } = setup();
+  const s = signals({ amount: "1", flag: false }, { name: "call-pending" });
+  expect(
+    increment.call({ amount: s.amount }, { pending: s.amount.set("2") })
+  ).toEqual([
+    "call",
+    increment.url,
+    { amount: ["sig", s.amount.path] },
+    [],
+    [],
+    [["set", s.amount.path, ["lit", "2"]]],
+  ]);
+  expect(increment.call({ amount: "1" }, { pending: [] })).toHaveLength(5);
+  expect(() =>
+    increment.call(
+      { amount: "1" },
+      { pending: [s.amount.set("2"), s.flag.toggle()] }
+    )
+  ).toThrow(TypeError);
+});
+
 it("exposes pending and restored state as expressions", () => {
   const { increment } = setup();
   expect(increment.pending().node).toEqual([

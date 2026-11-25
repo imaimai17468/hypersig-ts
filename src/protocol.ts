@@ -93,12 +93,21 @@ export type ExprNode =
   | ["output"]
   | ["detail"];
 
+export type SetStmtNode = ["set", SignalPath, ExprNode];
+
 export type StmtNode =
-  | ["set", SignalPath, ExprNode]
+  | SetStmtNode
   | ["toggle", SignalPath]
   | ["focus", string]
   | ["focus-key", refId: string, key: ExprNode]
-  | ["call", string, Record<string, ExprNode>, StmtNode[], StmtNode[]]
+  | [
+      "call",
+      url: string,
+      input: Record<string, ExprNode>,
+      onSuccess: StmtNode[],
+      onError: StmtNode[],
+      pending?: SetStmtNode[],
+    ]
   | ["after", timerId: string, ms: number, stmts: StmtNode[]]
   | ["cancel", timerId: string]
   | ["when", condition: ExprNode, then: StmtNode[], otherwise: StmtNode[]];
@@ -365,7 +374,7 @@ export function isStmtNode(value: unknown): value is StmtNode {
 /** A statement's expressions and nested statements count toward its depth. */
 function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
   if (!Array.isArray(value) || depth > maxNestingDepth) return false;
-  const [tag, first, second, third, fourth] = value as unknown[];
+  const [tag, first, second, third, fourth, fifth] = value as unknown[];
   switch (tag) {
     case "set":
       return (
@@ -385,7 +394,8 @@ function isStmtNodeAt(value: unknown, depth: number): value is StmtNode {
       );
     case "call":
       return (
-        value.length === 5 &&
+        (value.length === 5 ||
+          (value.length === 6 && isSetStmtListAt(fifth, depth + 1))) &&
         typeof first === "string" &&
         isExprRecord(second, depth + 1) &&
         isStmtListAt(third, depth + 1) &&
@@ -439,6 +449,17 @@ function isExprRecord(
 
 export function isStmtList(value: unknown): value is StmtNode[] {
   return isStmtListAt(value, 1);
+}
+
+export function isSetStmtNode(stmt: StmtNode): stmt is SetStmtNode {
+  return stmt[0] === "set";
+}
+
+function isSetStmtListAt(
+  value: unknown,
+  depth: number
+): value is SetStmtNode[] {
+  return isStmtListAt(value, depth) && value.every(isSetStmtNode);
 }
 
 function isStmtListAt(value: unknown, depth: number): value is StmtNode[] {

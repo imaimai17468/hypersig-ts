@@ -3,6 +3,7 @@ export type {
   ActionDefinition,
   ActionFormResult,
   ActionIssue,
+  CallOptions,
   FieldControl,
   JsonSchemaOptions,
   JsonValue,

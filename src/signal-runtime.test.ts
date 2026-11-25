@@ -738,6 +738,177 @@ it("runs onError statements to undo a write by hand", async () => {
   expect(find("#completed").textContent).toBe("false");
 });
 
+const saveFavorite = hypersig.action("save-favorite", {
+  input: v.object({ favorite: v.boolean() }),
+  output: v.null(),
+  authorize: () => true,
+  execute: () => null,
+});
+
+/**
+ * A Live View with a committed `favorite` and three buttons that show their
+ * value as pending: one toggles it, `#on` sets true and `#off` sets false.
+ */
+function createFavoritePage() {
+  const favorite = signals(
+    { favorite: false, seen: "", other: 0 },
+    { name: "pending-favorite" }
+  );
+  const f = favorite.with({ favorite: false });
+  const pendingButton = (
+    id: string,
+    next: Parameters<typeof f.favorite.set>[0]
+  ) =>
+    element("button", {
+      id,
+      ...on.click(
+        saveFavorite.call(
+          { favorite: f.favorite },
+          {
+            pending: f.favorite.set(next),
+            onError: f.seen.set(f.favorite.choose("on", "off")),
+          }
+        )
+      ),
+    });
+  const created = createPage(
+    render("div", {
+      "data-hs-view": "favorite",
+      children: [
+        element("p", { id: "snapshot", ...f.init() }),
+        element("span", { id: "shown", ...f.bindText(f.favorite) }),
+        pendingButton("toggle", f.favorite.not()),
+        pendingButton("on", true),
+        pendingButton("off", false),
+      ],
+    })
+  );
+  const sender = createSend();
+  const runtime = startSignals({ root: created.page, send: sender.send });
+  const commit = (value: boolean) => {
+    created
+      .find("#snapshot")
+      .setAttribute(
+        "data-hs-signals",
+        favorite.with({ favorite: value }).init()["data-hs-signals"]
+      );
+    runtime.applySnapshots(created.find("[data-hs-view]"));
+  };
+  return { ...created, ...sender, runtime, f, favorite, commit };
+}
+
+it("shows a pending value at once and sends the value it wrote", async () => {
+  const { find, click, requests, request, runtime, f, commit } =
+    createFavoritePage();
+
+  click("#toggle");
+  expect(runtime.read(f.favorite.path)).toBe(true);
+  expect(find("#toggle").hasAttribute("data-hs-pending")).toBe(true);
+  expect(requests).toHaveLength(1);
+  expect(request(0).body).toBe(JSON.stringify({ favorite: true }));
+  await settle();
+  expect(find("#shown").textContent).toBe("true");
+
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  expect(find("#toggle").hasAttribute("data-hs-pending")).toBe(false);
+  expect(runtime.read(f.favorite.path)).toBe(true);
+
+  // Another tab's commit arrives after this one.
+  commit(false);
+  await settle();
+  expect(find("#shown").textContent).toBe("false");
+});
+
+it("replaces a pending value with a committed one that arrives in flight", async () => {
+  const { click, request, runtime, f, commit } = createFavoritePage();
+
+  click("#on");
+  commit(false);
+  expect(runtime.read(f.favorite.path)).toBe(false);
+  request(0).respond({ ok: true, data: null });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(false);
+});
+
+it("reverts a failed pending value to the latest committed value before onError", async () => {
+  const { find, click, request, runtime, f, commit } = createFavoritePage();
+
+  click("#on");
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(false);
+  expect(runtime.read(f.seen.path)).toBe("off");
+  expect(find("#shown").textContent).toBe("false");
+
+  click("#off");
+  // Another tab commits true while this request is in flight.
+  commit(true);
+  request(1).fail();
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(true);
+  expect(runtime.read(f.seen.path)).toBe("on");
+});
+
+it("leaves a pending value a later request wrote when the earlier one fails", async () => {
+  const { click, request, runtime, f } = createFavoritePage();
+
+  click("#off");
+  click("#on");
+  expect(runtime.read(f.favorite.path)).toBe(true);
+  request(0).respond({ ok: false });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(true);
+
+  request(1).respond({ ok: false });
+  await settle();
+  expect(runtime.read(f.favorite.path)).toBe(false);
+});
+
+it("throws and sends nothing when a pending path has no committed value", () => {
+  const favorite = signals(
+    { favorite: false, seen: "", other: 0 },
+    { name: "uncommitted-favorite" }
+  );
+  const f = favorite.with({ favorite: false });
+  const { page, click } = createPage(
+    render("div", {
+      ...f.init(),
+      children: element("button", {
+        id: "uncommitted",
+        ...on.click([
+          saveFavorite.call(
+            { favorite: true },
+            { pending: [f.favorite.set(true), f.other.set(1)] }
+          ),
+          f.seen.set("after"),
+        ]),
+      }),
+    })
+  );
+  const { requests, send } = createSend();
+  const runtime = startSignals({ root: page, send });
+  const errors: unknown[] = [];
+  const catchError = (event: ErrorEvent) => {
+    errors.push(event.error);
+    event.preventDefault();
+  };
+  const view = page.defaultView;
+  if (!view) throw new Error("The page has no window");
+  // The click reports the exception to the frame's window.
+  view.addEventListener("error", catchError);
+  try {
+    click("#uncommitted");
+  } finally {
+    view.removeEventListener("error", catchError);
+  }
+  expect(errors).toHaveLength(1);
+  expect(String(errors[0])).toContain(JSON.stringify(f.other.path));
+  expect(requests).toHaveLength(0);
+  expect(runtime.read(f.favorite.path)).toBe(false);
+  expect(runtime.read(f.seen.path)).toBe("");
+});
+
 it("skips the whole handler while its control is pending", async () => {
   const { click, requests, request, runtime, c } = createBumpPage();
 

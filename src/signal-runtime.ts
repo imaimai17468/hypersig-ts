@@ -3,6 +3,7 @@ import { evaluate, formatText, isTruthy } from "./evaluate.js";
 import type {
   ExprNode,
   JsonValue,
+  SetStmtNode,
   SignalPath,
   SnapshotEntry,
   StmtNode,
@@ -385,6 +386,10 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   const sendingUrls = new Map<string, number>();
   const listenedEvents = new WeakMap<Element, Set<string>>();
   const reservations = new Map<string, ReturnType<typeof setTimeout>>();
+  // The latest owned value of each app path from a `data-hs-signals` load.
+  const committed = new Map<string, JsonValue>();
+  // The request whose pending value each path shows.
+  const pendingOwners = new Map<string, object>();
   let isRenderQueued = false;
 
   function read(path: SignalPath): JsonValue | undefined {
@@ -413,6 +418,7 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
   function loadSnapshot(element: Element, editingKey?: string) {
     for (const [path, value, mark] of readSnapshot(element)) {
       const key = JSON.stringify(path);
+      if (mark !== defaultMark && isAppPath(path)) committed.set(key, value);
       if (key === editingKey) continue;
       if (mark === defaultMark && store.has(key)) continue;
       writeFromApp(path, value);
@@ -594,7 +600,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
     body: string | FormData,
     onSuccess: readonly StmtNode[],
     onError: readonly StmtNode[],
-    detail: JsonValue = null
+    detail: JsonValue = null,
+    pendingPaths: readonly SignalPath[] = [],
+    owner?: object
   ): Promise<SendResult> {
     const pendingPath = ["$pending", url];
     addCount(sendingControls, control, 1);
@@ -611,6 +619,13 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       control.removeAttribute("data-hs-pending");
     }
     write(pendingPath, addCount(sendingUrls, url, -1) > 0);
+    for (const path of pendingPaths) {
+      const key = JSON.stringify(path);
+      if (pendingOwners.get(key) !== owner) continue;
+      pendingOwners.delete(key);
+      const value = committed.get(key);
+      if (!result.ok && value !== undefined) writeFromApp(path, value);
+    }
     if (result.ok) {
       write(["$restored", url], false);
       run(onSuccess, control, result.data, detail);
@@ -618,6 +633,32 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
       run(onError, control, null, detail);
     }
     return result;
+  }
+
+  /**
+   * Writes the pending values of a call and takes their paths over for a new
+   * request, which it returns. Throws before writing when a path has no
+   * committed value to go back to, so the call and the statements after it
+   * do not run.
+   */
+  function writePending(
+    pending: readonly SetStmtNode[],
+    runContext: EvaluationContext
+  ): object {
+    const uncommitted = pending.find(
+      ([, path]) => !committed.has(JSON.stringify(path))
+    );
+    if (uncommitted) {
+      throw new Error(
+        `Pending path ${JSON.stringify(uncommitted[1])} has no committed value`
+      );
+    }
+    const owner = {};
+    for (const [, path, node] of pending) {
+      writeFromApp(path, evaluate(node, runContext));
+      pendingOwners.set(JSON.stringify(path), owner);
+    }
+    return owner;
   }
 
   /**
@@ -652,7 +693,8 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
         }
         case "call": {
           if (!control) break;
-          const [, url, input, onSuccess, onError] = stmt;
+          const [, url, input, onSuccess, onError, pending = []] = stmt;
+          const owner = writePending(pending, runContext);
           // Defining each entry keeps a field named `__proto__` as a key.
           const body = Object.fromEntries(
             Object.entries(input).map(([field, node]) => [
@@ -666,7 +708,9 @@ export function startSignals(options: SignalRuntimeOptions): SignalRuntime {
             JSON.stringify(body),
             onSuccess,
             onError,
-            detail
+            detail,
+            pending.map(([, path]) => path),
+            owner
           );
           break;
         }
