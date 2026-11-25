@@ -2,17 +2,20 @@
 
 [日本語](README.ja.md)
 
-hypersig.ts is a TypeScript web framework that keeps the page in sync with data the server has committed. The server renders both the first page and the HTML for every update; there is no hydration.
+hypersig.ts is a TypeScript web framework that keeps server-rendered pages in step with the data you have saved.
 
-- When the application announces a change after saving it, only the views (Live Views) subscribed to that change are rendered and sent to open browsers over SSE. On reconnect, the page reads the server's current state again.
-- State that only the browser decides is written with Signals. Expressions travel as data in HTML attributes and the browser runtime evaluates them. No application code is sent to the browser.
-- The page reacts to input at once (pending indicators, browser-only Signals), and shows data once the server has committed it.
-- Every string the browser acts on (Action names, form field names, change notifications, Live View keys, Signal names and expressions, custom element tag, attribute, and event names, links to pages) is produced from a type, so a typo is a type error.
-- Constraint attributes on inputs, such as `required` and `maxlength`, can be derived from the JSON Schema conversion of the input schema with `action.control()`.
+- When you save data and announce the change, the server re-renders only the parts of the page that depend on it (Live Views) and streams them to every open tab over SSE.
+- The browser receives HTML and a small runtime, never your application code. There is no hydration.
+- The names the browser acts on, such as Action names, form field names, and Live View keys, come from types, so a typo is a type error.
 
-Use the `hypersig-ts` adapter in a Hono app. The same Hono app can also be integrated into Void. To combine rendering and transport yourself, use `hypersig-ts/core`.
+You write the app with Hono and run it on Node, Bun, or Cloudflare Workers. With [Void](https://void.cloud/), the same Hono app plugs in through a middleware ([Void example](examples/void/README.md)).
 
-Custom element declarations and their browser implementation, `defineElement`, live in `hypersig-ts/element`, which depends on neither Hono nor React. `reactElement`, which mounts a React component as an element, lives in `hypersig-ts/react` and needs `react` and `react-dom` (^19).
+| Package               | What it is                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| `hypersig-ts`         | The Hono adapter                                                                           |
+| `hypersig-ts/core`    | The core, for combining rendering and transport yourself                                   |
+| `hypersig-ts/element` | Custom element declarations and their browser implementation (no Hono or React dependency) |
+| `hypersig-ts/react`   | Mounts React components as custom elements (needs `react` and `react-dom` ^19)             |
 
 [English documentation](https://imaimai17468.github.io/hypersig-ts/) · [日本語ドキュメント](https://imaimai17468.github.io/hypersig-ts/ja/) · [Migrating from htmx](https://imaimai17468.github.io/hypersig-ts/from-htmx/)
 
@@ -127,13 +130,14 @@ mise exec -- bun run example:counter
 
 Open `http://127.0.0.1:3000` in two tabs and press **Increment main** in one of them; both counters update. [Counter source](examples/counter/server.tsx)
 
-| Example                                        | Command                                 | What it shows                                                                              |
-| ---------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [TodoMVC](examples/todomvc/server.tsx)         | `mise exec -- bun run example:todomvc`  | An action shows as pending at once, and values change once they are committed              |
-| [Shared memo](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`     | The revision an edit started from and draft restoration, with no hand-written JavaScript   |
-| [Rating](examples/rating/server.tsx)           | `mise exec -- bun run example:rating`   | Typed attributes and events on a custom element, whose children survive Live View updates  |
-| [Sortable](examples/sortable/server.tsx)       | `mise exec -- bun run example:sortable` | A React and dnd-kit component mounted as a custom element, saving the new order            |
-| [Widgets](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`  | A combobox, tabs, a disclosure panel, a character counter, and a toast, with Signals alone |
+| Example                                        | Command                                                                    | What it shows                                                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [TodoMVC](examples/todomvc/server.tsx)         | `mise exec -- bun run example:todomvc`                                     | An action shows as pending at once, and values change once they are committed              |
+| [Shared memo](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`                                        | The revision an edit started from and draft restoration, with no hand-written JavaScript   |
+| [Reviews](examples/rating/server.tsx)          | `mise exec -- bun run example:rating`                                      | Typed attributes and events on a custom element, whose children survive Live View updates  |
+| [Sortable](examples/sortable/server.tsx)       | `mise exec -- bun run example:sortable`                                    | A React and dnd-kit component mounted as a custom element, saving the new order            |
+| [Widgets](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`                                     | A combobox, tabs, a disclosure panel, a character counter, and a toast, with Signals alone |
+| [Void](examples/void/README.md)                | `cd examples/void && mise exec -- bun install && mise exec -- bun run dev` | The same Hono app plugged into Void through a middleware, also deployed to Workers         |
 
 To run one alongside Counter, set `PORT=3001` on one of them. [Running on Void](examples/void/README.md) · [Deploying to Workers](examples/void/worker/README.md)
 

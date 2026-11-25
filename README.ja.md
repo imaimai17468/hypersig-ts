@@ -2,17 +2,20 @@
 
 [English](README.md)
 
-hypersig.ts は、サーバーで確定したデータに画面を同期する TypeScript の Web フレームワークです。初回の表示も更新時の HTML もサーバーで生成し、ハイドレーションはしません。
+hypersig.ts は、サーバーが描いた画面を、保存されたデータといつも同じに保つ TypeScript の Web フレームワークです。
 
-- アプリが保存後に変更を通知すると、その通知を受け取るよう指定した表示（Live View）だけを描画し、開いているブラウザに SSE で送ります。再接続時はサーバーの現在の状態を読み直します。
-- ブラウザだけで決まる状態は Signal で書きます。式はデータとして HTML の属性に入り、ブラウザのランタイムが評価します。アプリのコードはブラウザに送りません。
-- 画面は操作にすぐ反応し（処理中の表示、ブラウザだけで決まる Signal）、データはサーバーが確定してから表示します。
-- ブラウザが扱う文字列（Action 名、フォームの項目名、変更通知、Live View のキー、Signal の名前と式、カスタム要素のタグ名・属性名・イベント名、ページへのリンク）は型から作るので、打ち間違いは型エラーになります。
-- 入力欄の `required` や `maxlength` などの制約属性は、入力スキーマの JSON Schema 変換から `action.control()` で作れます。
+- データを保存して変更を知らせると、その変更に関わる部分（Live View）だけをサーバーが描き直し、開いているすべてのタブに SSE で届けます。
+- ブラウザに送るのは HTML と小さなランタイムだけで、アプリのコードは送りません。ハイドレーションもありません。
+- Action の名前、フォームの項目名、Live View のキーなど、ブラウザが読む名前は型から作るので、打ち間違いは型エラーになります。
 
-Hono アプリには `hypersig-ts` のアダプターを使います。同じ Hono アプリを Void に組み込むこともできます。描画と通信を自分で組み合わせる場合は `hypersig-ts/core` を使います。
+アプリは Hono で書き、Node、Bun、Cloudflare Workers で動かせます。[Void](https://void.cloud/) を使う場合は、同じ Hono アプリをミドルウェアから組み込めます（[Void のサンプル](examples/void/README.md)）。
 
-カスタム要素の宣言と、ブラウザ側の実装 `defineElement` は `hypersig-ts/element` にあり、Hono にも React にも依存しません。React の部品を要素として載せる `reactElement` は `hypersig-ts/react` にあり、`react` と `react-dom`（^19）が必要です。
+| パッケージ            | 内容                                                                        |
+| --------------------- | --------------------------------------------------------------------------- |
+| `hypersig-ts`         | Hono のアダプター                                                           |
+| `hypersig-ts/core`    | 描画と通信を自分で組み合わせるための中核                                    |
+| `hypersig-ts/element` | カスタム要素の宣言と、ブラウザ側の実装（Hono にも React にも依存しない）    |
+| `hypersig-ts/react`   | React の部品をカスタム要素として載せる（`react` と `react-dom` ^19 が必要） |
 
 [日本語ドキュメント](https://imaimai17468.github.io/hypersig-ts/ja/) · [English documentation](https://imaimai17468.github.io/hypersig-ts/) · [htmx からの移行](https://imaimai17468.github.io/hypersig-ts/ja/from-htmx/)
 
@@ -127,13 +130,14 @@ mise exec -- bun run example:counter
 
 `http://127.0.0.1:3000` を2つのタブで開き、片方で **Increment main** を押すと、両方のカウンターが更新されます。[Counter の実装](examples/counter/server.tsx)
 
-| サンプル                                    | 起動コマンド                            | 見どころ                                                                             |
-| ------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------ |
-| [TodoMVC](examples/todomvc/server.tsx)      | `mise exec -- bun run example:todomvc`  | 押した操作がすぐ処理中として表示され、値は確定してから変わる                         |
-| [共有メモ](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`     | 編集元の版と下書きの復元を、手書きの JavaScript なしで書く                           |
-| [星評価](examples/rating/server.tsx)        | `mise exec -- bun run example:rating`   | カスタム要素の属性とイベントを型で書き、Live View の更新で子を残す                   |
-| [並べ替え](examples/sortable/server.tsx)    | `mise exec -- bun run example:sortable` | React と dnd-kit の部品をカスタム要素として載せ、並べ替えを保存する                  |
-| [部品](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`  | コンボボックス、タブ、開閉パネル、文字数カウンター、トーストを Signal の文だけで書く |
+| サンプル                                    | 起動コマンド                                                               | 見どころ                                                                             |
+| ------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [TodoMVC](examples/todomvc/server.tsx)      | `mise exec -- bun run example:todomvc`                                     | 押した操作がすぐ処理中として表示され、値は確定してから変わる                         |
+| [共有メモ](examples/shared-memo/server.tsx) | `mise exec -- bun run example:memo`                                        | 編集元の版と下書きの復元を、手書きの JavaScript なしで書く                           |
+| [レビュー](examples/rating/server.tsx)      | `mise exec -- bun run example:rating`                                      | カスタム要素の属性とイベントを型で書き、Live View の更新で子を残す                   |
+| [並べ替え](examples/sortable/server.tsx)    | `mise exec -- bun run example:sortable`                                    | React と dnd-kit の部品をカスタム要素として載せ、並べ替えを保存する                  |
+| [部品](examples/widgets/server.tsx)         | `mise exec -- bun run example:widgets`                                     | コンボボックス、タブ、開閉パネル、文字数カウンター、トーストを Signal の文だけで書く |
+| [Void](examples/void/README.md)             | `cd examples/void && mise exec -- bun install && mise exec -- bun run dev` | 同じ Hono アプリを Void のミドルウェアから組み込み、Workers にも配備する             |
 
 Counter と同時に起動する場合は、どちらかに `PORT=3001` を設定します。[Void での起動手順](examples/void/README.md) · [Workers への配備例](examples/void/worker/README.md)
 
