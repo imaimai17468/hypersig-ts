@@ -11,10 +11,18 @@ const counter = createCounterApp({
   origin,
   title: "hypersig on Void",
   development,
-  sessionSecret: process.env.SESSION_SECRET ?? crypto.randomUUID(),
+  sessionSecret: readSessionSecret(process.env.SESSION_SECRET),
   ...(pageKey ? { pageKeys: [pageKey] } : {}),
   store: createMemoryCounterStore(),
 });
+
+// A secret made per process ends every session on restart and differs between
+// instances, so only development makes one.
+function readSessionSecret(secret: string | undefined): string {
+  if (secret) return secret;
+  if (development) return crypto.randomUUID();
+  throw new Error("Set SESSION_SECRET to a secret of at least 32 characters");
+}
 
 export default defineMiddleware(async (c, next) => {
   const path = c.req.path;

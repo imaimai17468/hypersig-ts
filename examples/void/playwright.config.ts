@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 
 const devPort = 3219;
@@ -19,7 +20,11 @@ export default defineConfig({
     },
     {
       command: "bun run start",
-      env: { PORT: String(prodPort), PUBLIC_ORIGIN: prodUrl },
+      env: {
+        PORT: String(prodPort),
+        PUBLIC_ORIGIN: prodUrl,
+        SESSION_SECRET: randomBytes(32).toString("hex"),
+      },
       url: prodUrl + "/health",
     },
   ],
