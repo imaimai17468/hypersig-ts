@@ -100,6 +100,24 @@ it("unmounts the root when the element is removed", async () => {
   expect(element.childElementCount).toBe(0);
 });
 
+it("mounts a fresh root when a removed element is inserted again", async () => {
+  log.length = 0;
+  const element = await insert({ items: '["a"]' });
+  await act(async () => {
+    element.querySelector("button")?.click();
+  });
+  expect(element.querySelector("p")?.getAttribute("data-renders")).toBe("1");
+  await act(async () => {
+    element.remove();
+  });
+  await act(async () => {
+    document.body.append(element);
+  });
+  expect(log).toEqual(["effect", "cleanup", "effect"]);
+  expect(element.querySelector("p")?.textContent).toBe("a");
+  expect(element.querySelector("p")?.getAttribute("data-renders")).toBe("0");
+});
+
 it("delivers emit to the element's listener", async () => {
   const element = await insert({ items: '["first"]' });
   const details: unknown[] = [];
