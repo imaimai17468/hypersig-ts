@@ -612,7 +612,7 @@ test("applies updates from a restarted server process that counts versions from 
   }
 });
 
-test("redraws a view whose access returned while the browser was offline", async ({
+test("redraws a view whose access a server restart restored while its count matches the SSR snapshot", async ({
   browser,
 }) => {
   const port = await findFreePort();
