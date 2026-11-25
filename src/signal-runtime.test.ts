@@ -17,6 +17,8 @@ import {
   when,
 } from "./index.js";
 import type { StmtNode } from "./index.js";
+import { morphView } from "./morph.js";
+import { sanitizeFragment } from "./sanitize.js";
 import type { SendResult } from "./signal-runtime.js";
 import { startSignals } from "./signal-runtime.js";
 
@@ -2746,26 +2748,33 @@ it("cancels one timer without touching another", () => {
 function createTimedCallPage() {
   const later = timer({ name: "timed-call" });
   const s = signals({ fired: 0 }, { name: "timed-call-state" }).with({});
+  const schedule = (id: string) =>
+    element("button", {
+      id,
+      ...on.click([
+        later.after(1000, [
+          s.fired.set(s.fired.add(1)),
+          bump.call({ count: s.fired }),
+        ]),
+      ]),
+    });
   const created = createPage(
     render("div", {
       "data-hs-view": "timed",
       ...s.init(),
-      children: [
-        element("button", {
-          id: "schedule",
-          ...on.click([
-            later.after(1000, [
-              s.fired.set(s.fired.add(1)),
-              bump.call({ count: s.fired }),
-            ]),
-          ]),
-        }),
-      ],
+      children: [schedule("schedule")],
     })
   );
   const sender = createSend();
   const runtime = startSignals({ root: created.page, send: sender.send });
-  return { ...created, ...sender, runtime, s };
+  /** Morphs the view to the given buttons, as a Live View update does. */
+  const morph = (ids: string[]) =>
+    morphView(
+      created.find("[data-hs-view]"),
+      sanitizeFragment(ids.map((id) => String(schedule(id))).join("")),
+      runtime
+    );
+  return { ...created, ...sender, runtime, s, morph };
 }
 
 it("sends a timer's call from the scheduling element while it is on the page", () => {
@@ -2781,13 +2790,31 @@ it("sends a timer's call from the scheduling element while it is on the page", (
   expect(find("#schedule").hasAttribute("data-hs-pending")).toBe(true);
 });
 
-it("runs a timer whose element a morph replaced but sends none of its calls", () => {
+it("sends a timer's call from the scheduling element a morph kept", () => {
   useFakeTimeouts();
-  const { click, find, requests, runtime, s } = createTimedCallPage();
+  const { click, find, requests, request, runtime, s, morph } =
+    createTimedCallPage();
 
   click("#schedule");
   const button = find("#schedule");
-  button.replaceWith(button.cloneNode(true));
+  morph(["before", "schedule"]);
+  expect(find("#schedule")).toBe(button);
+  vi.advanceTimersByTime(1000);
+  expect(runtime.read(s.fired.path)).toBe(1);
+  expect(requests).toHaveLength(1);
+  expect(request(0).control).toBe(button);
+});
+
+it("runs a timer whose element a morph replaced but sends none of its calls", () => {
+  useFakeTimeouts();
+  const { click, find, page, requests, runtime, s, morph } =
+    createTimedCallPage();
+
+  click("#schedule");
+  const button = find("#schedule");
+  morph(["replacement"]);
+  expect(button.isConnected).toBe(false);
+  expect(page.querySelector("#replacement")).not.toBeNull();
   vi.advanceTimersByTime(1000);
   expect(runtime.read(s.fired.path)).toBe(1);
   expect(requests).toHaveLength(0);
