@@ -6,6 +6,7 @@ import {
   topic,
 } from "./core.js";
 import type {
+  JsonValue,
   LiveDiagnostic,
   LiveMessage,
   LiveRenderer,
@@ -2293,6 +2294,20 @@ it("limits top-level props to JSON while child props stay unconstrained", () => 
     load: (params: Schedule) => params.slot.start.toISOString(),
     render: String,
   });
+  const loose = runtime.live({
+    name: "loose",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: { meta: unknown }) => String(params.meta),
+    render: String,
+  });
+  const described = runtime.live({
+    name: "described",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: (params: { meta: JsonValue }) => JSON.stringify(params.meta),
+    render: String,
+  });
   const tagged = runtime.live({
     name: "tagged",
     subscribe: () => [counterChanged("all")],
@@ -2319,6 +2334,9 @@ it("limits top-level props to JSON while child props stay unconstrained", () => 
     await page.view(scheduled, { slot: { start: new Date() }, tags: [] });
     // @ts-expect-error An array entry of undefined becomes null in JSON.
     await page.view(tagged, { tags: ["a", undefined] });
+    // @ts-expect-error A property typed unknown may hold a value that is not JSON.
+    await page.view(loose, { meta: "a" });
+    await page.view(described, { meta: { nested: [1, null] } });
     const filter: Filter = { query: "a", page: 1, tags: ["x"] };
     await page.view(filtered, filter);
     return page.view(stamped, { at: "2026-11-24", zone: undefined });

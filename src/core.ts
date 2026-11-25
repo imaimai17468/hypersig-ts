@@ -9,7 +9,7 @@ export type {
   SharedValue,
   SnapshotRevision,
 } from "./live.js";
-export type { HtmlUpdate } from "./protocol.js";
+export type { HtmlUpdate, JsonValue } from "./protocol.js";
 export type { LiveDiagnostic, RenderReason } from "./diagnostics.js";
 export type { LiveRenderer } from "./render.js";
 export { createLiveRuntime } from "./live-runtime.js";

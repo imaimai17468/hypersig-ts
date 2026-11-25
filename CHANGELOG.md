@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `hypersig-ts/core` exports the `JsonValue` type, for typing Live View params that hold any JSON. A param property typed `unknown` is rejected by `PageRenderContext.view`.
+
 ### Changed
 
 - **Breaking:** `on.keydown` counts Shift for a character key when Control, Alt, or Meta is held, so `"Control+Shift+z"` and `"Control+z"` are different keys. The character after Control, Alt, or Meta is compared in either case and must be written in lowercase; `"Control+Z"` is now a type error and throws. Without Control, Alt, or Meta, Shift is still ignored for a character key and `"Shift+?"` is still rejected.

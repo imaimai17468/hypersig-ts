@@ -29,7 +29,9 @@ export interface LiveRenderContext<
  * null, arrays of those, and objects of those, including interfaces and
  * optional properties. Turns a Date, function, bigint, symbol, or an array
  * entry that may be undefined into `never`, so the call that passes it fails.
- * A view that does not declare its params accepts any JSON value.
+ * A property typed `unknown` is rejected too, since it may hold any of those:
+ * type it as `JsonValue` instead. A view that does not declare its params
+ * accepts any JSON value.
  */
 type JsonCompatible<Value> = unknown extends Value
   ? JsonValue
@@ -63,7 +65,9 @@ type JsonCompatiblePart<Value> = Value extends string | number | boolean | null
  * Places the page's top-level views. Their params travel in the page token,
  * so they must be JSON. A value TypeScript accepts as JSON but that does not
  * survive `JSON.stringify`, such as `NaN` or a class instance, reaches the view
- * changed when the page reconnects.
+ * changed when the page reconnects. A property typed `unknown` is rejected,
+ * since it may hold a value that is not JSON: type it as `JsonValue`, which
+ * `hypersig-ts` and `hypersig-ts/core` export.
  */
 export interface PageRenderContext<
   User extends Principal,
