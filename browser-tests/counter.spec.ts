@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
 import { test as base, expect } from "@playwright/test";
@@ -26,7 +26,7 @@ async function findFreePort(): Promise<number> {
 }
 
 /** Starts a counter process of its own, which a test can stop and start again. */
-async function startCounter(port: number) {
+async function startCounter(port: number, env: Record<string, string> = {}) {
   const url = `http://127.0.0.1:${port}`;
   const server = spawn("bun", ["examples/counter/server.tsx"], {
     env: {
@@ -36,6 +36,7 @@ async function startCounter(port: number) {
       COUNTER_SESSION_SECRET: "restart-test-session-secret",
       COUNTER_METRICS: "1",
       ORDER_PRICE_DELAY_MS: "120",
+      ...env,
     },
     stdio: "ignore",
   });
@@ -675,4 +676,83 @@ test("sends its Content-Security-Policy with the page", async ({ page }) => {
   expect(response?.headers()["content-security-policy"]).toBe(
     "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
   );
+});
+
+const redisServer = process.env.REDIS_SERVER ?? "redis-server";
+const hasRedisServer = !spawnSync(redisServer, ["--version"]).error;
+if (!hasRedisServer)
+  console.warn(
+    `Skipping the Redis counter test: ${redisServer} was not found. Install Redis or set REDIS_SERVER.`
+  );
+
+/** Starts a Redis server that keeps nothing on disk. */
+async function startRedis(port: number) {
+  const server = spawn(
+    redisServer,
+    ["--port", String(port), "--save", "", "--appendonly", "no"],
+    { stdio: ["ignore", "pipe", "ignore"] }
+  );
+  const exited = once(server, "exit");
+  const stop = async () => {
+    server.kill();
+    await exited;
+  };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Redis did not start")),
+        10_000
+      );
+      server.stdout.on("data", (chunk: Buffer) => {
+        if (!chunk.toString().includes("Ready to accept connections")) return;
+        clearTimeout(timer);
+        resolve();
+      });
+      server.once("exit", () => {
+        clearTimeout(timer);
+        reject(new Error("Redis exited before it was ready"));
+      });
+    });
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return { url: `redis://127.0.0.1:${port}`, stop };
+}
+
+test("delivers an Action on one counter process to a tab on another through Redis", async ({
+  browser,
+}) => {
+  test.skip(!hasRedisServer, `${redisServer} was not found`);
+  const redis = await startRedis(await findFreePort());
+  const env = { REDIS_URL: redis.url };
+  const servers: { url: string; stop: () => Promise<void> }[] = [];
+  const contexts = [await browser.newContext(), await browser.newContext()];
+  try {
+    servers.push(await startCounter(await findFreePort(), env));
+    servers.push(await startCounter(await findFreePort(), env));
+    const [a, b] = servers;
+    const [contextA, contextB] = contexts;
+    if (!a || !b || !contextA || !contextB) throw new Error("Missing setup");
+    const tabA = await contextA.newPage();
+    const tabB = await contextB.newPage();
+    await tabA.goto(a.url);
+    await tabB.goto(b.url);
+    await expect(tabA.locator(ready)).toHaveCount(1);
+    await expect(tabB.locator(ready)).toHaveCount(1);
+    await expect(tabB.locator(main)).toHaveText("0");
+
+    await tabA.getByRole("button", { name: "Increment main" }).click();
+    await expect(tabA.locator(main)).toHaveText("1");
+    await expect(tabB.locator(main)).toHaveText("1");
+
+    await tabB.getByRole("button", { name: "Increment main" }).click();
+    await expect(tabA.locator(main)).toHaveText("2");
+    await expect(tabB.locator(main)).toHaveText("2");
+    await expect(tabB.locator('[data-count="other"]')).toHaveText("0");
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+    await Promise.all(servers.map((server) => server.stop()));
+    await redis.stop();
+  }
 });

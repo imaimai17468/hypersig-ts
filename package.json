@@ -71,6 +71,7 @@
     "test": "vp test run",
     "test:watch": "vp test watch",
     "test:outbox": "bun test examples/shared-memo/store.test.ts",
+    "test:redis:bun": "bun test examples/counter/redis.test.ts",
     "example:counter": "bun run build && bun examples/counter/server.tsx",
     "example:todomvc": "bun run build && bun examples/todomvc/server.tsx",
     "example:memo": "bun run build && bun examples/shared-memo/server.tsx",

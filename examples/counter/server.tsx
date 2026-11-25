@@ -9,6 +9,7 @@ import {
   errorOutlet,
   topic,
 } from "../../src/index.js";
+import { connectRedis } from "./redis.js";
 
 const port = Number(Bun.env.PORT ?? 3000);
 const origin = `http://127.0.0.1:${port}`;
@@ -23,9 +24,8 @@ const sessionSecret = Bun.env.COUNTER_SESSION_SECRET ?? crypto.randomUUID();
 const sessionCookie = "counter-session";
 /** Sessions that hid the shared counter, which then fails its authorization. */
 const hiddenSessions = new Set<string>();
-const counts = { main: 0, other: 0 };
 const renders = { main: 0, other: 0 };
-type CounterId = keyof typeof counts;
+type CounterId = keyof typeof renders;
 
 const counterChanged = topic("counter", (id: CounterId) => id);
 const layoutChanged = topic("counter-layout", () => "nested");
@@ -35,6 +35,21 @@ type CounterEvent =
   | ReturnType<typeof layoutChanged>
   | ReturnType<typeof orderChanged>;
 const pageKey = Bun.env.HYPERSIG_PAGE_KEY;
+const redisUrl = Bun.env.REDIS_URL;
+// With REDIS_URL, processes that share the Redis share the counts and their
+// publications. The layout and order demos stay in each process.
+const redis = redisUrl ? await connectRedis<CounterEvent>(redisUrl) : undefined;
+const memoryCounts = { main: 0, other: 0 };
+const counts = {
+  async read(id: CounterId) {
+    if (!redis) return memoryCounts[id];
+    return Number((await redis.client.get(`counter:${id}`)) ?? 0);
+  },
+  async increment(id: CounterId) {
+    if (!redis) return ++memoryCounts[id];
+    return redis.client.incr(`counter:${id}`);
+  },
+};
 
 function readSession(c: Context) {
   return getSignedCookie(c, sessionSecret, sessionCookie);
@@ -42,7 +57,7 @@ function readSession(c: Context) {
 
 const hypersig = createHypersig({
   origin,
-  pubsub: createMemoryPubSub<CounterEvent>(),
+  pubsub: redis?.pubsub ?? createMemoryPubSub<CounterEvent>(),
   // Processes that share this key can stream each other's pages.
   ...(pageKey && { pageKeys: [pageKey] }),
   async authenticate(request) {
@@ -58,7 +73,7 @@ const increment = hypersig.action("increment", {
   output: v.number(),
   authorize: (_input, _user) => true,
   async execute({ counterId }) {
-    const count = ++counts[counterId];
+    const count = await counts.increment(counterId);
     await hypersig.publish(counterChanged(counterId));
     return count;
   },
@@ -85,9 +100,12 @@ const counter = hypersig.live({
     id !== "main" || !hiddenSessions.has(sessionId),
   load({ id }) {
     renders[id]++;
-    return counts[id];
+    return counts.read(id);
   },
-  snapshotRevision: { read: ({ id }) => counts[id], from: (count) => count },
+  snapshotRevision: {
+    read: ({ id }) => counts.read(id),
+    from: (count) => count,
+  },
   render(count, { id }) {
     return (
       <section
@@ -285,7 +303,21 @@ app.get("/runtime.js", (c) =>
 );
 
 if (Bun.env.COUNTER_METRICS === "1") {
-  app.get("/metrics", (c) => c.json({ counts, renders }));
+  app.get("/metrics", async (c) => {
+    if (c.req.query("gc") === "1") Bun.gc(true);
+    const { rss, heapUsed } = process.memoryUsage();
+    const { user, system } = process.cpuUsage();
+    return c.json({
+      counts: {
+        main: await counts.read("main"),
+        other: await counts.read("other"),
+      },
+      renders,
+      rss,
+      heapUsed,
+      cpuMicros: user + system,
+    });
+  });
 }
 
 Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: app.fetch });
