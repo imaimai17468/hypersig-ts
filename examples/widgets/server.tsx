@@ -262,6 +262,9 @@ function FruitCombobox({ fruit }: { fruit: Fruit }) {
             {fruits.map(({ key, label }, i) => (
               // `tabindex="-1"` lets a click focus the option, so focus stays
               // inside the combobox instead of leaving for the page body.
+              // While an option holds focus (a press released elsewhere),
+              // Enter still picks the active option, but the arrow keys work
+              // only on the combobox element.
               <div
                 id={optionId(key)}
                 role="option"
