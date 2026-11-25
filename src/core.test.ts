@@ -879,6 +879,82 @@ it("renders a pristine-less view even when its revision is unchanged", async () 
   }
 });
 
+it("keeps no SSR snapshot for a view with children, so a pristine request renders it", async () => {
+  const runtime = createLiveRuntime<
+    Principal,
+    ReturnType<typeof leafChanged>,
+    string
+  >({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    onDiagnostic: (event) => diagnostics.push(event.type),
+  });
+  const diagnostics: string[] = [];
+  const store = { parentReads: 0 };
+  const versioned = {
+    authorize: () => true,
+    subscribe: () => [leafChanged()],
+    load: () => 0,
+    snapshotRevision: { read: () => 0, from: (data: number) => data },
+    render: String,
+  };
+  const nested = runtime.live({ ...versioned, name: "nested" });
+  const { snapshotRevision: _, ...unversioned } = versioned;
+  // Names of the same lengths, so only a snapshot entry would change the
+  // length of the sealed token.
+  const plainNested = runtime.live({ ...unversioned, name: "simple" });
+  const parent = runtime.live({
+    ...versioned,
+    name: "parent",
+    load() {
+      store.parentReads++;
+      return 0;
+    },
+    async render(data: number, _params: object, context) {
+      return `${data}:${await context.view(nested, {})}`;
+    },
+  });
+  const plainParent = runtime.live({
+    ...unversioned,
+    name: "plains",
+    async render(data: number, _params: object, context) {
+      return `${data}:${await context.view(plainNested, {})}`;
+    },
+  });
+  const render = async (view: typeof parent) =>
+    readToken(
+      await runtime.renderPage(
+        viewer,
+        async (page, key) => streamToken(key) + (await page.view(view, {}))
+      )
+    );
+
+  const token = await render(parent);
+  expect(token.length).toBe((await render(plainParent)).length);
+
+  diagnostics.length = 0;
+  store.parentReads = 0;
+  const page = await runtime.openPage(
+    token,
+    { views: [parent.name], pristine: [parent.name, `${parent.name}/nested`] },
+    viewer
+  );
+  if (page.status !== "open") throw new Error("Expected an open page");
+  const connection = createConnection();
+  const live = page.connect(connection, () => viewer);
+  try {
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: parent.name },
+    });
+    expect(diagnostics).not.toContain("initial-sync-skipped");
+    expect(store.parentReads).toBe(1);
+  } finally {
+    connection.close();
+    await live;
+  }
+});
+
 it("skips an unchanged topic update after the initial sync", async () => {
   const store = { value: 0, reads: 0 };
   const renderedSame = deferred();
@@ -1350,6 +1426,54 @@ it("continues a page after the runtime is recreated", async () => {
   const page = await current.runtime.openPage(token, counterKeys, viewer);
   expect(page.status).toBe("open");
   await expectCounterUpdates(page, current.runtime, store);
+});
+
+it("opens a token with the definition registered under each name", async () => {
+  const store = { count: 0 };
+  const origin = counterRuntime(store, { pageKeys: [key1] });
+  const token = await renderCounter(origin);
+  const receiver = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    pageKeys: [key1],
+  });
+  const base = {
+    subscribe: () => [counterChanged("all")],
+    authorize: () => true,
+    load: () => store.count,
+  };
+  const invalidName: string = "counter view";
+  const invalid = { ...base, name: invalidName, render: () => "invalid" };
+  expect(() => receiver.live(invalid)).toThrow(
+    "Invalid Live View name: counter view"
+  );
+  receiver.live({ ...base, name: "other", render: () => "other" });
+  receiver.live({
+    ...base,
+    name: "counter",
+    render: (count) => `receiver:${count}`,
+  });
+  expect(() =>
+    receiver.live({ ...base, name: "counter", render: () => "duplicate" })
+  ).toThrow("Duplicate Live View name: counter");
+  // The definition whose registration threw is not registered.
+  await expect(
+    receiver.renderPage(viewer, (page) => page.view(invalid, {}))
+  ).rejects.toThrow("Unregistered Live View: counter view");
+
+  const page = await receiver.openPage(token, counterKeys, viewer);
+  if (page.status !== "open") throw new Error("Expected an open page");
+  const connection = createConnection();
+  const live = page.connect(connection, () => viewer);
+  try {
+    await expect(connection.read()).resolves.toMatchObject({
+      type: "update",
+      update: { target: "counter", html: "receiver:0" },
+    });
+  } finally {
+    connection.close();
+    await live;
+  }
 });
 
 it("rejects tampered, foreign-key and expired tokens as expired", async () => {
