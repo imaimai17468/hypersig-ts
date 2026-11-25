@@ -67,7 +67,12 @@ type JsonCompatiblePart<Value> = Value extends string | number | boolean | null
  * survive `JSON.stringify`, such as `NaN` or a class instance, reaches the view
  * changed when the page reconnects. A property typed `unknown` is rejected,
  * since it may hold a value that is not JSON: type it as `JsonValue`, which
- * `hypersig-ts` and `hypersig-ts/core` export.
+ * `hypersig-ts` and `hypersig-ts/core` export. A view's `key()` runs on the
+ * params before they go through JSON, and the browser's stream names the view
+ * by that key, while the stream reads the params back from JSON. If `key()`
+ * gives a different result for the params after `JSON.stringify` and
+ * `JSON.parse`, such as for a property that is `NaN` or a class instance, the
+ * keys do not match and the stream answers `unknown-view` (400).
  */
 export interface PageRenderContext<
   User extends Principal,

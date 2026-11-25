@@ -12,12 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- `bindAttr` leaves out a non-boolean attribute whose expression evaluates to `null` on the server and removes it in the browser, so an attribute such as `aria-activedescendant` can be absent instead of empty. `bindAttr` also accepts expressions of a union type such as `string | null`. An empty string still renders the attribute empty. The Widgets combobox no longer renders `aria-activedescendant=""` while closed.
 - **Breaking:** `on.keydown` counts Shift for a character key when Control, Alt, or Meta is held, so `"Control+Shift+z"` and `"Control+z"` are different keys. The character after Control, Alt, or Meta is compared in either case and must be written in lowercase; `"Control+Z"` is now a type error and throws. Without Control, Alt, or Meta, Shift is still ignored for a character key and `"Shift+?"` is still rejected.
+- **Breaking:** `bindAttr` leaves out a non-boolean attribute whose expression evaluates to `null` on the server and removes it in the browser, where it used to render the attribute empty. An attribute such as `aria-activedescendant` can now be absent instead of empty, and `bindAttr` accepts expressions of a union type such as `string | null`. An empty string still renders the attribute empty. The Widgets combobox no longer renders `aria-activedescendant=""` while closed.
+- The browser runtime parses each `data-hs-on-keydown` key map once and reads it again only after the attribute changes, instead of parsing every enclosing map on every keydown.
+- The "Live View page token is too long" error says that the SSR snapshots of shared views count toward the limit as well as params.
 
 ### Fixed
 
-- The browser runtime parses each `data-hs-on-keydown` key map once and reads it again only after the attribute changes, instead of parsing every enclosing map on every keydown.
 - `customElement()` with an attribute kind other than `string`, `number`, `boolean`, or `json` now reports a type error naming the attribute and its kind, instead of a misleading message about attribute names.
 
 ## [0.1.0] - 2026-11-25

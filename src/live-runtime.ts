@@ -313,7 +313,7 @@ export function createLiveRuntime<
       if (token.length > maxTokenLength) {
         const names = [...new Set(claims.views.map(({ name }) => name))];
         throw new Error(
-          `Live View page token is too long (${token.length} of ${maxTokenLength} characters). Pass smaller params to these views: ${names.join(", ")}`
+          `Live View page token is too long (${token.length} of ${maxTokenLength} characters). It holds the params of every view, and the SSR snapshots of shared views also count. Pass smaller params to these views, or place fewer shared views: ${names.join(", ")}`
         );
       }
       return document.split(placeholder).join(token);

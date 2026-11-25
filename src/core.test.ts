@@ -2137,7 +2137,9 @@ it("throws when the page token is too long", async () => {
         html += await page.view(bulky, { id: String(id), text });
       return html;
     })
-  ).rejects.toThrow(/Live View page token is too long.*bulky/);
+  ).rejects.toThrow(
+    /Live View page token is too long.*SSR snapshots of shared views also count.*bulky/
+  );
 });
 
 it("keeps keys and subscriptions when optional props are omitted", async () => {
