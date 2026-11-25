@@ -59,9 +59,11 @@ async function commit(action: TodoAction): Promise<true> {
 /** The same-origin page that posted a native form, or the list. */
 function returnPath(request: Request): string {
   const referrer = URL.parse(request.headers.get("Referer") ?? "");
-  return referrer?.origin === origin
-    ? referrer.pathname + referrer.search
-    : "/";
+  if (referrer?.origin !== origin) return "/";
+  // A Location of `//host` or `/\host` is read as another origin.
+  return /^\/[/\\]/.test(referrer.pathname)
+    ? "/"
+    : referrer.pathname + referrer.search;
 }
 
 const title = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(200));

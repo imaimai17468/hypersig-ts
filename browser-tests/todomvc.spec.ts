@@ -438,6 +438,27 @@ test("adds a task with JavaScript disabled", async ({ browser, baseURL }) => {
   }
 });
 
+test("redirects a native add to the page root when the referrer path starts with two slashes", async ({
+  page,
+  baseURL,
+}) => {
+  if (!baseURL) throw new Error("Missing TodoMVC base URL");
+  await page.goto("/");
+  for (const path of ["//evil.example/next", "/\\evil.example/next"]) {
+    const response = await page.request.post("/_hypersig/actions/add-todo", {
+      form: { todoTitle: "Referrer check" },
+      headers: {
+        Accept: "text/html",
+        Origin: baseURL,
+        Referer: baseURL + path,
+      },
+      maxRedirects: 0,
+    });
+    expect(response.status()).toBe(303);
+    expect(response.headers().location).toBe("/");
+  }
+});
+
 test("derives the title input constraints from the action schema", async ({
   page,
 }) => {
