@@ -64,6 +64,37 @@
       時間です。接続中のストリームは期限後も続き、期限後に接続し直したときだけ
       <code>reset</code> でページを取得し直します。
     </dd>
+    <dt><code>pageContext</code></dt>
+    <dd>
+      省略できます。アプリと環境を表す文字列で、すべてのページのトークンに結び付けます。トークンは同じ値を持つランタイムでだけ開くので、<code
+        >pageKeys</code
+      >
+      とセッションを共有するアプリや環境の間でトークンを使い回せません。既定は正規化した
+      <code>origin</code>
+      です。1
+      つのアプリを複数のオリジンで配信するときは、すべてのインスタンスに同じ値を渡します。別の値のトークンは
+      <code>reset</code> になり、<code>page-token-invalid</code>
+      の診断が出ます。
+    </dd>
+    <dt><code>maxStreamMs</code></dt>
+    <dd>
+      省略できます。1 本の SSE 接続を開いておく時間（ミリ秒）です。既定は 30
+      分です。各接続はこの値の 90% から 100% の間のランダムな時刻に
+      <code>reconnect</code>
+      イベントを送って終わり、ブラウザのランタイムは再読み込みせず、切断も表示せずに、すぐ新しい接続を開きます。新しいリクエストにはブラウザの現在の資格情報が載ります。それまでの間、接続は開いたときのリクエストで認証します。
+    </dd>
+    <dt><code>maxStreamsPerSession</code></dt>
+    <dd>
+      省略できます。1 つのセッションが 1
+      つのプロセスで同時に開ける接続の数です。既定は 16
+      です。それを超える接続が来ると、そのセッションで最も古い接続に
+      <code>evicted</code>
+      を送って閉じます。そのページは View
+      の表示を残したまま更新を止め、再読み込みされるまで接続状態を
+      <code>too-many-tabs</code>
+      にします。数はプロセスごとなので、ページの描画と
+      <code>/_hypersig/stream/*</code> にもレート制限をかけます。
+    </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
       操作を受け付ける URL と更新を配信する URL を、Hono
@@ -144,6 +175,28 @@ const href = links.counters[":counterKey"].$path({
       >&lt;p role="alert" {...errorOutlet()} /&gt;</code
     >
     のように要素に展開します。
+  </p>
+  <p>
+    ランタイムは接続状態を <code>&lt;html&gt;</code> の
+    <code>data-hs-connection</code>
+    に書きます。値は
+    <code>connecting</code
+    >、<code>ready</code>、<code>disconnected</code>、<code>reload-required</code>、<code
+      >too-many-tabs</code
+    >
+    のいずれかです。接続状態の表示先には、<code>disconnected</code>、<code>reload-required</code>、<code
+      >too-many-tabs</code
+    >
+    のときにメッセージが出ます。サーバーが <code>reset</code>
+    を返すと、ランタイムは下書きを退避してページを再読み込みします。再読み込みは
+    1 つのタブで 60 秒以内に 3 回までです。それを超えたときや
+    <code>sessionStorage</code>
+    が使えないときは再読み込みせず、View
+    を空にし、フォームの内容を残して、接続状態を
+    <code>reload-required</code>
+    にします。<code>too-many-tabs</code> は、セッションが
+    <code>maxStreamsPerSession</code>
+    を超える接続を開いたため、サーバーがそのページの接続を閉じたことを表します。
   </p>
   <p>
     <code>action.control(name)</code>
@@ -844,6 +897,16 @@ reactElement(sortableList, SortableList);
       <code>javascript:</code> の URL のような値もそのまま残ります。要素の
       JavaScript
       は、検査せずにその値をリンクとして使わないでください。拡張した組み込み要素（<code>is</code>）は受け付けません。
+    </li>
+    <li>
+      サーバーの描画も更新のサニタイズも、<code>data-hs-on-click</code> や
+      <code>data-hs-view</code> のような hypersig
+      の属性を取り除きません。これらは
+      <code>data-*</code>
+      属性だからです。それらを含む HTML は、アプリ自身のマークアップと同じように
+      Action やシグナルの式を実行します。利用者が入力した HTML を Hono の
+      <code>raw()</code> や <code>dangerouslySetInnerHTML</code>
+      に渡さず、テキストとして描画してください。
     </li>
   </ul>
 </section>

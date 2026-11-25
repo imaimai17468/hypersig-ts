@@ -24,7 +24,7 @@ mise exec -- bun run build
 mise exec -- bun run start
 ```
 
-既定の起動先は `http://127.0.0.1:3000`。`PORT` でポートを指定できる。TLS 終端やリバースプロキシを使う場合は、`PUBLIC_ORIGIN` にブラウザから見える公開オリジンを設定する。Action の Origin はこの値と照合される。
+既定の起動先は `http://127.0.0.1:3000`。`PORT` でポートを指定できる。本番の起動には 32 文字以上の `SESSION_SECRET` が必要で、未設定のときは起動時に例外を投げる。複数のインスタンスで動かす場合は、同じ `SESSION_SECRET` と `HYPERSIG_PAGE_KEY` をすべてのインスタンスに渡す。TLS 終端やリバースプロキシを使う場合は、`PUBLIC_ORIGIN` にブラウザから見える公開オリジンを設定する。Action の Origin はこの値と照合される。
 
 起動エントリは `dist/ssr/index.js`。サーバー成果物と `dist/client/assets/hypersig-runtime.js` を一緒に置き、サンプルの本番依存関係を Node から解決できる状態で実行する。Void の Node 出力が配信する `/assets/*` に合わせ、ビルドがブラウザランタイムを配置する。[Void の Node.js ターゲット](https://void.cloud/integrations/nodejs-bun-deno)
 

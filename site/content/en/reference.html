@@ -60,6 +60,34 @@
       continues past expiry, and only a connection made after expiry gets
       <code>reset</code> and fetches the page again.
     </dd>
+    <dt><code>pageContext</code></dt>
+    <dd>
+      Optional. A string that names the application and environment, bound into
+      every page token. A token opens only in a runtime with the same context,
+      so apps or environments that share <code>pageKeys</code> and sessions
+      cannot use each other's tokens. Defaults to the normalized
+      <code>origin</code>. When one app serves several origins, give every
+      instance the same value. A token from another context gets
+      <code>reset</code> and a <code>page-token-invalid</code> diagnostic.
+    </dd>
+    <dt><code>maxStreamMs</code></dt>
+    <dd>
+      Optional. How long one SSE stream stays open in milliseconds. Defaults to
+      30 minutes. Each stream ends at a random time between 90% and 100% of this
+      value with a <code>reconnect</code> event, and the browser runtime opens a
+      new stream at once without reloading or showing the page as disconnected.
+      The new request carries the browser's current credentials. Until then, the
+      stream authenticates with the request it opened with.
+    </dd>
+    <dt><code>maxStreamsPerSession</code></dt>
+    <dd>
+      Optional. How many streams one session can hold open in one process.
+      Defaults to 16. One more stream sends <code>evicted</code> to the
+      session's oldest stream and closes it. That page keeps its views, stops
+      live updates, and sets the connection status to
+      <code>too-many-tabs</code> until it is reloaded. The count is per process,
+      so also rate-limit page renders and <code>/_hypersig/stream/*</code>.
+    </dd>
     <dt><code>hypersig.routes</code></dt>
     <dd>
       Mount the Action and SSE endpoints on the Hono application after
@@ -130,6 +158,21 @@ const href = links.counters[":counterKey"].$path({
     <code>connectionStatusOutlet()</code> marks where the page says that live
     updates disconnected. Spread each on the element, as in
     <code>&lt;p role="alert" {...errorOutlet()} /&gt;</code>.
+  </p>
+  <p>
+    The runtime writes the connection status to
+    <code>data-hs-connection</code> on <code>&lt;html&gt;</code>:
+    <code>connecting</code>, <code>ready</code>, <code>disconnected</code>,
+    <code>reload-required</code>, or <code>too-many-tabs</code>. The connection
+    status outlet shows a message for <code>disconnected</code>,
+    <code>reload-required</code>, and <code>too-many-tabs</code>. When the
+    server answers <code>reset</code>, the runtime saves drafts and reloads the
+    page, at most 3 times within 60 seconds in one tab. After that, or when
+    <code>sessionStorage</code> is not available, it clears the views, keeps the
+    form contents, and sets the status to <code>reload-required</code> instead
+    of reloading. <code>too-many-tabs</code> means the server evicted the page's
+    stream because the session has more than <code>maxStreamsPerSession</code>
+    streams open.
   </p>
   <p>
     <code>action.control(name)</code> returns the field name together with
@@ -787,6 +830,15 @@ reactElement(sortableList, SortableList);
       such as a <code>javascript:</code> URL; the element's JavaScript must not
       use it as a link without checking it. Customized built-in elements
       (<code>is</code>) are not admitted.
+    </li>
+    <li>
+      Neither the server render nor the update sanitizer removes hypersig
+      attributes, such as <code>data-hs-on-click</code> or
+      <code>data-hs-view</code>, because they are
+      <code>data-*</code> attributes. HTML that carries them runs Actions and
+      signal expressions as the application's own markup does. Never pass
+      user-supplied HTML through Hono's <code>raw()</code> or
+      <code>dangerouslySetInnerHTML</code>; render it as text.
     </li>
   </ul>
 </section>

@@ -35,16 +35,23 @@
     <code>pageKeys</code> (base64 strings of 32 bytes). The first key encrypts
     and every key is tried to decrypt. When omitted, the keys are random per
     process, and a connection that arrives after a restart or at another
-    instance gets <code>reset</code> and fetches the page again.
+    instance gets <code>reset</code> and fetches the page again. Also give every
+    instance the same session secret, or whatever signs or stores sessions, so a
+    session made on one instance authenticates on the others.
   </p>
   <p>
     A token expires 12 hours after the HTML was rendered (change it with
     <code>pageLifetimeMs</code>). A connected page keeps receiving updates past
-    expiry, and only a connection made after expiry fetches the page again. To
-    rotate keys, add the new key first, keep the old key for the lifetime, then
-    remove it. Each token uses a random 96-bit nonce, so one key can safely
-    encrypt about 2^32 tokens. Rotate well before a key reaches that count: at
-    least once a year for a busy service.
+    expiry, and only a connection made after expiry fetches the page again. When
+    instances are replaced one by one, rotate keys in two deploys. First add the
+    new key after the current one on every instance; in this phase it only opens
+    tokens. Then move the new key to the front, and remove the old key once
+    <code>pageLifetimeMs</code> has passed since the last instance stopped
+    sealing with it. Adding the new key in front in one deploy resets pages
+    whose tokens an instance without the new key receives. Each token uses a
+    random 96-bit nonce, so one key can safely encrypt about 2^32 tokens. Rotate
+    well before a key reaches that count: at least once a year for a busy
+    service.
   </p>
   <p>
     For cross-instance changes, use a Pub/Sub adapter that delivers
@@ -74,6 +81,55 @@
     runtime and talks to the new server, so keep the runtime compatible across a
     deploy, or remove the keys that sealed the old tokens.
   </p>
+</section>
+
+<section id="production">
+  <h2>Production checklist</h2>
+  <ul>
+    <li>
+      Serve over HTTPS with HTTP/2 or later. Each open tab holds one SSE
+      connection, and over HTTP/1.1 a browser opens only about 6 connections per
+      origin, so a few tabs can stall other requests.
+    </li>
+    <li>
+      Set session cookies with <code>Secure</code>, <code>HttpOnly</code>, and
+      <code>SameSite</code>. Use the <code>__Host-</code> prefix where the
+      cookie needs no <code>Domain</code> and can use <code>Path=/</code>.
+    </li>
+    <li>
+      Send a Content-Security-Policy with every page. Set it on the
+      <code>Response</code> that <code>hypersig.page()</code> returns, with
+      <code>response.headers.set(...)</code>. Hono does not add headers set with
+      <code>c.header()</code> to a <code>Response</code> the handler returns.
+    </li>
+    <li>
+      Give every instance the same session secret and the same
+      <code>pageKeys</code>. Do not rely on the random key each process makes
+      when <code>pageKeys</code> is omitted when you run more than one instance.
+    </li>
+    <li>
+      Use different <code>pageKeys</code> for each application and environment.
+      <code>pageContext</code> binds tokens to the origin by default. When one
+      application serves several origins, set the same
+      <code>pageContext</code> explicitly on every instance.
+    </li>
+    <li>
+      Strip or hash <code>/_hypersig/stream/*</code> paths in access logs. The
+      page token is in the path.
+    </li>
+    <li>
+      Rate-limit page renders and requests to
+      <code>/_hypersig/stream/*</code>. <code>maxStreamsPerSession</code> counts
+      streams in one process, not across instances.
+    </li>
+    <li>
+      Make <code>authenticate</code> consult revocable server-side state, such
+      as a session store, and do not extend an idle expiry when a stream calls
+      it. An open stream authenticates with the request it opened with, and
+      reads the browser's current credentials only when it reconnects, at most
+      <code>maxStreamMs</code> (30 minutes by default) later.
+    </li>
+  </ul>
 </section>
 
 <section id="void">

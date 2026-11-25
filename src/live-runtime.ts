@@ -84,8 +84,13 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
   maxStreamsPerSession?: number;
   /**
    * Keys that seal page tokens, each 32 bytes in base64 or base64url. The first
-   * key seals new tokens and every key opens them, so rotate by adding the new
-   * key in front and removing the old one after a page lifetime. Without keys,
+   * key seals new tokens and every key opens them. To rotate keys across
+   * instances that deploy one by one, first add the new key after the current
+   * one everywhere, so every instance opens tokens the new key will seal. Then
+   * move the new key to the front, and remove the old key once
+   * `pageLifetimeMs` has passed since the last instance stopped sealing with
+   * it. Putting a new key in front on one instance first would reset the pages
+   * it renders when their streams reach an instance without it. Without keys,
    * the runtime makes one at startup, and only this process can open its pages.
    * Each token takes a random 96-bit AES-GCM nonce, which stays safe for about
    * 2^32 tokens per key, so put a new key in front well before a key seals

@@ -18,7 +18,7 @@ fi
 mise exec -- npm exec --yes --package=wrangler@4.166.0 -- wrangler dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787
 ```
 
-`http://127.0.0.1:8787` を別ブラウザセッションで開く。片方の Increment が両方に反映される。ローカルの SQLite は Wrangler の永続化ディレクトリに残る。公開環境では `PUBLIC_ORIGIN` に実際の HTTPS オリジンを設定し、同じ `SESSION_SECRET` と `PAGE_KEY` を Worker のシークレットとして保持する。`PAGE_KEY` は 32 バイトの鍵を base64 にした値で、`openssl rand -base64 32` で作れる。鍵を入れ替えるときは、`pageKeys` の先頭に新しい鍵、後ろに旧い鍵を並べて配備し、旧い鍵で開いているページが期限（12 時間）を過ぎてから旧い鍵を外す。このサンプルはシークレット一つだけを渡す。8 時間の署名付きセッションはデモ利用者の識別に使い、個別アカウントの認可は導入していない。[Worker のシークレット](https://developers.cloudflare.com/workers/configuration/secrets/)
+`http://127.0.0.1:8787` を別ブラウザセッションで開く。片方の Increment が両方に反映される。ローカルの SQLite は Wrangler の永続化ディレクトリに残る。公開環境では `PUBLIC_ORIGIN` に実際の HTTPS オリジンを設定し、同じ `SESSION_SECRET` と `PAGE_KEY` を Worker のシークレットとして保持する。`PAGE_KEY` は 32 バイトの鍵を base64 にした値で、`openssl rand -base64 32` で作れる。鍵を入れ替えるときは 2 回に分けて配備する。まず `pageKeys` の旧い鍵の後ろに新しい鍵を足して配備する。この段階の新しい鍵は復号にだけ使われる。次に新しい鍵を先頭に移して配備し、旧い鍵で作ったトークンの期限（12 時間）が過ぎてから旧い鍵を外す。このサンプルはシークレット一つだけを渡す。8 時間の署名付きセッションはデモ利用者の識別に使い、個別アカウントの認可は導入していない。[Worker のシークレット](https://developers.cloudflare.com/workers/configuration/secrets/)
 
 ## 検証
 
