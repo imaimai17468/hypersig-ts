@@ -81,7 +81,8 @@
     "example:sortable:browser": "bun build examples/sortable/list.tsx --target=browser --production --outfile=examples/sortable/dist/list.js",
     "example:widgets": "bun run build && bun examples/widgets/server.tsx",
     "test:browser": "bun run build && playwright test",
-    "bench:phase4": "bun run build >&2 && node bench/run.ts"
+    "bench:phase4": "bun run build >&2 && node bench/run.ts",
+    "bench:multi": "bun run build >&2 && node bench/multi-instance.ts"
   },
   "dependencies": {
     "@standard-schema/spec": "1.1.0",

@@ -304,9 +304,10 @@ app.get("/runtime.js", (c) =>
 
 if (Bun.env.COUNTER_METRICS === "1") {
   app.get("/metrics", async (c) => {
+    // Read the CPU time first, so a collection asked for here is not in it.
+    const { user, system } = process.cpuUsage();
     if (c.req.query("gc") === "1") Bun.gc(true);
     const { rss, heapUsed } = process.memoryUsage();
-    const { user, system } = process.cpuUsage();
     return c.json({
       counts: {
         main: await counts.read("main"),
