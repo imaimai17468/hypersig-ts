@@ -142,9 +142,9 @@ async function startProcess(channelPrefix: string) {
         },
       };
     },
-    close() {
-      client.destroy();
-      subscriber.destroy();
+    /** Waits for queued commands such as the last unsubscribe, then closes. */
+    async close() {
+      await Promise.all([client.close(), subscriber.close()]);
     },
   };
 }
@@ -188,9 +188,7 @@ it.skipIf(!hasRedisServer)(
       await page.close();
       await unrelated.close();
     } finally {
-      a.close();
-      b.close();
-      other.close();
+      await Promise.all([a.close(), b.close(), other.close()]);
     }
   }
 );
@@ -223,8 +221,7 @@ it.skipIf(!hasRedisServer)(
       });
       await page.close();
     } finally {
-      a.close();
-      b.close();
+      await Promise.all([a.close(), b.close()]);
     }
   }
 );
