@@ -26,13 +26,33 @@ export const streamParams = {
   pristine: "pristine",
 } as const;
 
+/** Longer tokens would approach URL length limits in browsers and proxies. */
+export const maxTokenLength = 6144;
+
+/**
+ * Whether `value` has the shape of a page token: base64url without padding,
+ * at most `maxTokenLength` characters. It holds no `/`, `.`, `:` or `%`, so
+ * it stays one path segment of the stream URL.
+ */
+export function isPageToken(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= maxTokenLength &&
+    /^[A-Za-z0-9_-]+$/.test(value)
+  );
+}
+
 export const events = {
   update: "html-update",
   ready: "ready",
   viewError: "view-error",
   reset: "reset",
   denied: "access-denied",
-  /** The server ends the stream at its lifetime; the browser opens a new one at once. */
+  /**
+   * The server ends the stream at its lifetime; the browser opens a new one at
+   * once. The data is a renewed page token as a JSON string, which the next
+   * stream URL carries, or `null` to keep the current token.
+   */
   reconnect: "reconnect",
   /** The server closed the stream for a newer one of the session; the browser stops. */
   evicted: "evicted",

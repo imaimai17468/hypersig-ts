@@ -37,7 +37,11 @@ function deferred() {
 
 function setup(
   pubsub: PubSub<CounterEvent> = createMemoryPubSub<CounterEvent>(),
-  limits: { maxStreamMs?: number; maxStreamsPerSession?: number } = {}
+  limits: {
+    maxStreamMs?: number;
+    maxStreamsPerSession?: number;
+    pageLifetimeMs?: number;
+  } = {}
 ) {
   let count = 0;
   let allowed = true;
@@ -377,18 +381,62 @@ it("replaces a page connection while its old render is still pending", async () 
   }
 });
 
-it("sends reconnect before ending a stream at its lifetime", async () => {
-  const { app, pageUrl } = setup(undefined, { maxStreamMs: 50 });
+it("sends reconnect with a renewed page token before ending a stream at its lifetime", async () => {
+  const { app, pageUrl, denyView } = setup(undefined, {
+    maxStreamMs: 50,
+    pageLifetimeMs: 1_000,
+  });
   const { path } = await pageUrl();
+  const renderedBy = Date.now();
   vi.spyOn(Math, "random").mockReturnValue(0);
   const stream = await openStream(app, path);
+  let renewed: unknown;
   try {
     expect(await stream.read()).toContain('"version":1');
     expect(await stream.read()).toContain("event: ready");
-    expect(await stream.read()).toContain("event: reconnect");
+    const reconnect = await stream.read();
+    expect(reconnect).toContain("event: reconnect");
+    renewed = JSON.parse(/^data: (.*)$/m.exec(reconnect)?.[1] ?? "null");
     expect(await stream.read()).toBe("");
   } finally {
     await stream.close();
+    vi.restoreAllMocks();
+  }
+  if (typeof renewed !== "string") throw new Error("Expected a renewed token");
+  const renewedPath = path.replace(/[^/]+$/, renewed);
+
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    // The SSR token has expired, and the renewed one still opens the page.
+    vi.setSystemTime(renderedBy + 1_001);
+    const expired = await openStream(app, path);
+    try {
+      expect(await expired.read()).toContain("event: reset");
+    } finally {
+      await expired.close();
+    }
+    const next = await openStream(app, renewedPath);
+    try {
+      expect(await next.read()).toContain('"version":1');
+    } finally {
+      await next.close();
+    }
+  } finally {
+    vi.useRealTimers();
+  }
+
+  // A user who can no longer read a view of the page gets no renewed token.
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  const denied = await openStream(app, renewedPath);
+  try {
+    expect(await denied.read()).toContain('"version":1');
+    expect(await denied.read()).toContain("event: ready");
+    denyView();
+    const reconnect = await denied.read();
+    expect(reconnect).toContain("event: reconnect");
+    expect(reconnect).toContain("data: null");
+  } finally {
+    await denied.close();
     vi.restoreAllMocks();
   }
 });

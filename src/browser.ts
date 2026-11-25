@@ -3,6 +3,7 @@ import { morphView } from "./morph.js";
 import {
   events,
   isJsonValue,
+  isPageToken,
   outletAttributes,
   streamParams,
 } from "./protocol.js";
@@ -57,6 +58,8 @@ function updateViews(
   signalRuntime: SignalRuntime
 ) {
   let active = true;
+  /** The stream URL of the page's latest token, which each `reconnect` may renew. */
+  let streamEndpoint = endpoint;
   let connection: EventSource | undefined;
   let views = new Map<string, HTMLElement>();
   /** The highest version applied to each node on the current response. */
@@ -127,7 +130,7 @@ function updateViews(
     if (!keepStatus) setStatus("connecting");
     if (!hasConnected) for (const key of views.keys()) pristine.add(key);
     hasConnected = true;
-    const url = new URL(endpoint);
+    const url = new URL(streamEndpoint);
     for (const key of views.keys()) {
       url.searchParams.append(streamParams.view, key);
       if (pristine.has(key))
@@ -236,10 +239,13 @@ function updateViews(
       source.close();
       clearViews();
     });
-    source.addEventListener(events.reconnect, () => {
+    source.addEventListener(events.reconnect, (event) => {
       if (source !== connection) return;
       source.close();
       connection = undefined;
+      const token = readData(event);
+      // A page token is one path segment, so it replaces only the last one.
+      if (isPageToken(token)) streamEndpoint = new URL(token, streamEndpoint);
       synchronize({ keepStatus: true });
     });
     source.addEventListener(events.evicted, () => {

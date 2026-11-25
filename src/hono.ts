@@ -108,7 +108,10 @@ function connectSse(stream: SSEStreamingApi): LiveConnection {
           await stream.writeSSE({ event: events.denied, data: "{}" });
           break;
         case "reconnect":
-          await stream.writeSSE({ event: events.reconnect, data: "{}" });
+          await stream.writeSSE({
+            event: events.reconnect,
+            data: JSON.stringify(message.token ?? null),
+          });
           break;
         case "evicted":
           await stream.writeSSE({ event: events.evicted, data: "{}" });

@@ -18,11 +18,13 @@ export type LiveMessage =
 /**
  * The last message of a stream the runtime ends itself: `reconnect` at the
  * stream's lifetime, and `evicted` when newer streams of the session take its
- * slot.
+ * slot. A `reconnect` carries a renewed page token when the stream's user
+ * could still read every top-level view of the page, and the browser opens
+ * the next stream with it.
  */
-export interface StreamStop {
-  type: "reconnect" | "evicted";
-}
+export type StreamStop =
+  | { type: "reconnect"; token?: string }
+  | { type: "evicted" };
 
 export interface LiveConnection {
   readonly signal: AbortSignal;

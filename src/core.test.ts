@@ -9,6 +9,7 @@ import type {
   LiveDiagnostic,
   LiveMessage,
   LiveRenderer,
+  OpenPage,
   PageRenderContext,
   Principal,
 } from "./core.js";
@@ -808,6 +809,7 @@ function snapshotPage(
       event: LiveDiagnostic<ReturnType<typeof leafChanged>>
     ) => void;
     readRevision?: () => number | Promise<number>;
+    maxStreamMs?: number;
   } = {}
 ) {
   const runtime = createLiveRuntime<
@@ -818,6 +820,9 @@ function snapshotPage(
     renderer,
     pubsub: createMemoryPubSub(),
     ...(options.onDiagnostic && { onDiagnostic: options.onDiagnostic }),
+    ...(options.maxStreamMs !== undefined && {
+      maxStreamMs: options.maxStreamMs,
+    }),
   });
   const view = runtime.live({
     name: "leaf",
@@ -1477,12 +1482,15 @@ it("accepts the same page key in base64 and base64url", async () => {
 function recordingConnection() {
   const lifetime = new AbortController();
   const messages: LiveMessage["type"][] = [];
+  const received: LiveMessage[] = [];
   return {
     messages,
+    received,
     signal: lifetime.signal,
     close: () => lifetime.abort(),
     send: async (message: LiveMessage) => {
       messages.push(message.type);
+      received.push(message);
     },
   };
 }
@@ -1534,6 +1542,175 @@ it("asks the browser to reconnect at a random time in the last tenth of maxStrea
 
   for (const maxStreamMs of [0, 1.5, 2_147_483_648])
     expect(() => counterRuntime(store, { maxStreamMs })).toThrow(RangeError);
+});
+
+/** Runs a stream until the runtime ends it at its lifetime and returns its last message. */
+async function endAtLifetime(
+  page: OpenPage<Principal>,
+  refreshUser: () => Principal | null
+) {
+  if (page.status !== "open") throw new Error("Expected an open page");
+  const connection = recordingConnection();
+  const live = page.connect(connection, refreshUser);
+  await vi.advanceTimersByTimeAsync(1_000);
+  await live;
+  return connection.received.at(-1);
+}
+
+it("renews the page token when a stream reaches its lifetime, so a connected page outlives pageLifetimeMs", async () => {
+  const store = { count: 0 };
+  const counter = counterRuntime(store, {
+    maxStreamMs: 1_000,
+    pageLifetimeMs: 1_500,
+  });
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  try {
+    const token = await renderCounter(counter);
+    const last = await endAtLifetime(
+      await counter.runtime.openPage(token, counterKeys, viewer),
+      () => viewer
+    );
+    if (last?.type !== "reconnect" || last.token === undefined)
+      throw new Error("Expected a reconnect with a renewed token");
+    expect(last.token).not.toBe(token);
+
+    // Past the SSR token's lifetime, only the renewed token opens the page.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      (await counter.runtime.openPage(token, counterKeys, viewer)).status
+    ).toBe("expired");
+    expect(
+      (await counter.runtime.openPage(last.token, counterKeys, viewer)).status
+    ).toBe("open");
+    expect(
+      (
+        await counter.runtime.openPage(last.token, counterKeys, {
+          sessionId: "other",
+        })
+      ).status
+    ).toBe("denied");
+    await expectCounterUpdates(
+      await counter.runtime.openPage(last.token, counterKeys, viewer),
+      counter.runtime,
+      store
+    );
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
+});
+
+it("keeps the SSR snapshots in a renewed token for views the browser still shows as SSR left them", async () => {
+  const store = { value: 0, reads: 0 };
+  const diagnostics: string[] = [];
+  const { runtime, render } = snapshotPage(store, {
+    maxStreamMs: 1_000,
+    onDiagnostic: (event) => diagnostics.push(event.type),
+  });
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  try {
+    const token = await render();
+    const pristine = { views: ["leaf"], pristine: ["leaf"] };
+    const last = await endAtLifetime(
+      await runtime.openPage(token, pristine, viewer),
+      () => viewer
+    );
+    if (last?.type !== "reconnect" || last.token === undefined)
+      throw new Error("Expected a reconnect with a renewed token");
+    diagnostics.length = 0;
+    const reads = store.reads;
+    await endAtLifetime(
+      await runtime.openPage(last.token, pristine, viewer),
+      () => viewer
+    );
+    expect(diagnostics).toContain("initial-sync-skipped");
+    expect(store.reads).toBe(reads);
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
+});
+
+it("renews no token for a stream whose user lost access at its lifetime", async () => {
+  const store = { count: 0 };
+  const access = { counter: true, extra: true };
+  const runtime = createLiveRuntime<Principal, CounterEvent, string>({
+    renderer,
+    pubsub: createMemoryPubSub(),
+    maxStreamMs: 1_000,
+  });
+  const counter = runtime.live({
+    name: "counter",
+    subscribe: () => [counterChanged("all")],
+    authorize: () => access.counter,
+    load: () => store.count,
+    render: String,
+  });
+  // A view the page placed but this stream does not ask for.
+  const extra = runtime.live({
+    name: "extra",
+    subscribe: () => [counterChanged("extra")],
+    authorize: () => access.extra,
+    load: () => "extra",
+    render: String,
+  });
+  const token = readToken(
+    await runtime.renderPage(
+      viewer,
+      async (page, key) =>
+        streamToken(key) +
+        (await page.view(counter, {})) +
+        (await page.view(extra, {}))
+    )
+  );
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  try {
+    const renew = async (refreshUser: () => Principal | null) =>
+      endAtLifetime(
+        await runtime.openPage(token, counterKeys, viewer),
+        refreshUser
+      );
+    const renewed = await renew(() => viewer);
+    expect(renewed?.type === "reconnect" && typeof renewed.token).toBe(
+      "string"
+    );
+
+    let current: Principal | null = viewer;
+    const lost = [
+      () => {
+        access.counter = false;
+      },
+      () => {
+        access.extra = false;
+      },
+      () => {
+        current = null;
+      },
+      () => {
+        current = { sessionId: "other" };
+      },
+    ];
+    for (const loseAccess of lost) {
+      access.counter = true;
+      access.extra = true;
+      current = viewer;
+      const page = await runtime.openPage(token, counterKeys, viewer);
+      if (page.status !== "open") throw new Error("Expected an open page");
+      const connection = recordingConnection();
+      const live = page.connect(connection, () => current);
+      await vi.advanceTimersByTimeAsync(899);
+      loseAccess();
+      await vi.advanceTimersByTimeAsync(101);
+      await live;
+      expect(connection.received.at(-1)).toEqual({ type: "reconnect" });
+    }
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
 });
 
 it("keeps streaming and unregisters a stream whose displaced stream fails to close", async () => {

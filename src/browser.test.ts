@@ -50,9 +50,9 @@ jsdom.virtualConsole.on("jsdomError", (error) => {
 });
 
 /** Loads the runtime into a page with `body`, as a fresh page load would. */
-async function loadPage(body: string) {
+async function loadPage(body: string, stream = "/_hypersig/stream") {
   window.dispatchEvent(new Event("pagehide"));
-  document.body.innerHTML = `<script data-hs-stream="/_hypersig/stream" data-hs-draft-scope="page"></script>${body}`;
+  document.body.innerHTML = `<script data-hs-stream="${stream}" data-hs-draft-scope="page"></script>${body}`;
   vi.resetModules();
   await import("./browser.js");
 }
@@ -302,6 +302,47 @@ it("reopens the stream at once on reconnect without showing it disconnected", as
   second.dispatchEvent(new Event("open"));
   second.emit(events.update, { target: "cart", version: 1, html: "fresh" });
   expect(find("#cart").textContent).toBe("fresh");
+});
+
+it("opens the next stream with the page token a reconnect renews", async () => {
+  await loadPage(
+    `<div id="cart" data-hs-view="cart">cart</div>`,
+    "/_hypersig/stream/ssr-token"
+  );
+  const first = latestSource();
+  first.emit(events.ready);
+
+  first.emit(events.reconnect, "renewed_Token-1");
+  const second = latestSource();
+  expect(second).not.toBe(first);
+  expect(second.url.origin).toBe(location.origin);
+  expect(second.url.pathname).toBe("/_hypersig/stream/renewed_Token-1");
+  expect(second.url.searchParams.getAll(streamParams.view)).toEqual(["cart"]);
+
+  // A reconnect without a token keeps the renewed one.
+  second.emit(events.reconnect, null);
+  expect(latestSource().url.pathname).toBe("/_hypersig/stream/renewed_Token-1");
+
+  // Data that is not a page token never moves the stream elsewhere.
+  for (const data of [
+    "../evil",
+    "//evil.example/x",
+    "https://evil.example/_hypersig/stream/x",
+    "a%2Fb",
+    "a.b",
+    "",
+    "a".repeat(6_145),
+    42,
+    { token: "x" },
+  ]) {
+    const source = latestSource();
+    source.emit(events.reconnect, data);
+    const next = latestSource();
+    expect(next).not.toBe(source);
+    expect(next.url.href).toBe(
+      `${location.origin}/_hypersig/stream/renewed_Token-1?view=cart&pristine=cart`
+    );
+  }
 });
 
 it("stops live updates on evicted and keeps the views", async () => {

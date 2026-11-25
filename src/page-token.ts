@@ -1,4 +1,4 @@
-import { isJsonValue } from "./protocol.js";
+import { isJsonValue, isPageToken } from "./protocol.js";
 import type { JsonValue } from "./protocol.js";
 
 /** What a page token holds: everything needed to rebuild the page's top-level views. */
@@ -25,14 +25,10 @@ export type PageTokenResult =
   | { status: "invalid" }
   | { status: "expired" };
 
-/** Longer tokens would approach URL length limits in browsers and proxies. */
-export const maxTokenLength = 6144;
-
 const keyLength = 32;
 /** A random 96-bit nonce per token stays unique for about 2^32 tokens per key. */
 const ivLength = 12;
 const tagLength = 16;
-const tokenPattern = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Seals page claims with the first key and opens them with any key, so a key
@@ -97,7 +93,7 @@ async function decrypt(
   additionalData: Uint8Array<ArrayBuffer>,
   token: string
 ) {
-  if (token.length > maxTokenLength || !tokenPattern.test(token)) return;
+  if (!isPageToken(token)) return;
   const sealed = decodeBase64(token);
   // Unused trailing bits would let several strings name one token, and one
   // connection is kept per token string.

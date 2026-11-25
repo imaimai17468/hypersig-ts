@@ -10,9 +10,9 @@ import type {
   SharedLoadOptions,
   SharedValue,
 } from "./live.js";
-import { createPageSealer, maxTokenLength } from "./page-token.js";
+import { createPageSealer } from "./page-token.js";
 import type { PageClaims, PageSnapshot } from "./page-token.js";
-import { isJsonValue } from "./protocol.js";
+import { isJsonValue, maxTokenLength } from "./protocol.js";
 import type { JsonValue } from "./protocol.js";
 import {
   createViewInstance,
@@ -55,10 +55,17 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * End a stream once it has been open this long (default 30 minutes). Each
    * stream ends at a uniformly random time from 90% to 100% of this, so
    * streams that opened together do not reconnect together. The last message
-   * is `reconnect`, on which the browser runtime opens a new stream with the
-   * same token at once, without showing the page as disconnected or reloading
-   * it, and the adapter authenticates the new request with the browser's
-   * current credentials.
+   * is `reconnect`, on which the browser runtime opens a new stream at once,
+   * without showing the page as disconnected or reloading it, and the adapter
+   * authenticates the new request with the browser's current credentials.
+   * Right before sending it, the runtime re-authenticates the stream's user
+   * and, while that user is in the same session and can still read every
+   * top-level view of the page, seals the page again with a new
+   * `pageLifetimeMs`: the same session, views, params and SSR snapshots. The
+   * `reconnect` carries that token, and the browser opens the next stream
+   * with it, so a page that stays connected keeps updating past its first
+   * token's expiry. Otherwise `reconnect` carries no token and the browser
+   * reopens with the token it has.
    *
    * While a stream stays open, the adapter re-runs authentication against the
    * credentials it received at connect time: `createHypersig` replays the
@@ -76,10 +83,20 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * closes it. The browser runtime then stops instead of reconnecting, which
    * would evict the next-oldest stream in turn: it keeps the views as they
    * are, sets the connection status to `too-many-tabs`, and opens a stream
-   * again only when the page is reloaded. A stream that a new stream of the
-   * same page replaces just closes. The count is per process, not across
-   * instances, so applications and infrastructure should still rate-limit
-   * page renders and `/_hypersig/stream/*` requests.
+   * again only when the page is reloaded. Unless the page renders
+   * `connectionStatusOutlet()`, only `data-hs-connection` changes, so render
+   * the outlet to tell the user. A stream that a new stream of the same page
+   * replaces just closes. The count is per process, not across instances, so
+   * applications and infrastructure should still rate-limit page renders and
+   * `/_hypersig/stream/*` requests.
+   *
+   * Sessions that share a `sessionId`, such as `"anonymous"` for every
+   * signed-out visitor, share one count and evict each other's streams, so
+   * give every session its own id. Send `frame-ancestors` (or
+   * `X-Frame-Options`) with pages and set session cookies `SameSite=Lax` or
+   * `Strict`, so a cross-site page cannot open the user's pages in frames to
+   * evict their tabs; `Strict` also keeps a popup another site opens from
+   * carrying the session.
    */
   maxStreamsPerSession?: number;
   /**
@@ -108,7 +125,10 @@ export interface LiveRuntimeOptions<Event extends Topic, Markup> {
    * empty string; `createHypersig` defaults it to its normalized `origin`.
    */
   pageContext?: string;
-  /** How long a rendered page can open a stream, counted from SSR (default 12 hours). */
+  /**
+   * How long a page token can open a stream, counted from SSR or from when a
+   * `reconnect` renewed it (default 12 hours). See `maxStreamMs`.
+   */
   pageLifetimeMs?: number;
 }
 
@@ -306,7 +326,8 @@ export function createLiveRuntime<
      * another session) to a 403 response, and `invalid-count` and
      * `unknown-view` to 400 responses. Its connection writes the `reconnect`
      * and `evicted` messages as the SSE events of the same names, which the
-     * browser runtime reads to reopen at once or to stop. `refreshUser`
+     * browser runtime reads to reopen at once or to stop. The `reconnect`
+     * data is the message's `token` as a JSON string, or `null` without one. `refreshUser`
      * re-authenticates the stream's request throughout the stream, so it
      * should read revocable server-side state and not extend an idle expiry.
      */
@@ -337,9 +358,10 @@ export function createLiveRuntime<
         });
         return { status: "expired" };
       }
+      const pageViews = rebuilt.views;
       const views = new Map<string, ViewInstance<User, Event>>();
       for (const key of keys) {
-        const view = rebuilt.views.get(key);
+        const view = pageViews.get(key);
         if (!view) return { status: "unknown-view" };
         views.set(key, view);
       }
@@ -366,6 +388,28 @@ export function createLiveRuntime<
               else stop({ type: "evicted" });
             },
           };
+          /**
+           * Seals the page again with a new lifetime while the stream's user
+           * can still read every top-level view the token holds, so a page
+           * that stays connected keeps opening streams past `pageLifetimeMs`.
+           */
+          async function renewToken() {
+            const current = await refreshUser();
+            if (current?.sessionId !== claims.sessionId) return;
+            for (const view of pageViews.values())
+              if (!(await view.authorize(current))) return;
+            // Only `expiresAt` differs from the claims the page was rendered
+            // with, so the token stays as long as the one SSR checked.
+            return sealer.seal({
+              format: 1,
+              sessionId: claims.sessionId,
+              expiresAt: Date.now() + pageLifetimeMs,
+              views: claims.views,
+              // The browser claims a view pristine only while it shows the
+              // SSR HTML these snapshots describe.
+              ...(claims.snapshots && { snapshots: claims.snapshots }),
+            });
+          }
           let deadline: ReturnType<typeof setTimeout> | undefined;
           let version = 0;
           try {
@@ -378,7 +422,19 @@ export function createLiveRuntime<
               }
             }
             deadline = setTimeout(
-              () => stop({ type: "reconnect" }),
+              () => {
+                void renewToken()
+                  .catch((error: unknown) => {
+                    console.error(error);
+                    return undefined;
+                  })
+                  .then((renewed) =>
+                    stop({
+                      type: "reconnect",
+                      ...(renewed && { token: renewed }),
+                    })
+                  );
+              },
               streamLifetime(maxStreamMs, Math.random())
             );
             await streamPage(
