@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the version is 0.x, a minor version may contain breaking changes; each one is listed here.
+
+## [Unreleased]
+
+## [0.1.0] - 2026-11-25
+
+First public release on npm as `hypersig-ts`. Earlier internal versions, including the `1.0.0` placeholder in `package.json`, were never published.
+
+### Added
+
+- **Live Views over SSE.** `hypersig.live()` defines a server-rendered region with `subscribe`, `authorize`, `load`, and `render`. When the application publishes a Topic after committing a change, only the subscribed views render again, and their HTML streams to open pages over Server-Sent Events, where the browser runtime morphs it into place. A reconnect reads the current state again. Nested views, keyed instances, and opt-in sharing of identical reads and renders across connections are supported.
+- **Typed Actions, Topics, and forms.** `hypersig.action()` takes Standard Schema input and output, an `authorize` check, and `execute`. `bind()` and `call()` check button inputs, `form()` and `field()` check form field names, and `fieldError()` marks where a field's message goes. `control()` derives `required`, `minLength`, `maxLength`, `pattern`, `min`, and `max` from the input schema's JSON Schema without making the browser stricter than the server. `topic()` gives publishers and subscribers one type for each change.
+- **Browser signals.** `signals()` and `signalFamily()` hold browser-only JSON state whose expressions are data the runtime evaluates, so pages work under `script-src 'self'` without `eval`. Bindings render on the server for a correct first paint. Statements include `set`, `toggle`, `focus`, and `action.call()`, triggered by `on.click`, `on.input`, `on.change`, `on.keydown` (typed key maps), `on.focusEnter`, and `on.focusLeave`, together with `refs()`, `timer()` for delays and debouncing, and `when()` for branching. Expressions cover numbers, booleans, strings, and arrays. `action.pending()`, `data-hs-pending`, and drafts restored with `form({ draft: true })` show progress and keep unfinished input.
+- **Page tokens.** A page's view registrations are sealed into an encrypted token bound to the app (`pageContext`), so any process holding the same `pageKeys` can continue the page. Streams end after `maxStreamMs` to pick up fresh credentials, and the token is renewed while the user can still read the page.
+- **Custom elements and React islands.** `customElement()` declares an element's tag, attributes (including JSON), and events once as a value shared by the server and the browser. `CustomTag` renders it, a signal scope's `bindElement()` binds its attributes to signals, `defineElement()` implements it in the browser from `hypersig-ts/element`, and `reactElement()` mounts a React component as the element from `hypersig-ts/react`.
+- **Security defaults.** Actions compare the request's `Origin` header with the configured origin and validate input on the server. Live View HTML is sanitized with DOMPurify before it enters the page. `bindAttr` rejects `href`, `src`, `on*`, and `style`. Each session holds at most `maxStreamsPerSession` streams per process, and automatic reloads after a reset are limited.
+- A Hono adapter (`createHypersig`), a renderer-agnostic core (`hypersig-ts/core`), typed outlets (`errorOutlet()`, `connectionStatusOutlet()`), diagnostics events, and examples: Counter, TodoMVC, Shared memo, Rating, Sortable, Widgets, and Void with Cloudflare Workers.
+
+[Unreleased]: https://github.com/imaimai17468/hypersig-ts/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/imaimai17468/hypersig-ts/releases/tag/v0.1.0
