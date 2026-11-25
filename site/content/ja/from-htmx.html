@@ -1,0 +1,433 @@
+<h1>htmx からの移行</h1>
+<p class="lead">
+  htmx も hypersig.ts も、HTML をサーバーで生成します。違うのは、更新後の HTML
+  がどこから届くかです。htmx
+  ではリクエストへのレスポンスを対象の要素に差し込みます。hypersig.ts では
+  Action がデータを変更して Topic を通知し、その Topic を購読するすべての Live
+  View がサーバーで描画し直され、SSE で届きます。
+</p>
+
+<section id="model">
+  <h2>考え方の違い</h2>
+  <p>
+    htmx の要素は
+    URL、差し込み先のセレクター、差し込み方を指定し、サーバーはその 1
+    件のリクエストに、差し込む断片で応えます。ページのほかの部分やほかのタブは、レスポンスが指定したときだけ変わります。
+  </p>
+  <p>
+    hypersig.ts の Action のレスポンスが伝えるのは、成功か失敗かと Action
+    の出力だけです。変更を確定した Action は Topic を通知します。各 Live View
+    は自分が依存する Topic
+    を宣言しているので、サーバーは開いているすべてのページで購読している表示だけを描画し、ブラウザはそれを
+    morph で反映します。Action
+    を送ったページにも、ほかのページと同じ経路で更新が届きます。
+  </p>
+  <p>
+    htmx のページが文字列として繰り返し書く名前（URL、項目名、差し込み先の
+    ID、イベント名）は、hypersig.ts では値です。Action は
+    <code>hypersig.action()</code>
+    が返したオブジェクトから参照するので、Action
+    名の変更、フォームの項目名の打ち間違い、形の違う入力は、実行時に失敗するリクエストではなく型エラーになります。
+  </p>
+</section>
+
+<section id="map">
+  <h2>対応表</h2>
+  <dl>
+    <dt><code>hx-post</code>、<code>hx-get</code></dt>
+    <dd>
+      Action です。ボタンには <code>action.bind(input)</code>、フォームには
+      <code>action.form()</code>、Signal の文では
+      <code>action.call(input)</code> を使います。Action は POST
+      リクエストです。データの読み取りは、ページか Live View の描画で行います。
+    </dd>
+    <dt><code>hx-target</code>、<code>hx-swap</code></dt>
+    <dd>
+      <code>page.view(view, props)</code> で置く Live View
+      の境界です。表示全体をサーバーで描画し、morph
+      で反映するので、フォーカスや入力途中の値は残ります。<code>beforeend</code>
+      のような差し込み方はないので、一覧全体を表示の中で描画します。
+    </dd>
+    <dt><code>hx-swap-oob</code></dt>
+    <dd>
+      同じ Topic を購読する複数の Live View です。1
+      回の通知ですべてが更新されます。
+    </dd>
+    <dt><code>hx-vals</code>、<code>hx-include</code></dt>
+    <dd>
+      <code>bind()</code> や <code>call()</code> に渡す型付きの入力か、<code
+        >action.field()</code
+      >
+      で名前を付けたフォームの項目です。
+    </dd>
+    <dt><code>hx-trigger</code></dt>
+    <dd>
+      <code>on.click</code
+      >、<code>on.input</code>、<code>on.change</code>、<code>on.keydown</code>、<code>on.focusEnter</code>、<code
+        >on.focusLeave</code
+      >
+      です。<code>delay:</code> 修飾子は、イベントのたびに
+      <code>after()</code> が数え直す <code>timer()</code> に置き換えます。<code
+        >every 2s</code
+      >
+      のようなポーリングの代わりに、データが変わったときに Topic を通知します。
+    </dd>
+    <dt><code>hx-indicator</code>、<code>htmx-request</code></dt>
+    <dd>
+      送信中のフォームやボタンに付く <code>data-hs-pending</code> 属性か、<code
+        >action.pending()</code
+      >
+      の Signal です。
+    </dd>
+    <dt><code>hx-sync</code>、<code>hx-disabled-elt</code></dt>
+    <dd>
+      リクエストが処理中のフォームやボタンは、もう一度送信されません。ほかの操作を止めるには
+      <code>bindAttr({ disabled: action.pending() })</code> を使います。
+    </dd>
+    <dt>SSE 拡張</dt>
+    <dd>
+      組み込みです。各ページは 1
+      本のストリームを開き、そのページのすべての表示の更新を受け取ります。切れると自動で再接続し、その際にサーバーの現在の状態を読み直します。
+    </dd>
+    <dt><code>hx-boost</code>、<code>hx-push-url</code></dt>
+    <dd>
+      通常のリンクです。リンクをたどると次のページをサーバーから読み込みます。クライアント側の画面遷移や履歴の操作はありません。リンクは
+      Hono の型付きの <code>$path()</code> で作ります。
+    </dd>
+    <dt>Alpine.js、_hyperscript</dt>
+    <dd>
+      メニューの開閉や入力中の値など、ブラウザだけで決まる状態は Signal
+      で書きます。JavaScript のライブラリや React
+      の部品はカスタム要素の中で動かします。
+    </dd>
+    <dt>エラーのレスポンス</dt>
+    <dd>
+      項目ごとの検証メッセージには
+      <code>action.fieldError(name)</code>、Action の失敗メッセージには
+      <code>errorOutlet()</code> を使います。
+    </dd>
+  </dl>
+</section>
+
+<section id="counter">
+  <h2>ボタンで一部を更新する</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;div id="counter"&gt;
+  &lt;output&gt;0&lt;/output&gt;
+  &lt;button hx-post="/increment" hx-target="#counter" hx-swap="outerHTML"&gt;
+    Increment
+  &lt;/button&gt;
+&lt;/div&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const counterChanged = topic("counter", () =&gt; "main");
+
+const increment = hypersig.action("increment", {
+  input: v.object({}),
+  output: v.number(),
+  authorize: () =&gt; true,
+  async execute() {
+    count += 1;
+    await hypersig.publish(counterChanged());
+    return count;
+  },
+});
+
+const counter = hypersig.live({
+  name: "counter",
+  subscribe: () =&gt; [counterChanged()],
+  authorize: () =&gt; true,
+  load: () =&gt; count,
+  render: (value) =&gt; (
+    &lt;div&gt;
+      &lt;output&gt;{value}&lt;/output&gt;
+      &lt;button type="button" {...increment.bind({})}&gt;
+        Increment
+      &lt;/button&gt;
+    &lt;/div&gt;
+  ),
+});
+
+// ページでは {page.view(counter, {})} と置きます。</code></pre>
+  </figure>
+  <p>
+    htmx のサーバー側のルートは、新しい
+    <code>#counter</code> の断片を返します。hypersig.ts では
+    <code>execute</code> は数値を返し、HTML は
+    <code>counter</code> から届きます。<code>counter</code> は
+    <code>counterChanged()</code>
+    を購読しているので、この表示があるすべてのページで描画し直されます。
+  </p>
+</section>
+
+<section id="search">
+  <h2>入力に合わせた検索</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;input
+  type="search"
+  name="q"
+  hx-post="/search"
+  hx-trigger="input changed delay:300ms"
+  hx-target="#results"
+/&gt;
+&lt;ul id="results"&gt;&lt;/ul&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const resultsChanged = topic("search", (sessionId: string) =&gt; sessionId);
+const queries = new Map&lt;string, string&gt;();
+
+const search = hypersig.action("search", {
+  input: v.object({ q: v.pipe(v.string(), v.maxLength(100)) }),
+  output: v.null(),
+  authorize: () =&gt; true,
+  async execute({ q }, { sessionId }) {
+    queries.set(sessionId, q);
+    await hypersig.publish(resultsChanged(sessionId));
+    return null;
+  },
+});
+
+const results = hypersig.live({
+  name: "search-results",
+  subscribe: (_params, { sessionId }) =&gt; [resultsChanged(sessionId)],
+  authorize: () =&gt; true,
+  load: (_params, { sessionId }) =&gt; findContacts(queries.get(sessionId) ?? ""),
+  render: (contacts) =&gt; (
+    &lt;ul&gt;
+      {contacts.map((name) =&gt; (
+        &lt;li&gt;{name}&lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  ),
+});
+
+const searchBox = signals({ q: "" }, { name: "search-box" });
+const searchDelay = timer({ name: "search-delay" });
+
+function SearchInput() {
+  const s = searchBox.with({});
+  return (
+    &lt;label {...s.init()}&gt;
+      Search
+      &lt;input
+        type="search"
+        {...s.bindValue(s.q)}
+        {...on.input([searchDelay.after(300, [search.call({ q: s.q })])])}
+      /&gt;
+    &lt;/label&gt;
+  );
+}</code></pre>
+  </figure>
+  <p>
+    Action は検索語をサーバーに保存し、セッションをキーにした Topic
+    を通知します。そのため結果は、そのセッションのどのタブでも、最後に入力された検索語に合わせて変わります。<code
+      >searchDelay.after(300, ...)</code
+    >
+    は、<code>delay:300ms</code>
+    と同じく入力のたびに前の予約を取り消します。すでにページにある項目をリクエストなしで絞り込むなら、<code
+      >lit(name).includes(s.q)</code
+    >
+    のような式を <code>bindShow</code> に渡します。
+  </p>
+</section>
+
+<section id="pending">
+  <h2>処理中の表示</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;button hx-post="/notes" hx-indicator="#spinner"&gt;Add&lt;/button&gt;
+&lt;span id="spinner" class="htmx-indicator"&gt;Saving…&lt;/span&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts（CSS）</figcaption>
+    <pre><code>/* ランタイムは送信中のフォームやボタンに data-hs-pending を付けます。 */
+form[data-hs-pending] button {
+  opacity: 0.55;
+}</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts（Signal）</figcaption>
+    <pre><code>const noteForm = signals({ text: "" }, { name: "note-form" });
+
+function NoteForm() {
+  const f = noteForm.with({});
+  return (
+    &lt;form {...f.init()} {...addNote.form({ resetOnSuccess: true })}&gt;
+      &lt;input {...f.bindValue(f.text)} name={addNote.field("text")} /&gt;
+      &lt;button type="submit" {...f.bindAttr({ disabled: addNote.pending() })}&gt;
+        Add
+      &lt;/button&gt;
+      &lt;span {...f.bindShow(addNote.pending())}&gt;Saving…&lt;/span&gt;
+    &lt;/form&gt;
+  );
+}</code></pre>
+  </figure>
+  <p>
+    <code>data-hs-pending</code> は、Live View
+    の更新が先に届いても、その要素の最後のリクエストが終わるまで残ります。ページの値が変わるのは、リクエストを送ったときではなく、確定した更新が届いたときです。
+  </p>
+</section>
+
+<section id="oob">
+  <h2>Out-of-band の差し込み</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;!-- response to POST /notes --&gt;
+&lt;li&gt;New note&lt;/li&gt;
+&lt;span id="note-count" hx-swap-oob="true"&gt;3 notes&lt;/span&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const addNote = hypersig.action("add-note", {
+  input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
+  output: v.null(),
+  authorize: () =&gt; true,
+  async execute({ text }) {
+    await saveNote(text);
+    await hypersig.publish(notesChanged());
+    return null;
+  },
+});
+
+// どちらの表示も notesChanged() を購読しているので、両方が描画し直されます。
+const noteCount = hypersig.live({
+  name: "note-count",
+  subscribe: () =&gt; [notesChanged()],
+  authorize: () =&gt; true,
+  load: () =&gt; readNoteCount(),
+  render: (n) =&gt; &lt;span&gt;{n} notes&lt;/span&gt;,
+});</code></pre>
+  </figure>
+  <p>
+    Action
+    は、ページのどこにメモが表示されているかを知る必要がありません。メモの一覧の表示と
+    <code>noteCount</code> がどちらも <code>notesChanged()</code>
+    を購読していれば、同じ Topic
+    を通知するバックグラウンド処理からも更新されます。
+  </p>
+</section>
+
+<section id="forms">
+  <h2>フォームと検証エラー</h2>
+  <pre><code>&lt;form {...addNote.form({ resetOnSuccess: true })}&gt;
+  &lt;input name={addNote.field("text")} /&gt;
+  &lt;p {...addNote.fieldError("text")}&gt;&lt;/p&gt;
+  &lt;button type="submit"&gt;Add&lt;/button&gt;
+  &lt;p role="alert" {...errorOutlet()}&gt;&lt;/p&gt;
+&lt;/form&gt;</code></pre>
+  <p>
+    <code>addNote.field("text")</code>
+    は、名前を入力スキーマと照合します。送信された値はサーバーが検証し、ランタイムは項目のメッセージを
+    <code>fieldError</code> で示した要素に、Action の失敗を
+    <code>errorOutlet()</code> に書き込みます。JavaScript
+    なしで送信されたフォームを受け付けるには、Action に
+    <code>formResponse</code> を定義し、ページを返すかリダイレクトします。
+  </p>
+</section>
+
+<section id="alpine">
+  <h2>Alpine.js の代わりにブラウザ側の状態を書く</h2>
+  <figure class="example">
+    <figcaption>htmx と Alpine.js</figcaption>
+    <pre><code>&lt;div x-data="{ open: false }"&gt;
+  &lt;button @click="open = !open" :aria-expanded="open"&gt;Menu&lt;/button&gt;
+  &lt;nav x-show="open"&gt;…&lt;/nav&gt;
+&lt;/div&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const menu = signals({ open: false }, { name: "menu" });
+
+function Menu() {
+  const m = menu.with({});
+  return (
+    &lt;div {...m.init()}&gt;
+      &lt;button
+        type="button"
+        {...m.bindAttr({ "aria-expanded": m.open })}
+        {...on.click([m.open.toggle()])}
+      &gt;
+        Menu
+      &lt;/button&gt;
+      &lt;nav {...m.bindShow(m.open)}&gt;…&lt;/nav&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+  </figure>
+  <p>
+    Signal
+    の式は型付きのメソッドで組み立て、データとして属性に入ります。初回の表示ではサーバーが束縛を評価するので、ランタイムが動き出す前からメニューは閉じた状態で描画されます。
+    <a href="../reference/#signals">ブラウザ側の Signal</a>
+  </p>
+</section>
+
+<section id="links">
+  <h2>hx-boost の代わりに通常のリンクを使う</h2>
+  <pre><code>const links = hc&lt;typeof app&gt;("/");
+const href = links.contacts[":id"].$path({ param: { id: "42" } });
+// &lt;a href={href}&gt;Contact&lt;/a&gt; はページをサーバーから読み込みます。</code></pre>
+  <p>
+    各ページはサーバーで丸ごと描画します。リンクを作るときに、Hono
+    がパスとクエリの型を確かめます。
+    <a href="../reference/#typed-links">型付きリンク</a>
+  </p>
+</section>
+
+<section id="csp">
+  <h2>Content Security Policy</h2>
+  <p>
+    htmx は <code>hx-on</code> のハンドラー、トリガーのフィルター、<code
+      >js:</code
+    >
+    の値を <code>eval</code> で評価します。そのため
+    <code>'unsafe-eval'</code> を許可しないポリシーでは
+    <code>htmx.config.allowEval = false</code>
+    が必要になり、これらの機能は使えなくなります。Alpine.js の標準ビルドも
+    <code>'unsafe-eval'</code> を必要とします。
+  </p>
+  <p>
+    hypersig.ts のランタイムは、自分のオリジンから配信する 1
+    つのスクリプトです。Signal の式と文はランタイムが解釈する JSON
+    なので、ページは <code>'unsafe-eval'</code> もインラインスクリプトも使わずに
+    <code>script-src 'self'</code>
+    で動きます。Live View の HTML は、ページに入る前に DOMPurify
+    で無害化されます。サンプルは
+    <code>default-src 'none'; script-src 'self'; connect-src 'self'</code>
+    を送っています。
+  </p>
+</section>
+
+<section id="differences">
+  <h2>異なる動作</h2>
+  <ul>
+    <li>
+      ライブ更新には JavaScript と SSE
+      の接続が必要です。どちらもない場合、ページはサーバーで描画した HTML
+      を表示し、通常の送信で HTML を返すのは
+      <code>formResponse</code> を定義した Action だけで、それ以外の Action は
+      JSON を返します。
+    </li>
+    <li>
+      更新は Live View
+      全体を置き換えます。一緒に変わるものごとに表示を分け、あまり変わらない大きな一覧は、頻繁に更新される表示の外に置きます。
+    </li>
+    <li>
+      表示はサーバーの状態から読み込みます。検索語のように 1
+      件のリクエストの中にしかない値は、入力に合わせた検索の例のようにサーバーに保存します。
+    </li>
+    <li>
+      Live View と Action は、それぞれ
+      <code>authorize</code> でアクセスを確かめます。<code>authenticate</code>
+      が <code>null</code> を返すと <code>hypersig.page()</code> は 401
+      を返すので、匿名の訪問者にも、それぞれ別の id のセッションを与えます。
+    </li>
+  </ul>
+  <p>
+    <a href="../concepts/">基本概念</a> ·
+    <a href="../limits/">性能と制約</a>
+  </p>
+</section>

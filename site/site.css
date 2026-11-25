@@ -188,11 +188,16 @@ pre {
 .button:hover {
   text-decoration: underline;
 }
-.hero-example {
+.hero-example,
+.example {
   min-width: 0;
   margin: 0;
 }
-.hero-example figcaption {
+.article .example {
+  margin-top: 0.85rem;
+}
+.hero-example figcaption,
+.example figcaption {
   margin-bottom: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -283,7 +288,8 @@ pre {
 }
 .article p + p,
 .article p + pre,
-.article pre + p {
+.article pre + p,
+.article .example + p {
   margin-top: 0.85rem;
 }
 .article ul,

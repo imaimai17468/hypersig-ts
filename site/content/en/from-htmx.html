@@ -1,0 +1,417 @@
+<h1>Migrating from htmx</h1>
+<p class="lead">
+  htmx and hypersig.ts both render HTML on the server. They differ in where
+  updated HTML comes from: in htmx, the response to a request is swapped into a
+  target; in hypersig.ts, an Action changes data and publishes a Topic, and
+  every Live View subscribed to it renders again and arrives over SSE.
+</p>
+
+<section id="model">
+  <h2>The change in the model</h2>
+  <p>
+    An htmx element names a URL, a target selector, and a swap strategy, and the
+    server answers that one request with the fragment to insert. Other parts of
+    the page, and other tabs, change only if the response says so.
+  </p>
+  <p>
+    In hypersig.ts, the Action response reports only success or failure and the
+    Action's output. After it commits, the Action publishes a Topic. Each Live
+    View declares the Topics it depends on, so the server renders exactly the
+    views that subscribed, in every open page, and the browser morphs them into
+    place. The page that sent the Action receives its update the same way as
+    every other page.
+  </p>
+  <p>
+    The names an htmx page repeats as strings (URLs, field names, target IDs,
+    event names) are values in hypersig.ts. An Action is referenced through the
+    object <code>hypersig.action()</code> returned, so a renamed Action, a
+    misspelled form field, or an input of the wrong shape is a type error rather
+    than a request that fails at run time.
+  </p>
+</section>
+
+<section id="map">
+  <h2>Concept map</h2>
+  <dl>
+    <dt><code>hx-post</code>, <code>hx-get</code></dt>
+    <dd>
+      An Action: <code>action.bind(input)</code> on a button,
+      <code>action.form()</code> on a form, or <code>action.call(input)</code>
+      in signal statements. Actions are POST requests; read data by rendering a
+      page or a Live View.
+    </dd>
+    <dt><code>hx-target</code>, <code>hx-swap</code></dt>
+    <dd>
+      A Live View boundary placed with <code>page.view(view, props)</code>. The
+      whole view renders on the server and is morphed into place, which keeps
+      focus and unfinished input. There are no swap modes such as
+      <code>beforeend</code>; render the full list in the view instead.
+    </dd>
+    <dt><code>hx-swap-oob</code></dt>
+    <dd>
+      Several Live Views subscribed to the same Topic. Publishing it once
+      updates all of them.
+    </dd>
+    <dt><code>hx-vals</code>, <code>hx-include</code></dt>
+    <dd>
+      Typed input passed to <code>bind()</code> or <code>call()</code>, or the
+      form's fields, named with <code>action.field()</code>.
+    </dd>
+    <dt><code>hx-trigger</code></dt>
+    <dd>
+      <code>on.click</code>, <code>on.input</code>, <code>on.change</code>,
+      <code>on.keydown</code>, <code>on.focusEnter</code>, and
+      <code>on.focusLeave</code>. A <code>delay:</code> modifier becomes a
+      <code>timer()</code> whose <code>after()</code> restarts on each event.
+      Instead of polling with <code>every 2s</code>, publish a Topic when the
+      data changes.
+    </dd>
+    <dt><code>hx-indicator</code>, <code>htmx-request</code></dt>
+    <dd>
+      The <code>data-hs-pending</code> attribute on the sending form or button,
+      or the <code>action.pending()</code> signal.
+    </dd>
+    <dt><code>hx-sync</code>, <code>hx-disabled-elt</code></dt>
+    <dd>
+      A form or button with a request in flight is not sent again. Disable other
+      controls with <code>bindAttr({ disabled: action.pending() })</code>.
+    </dd>
+    <dt>SSE extension</dt>
+    <dd>
+      Built in. Each page opens one stream that carries the updates of all its
+      views, reconnects on its own, and reads the current state again when it
+      does.
+    </dd>
+    <dt><code>hx-boost</code>, <code>hx-push-url</code></dt>
+    <dd>
+      Ordinary links. Following one loads the next page from the server; there
+      is no client-side navigation or history handling. Build links with Hono's
+      typed <code>$path()</code>.
+    </dd>
+    <dt>Alpine.js, _hyperscript</dt>
+    <dd>
+      Signals for state only the browser decides, such as an open menu or an
+      input's value. A JavaScript library or a React component goes in a custom
+      element.
+    </dd>
+    <dt>Error responses</dt>
+    <dd>
+      <code>action.fieldError(name)</code> for a field's validation message and
+      <code>errorOutlet()</code> for an Action's failure message.
+    </dd>
+  </dl>
+</section>
+
+<section id="counter">
+  <h2>A button that updates a region</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;div id="counter"&gt;
+  &lt;output&gt;0&lt;/output&gt;
+  &lt;button hx-post="/increment" hx-target="#counter" hx-swap="outerHTML"&gt;
+    Increment
+  &lt;/button&gt;
+&lt;/div&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const counterChanged = topic("counter", () =&gt; "main");
+
+const increment = hypersig.action("increment", {
+  input: v.object({}),
+  output: v.number(),
+  authorize: () =&gt; true,
+  async execute() {
+    count += 1;
+    await hypersig.publish(counterChanged());
+    return count;
+  },
+});
+
+const counter = hypersig.live({
+  name: "counter",
+  subscribe: () =&gt; [counterChanged()],
+  authorize: () =&gt; true,
+  load: () =&gt; count,
+  render: (value) =&gt; (
+    &lt;div&gt;
+      &lt;output&gt;{value}&lt;/output&gt;
+      &lt;button type="button" {...increment.bind({})}&gt;
+        Increment
+      &lt;/button&gt;
+    &lt;/div&gt;
+  ),
+});
+
+// In the page: {page.view(counter, {})}</code></pre>
+  </figure>
+  <p>
+    The htmx server route returns the new <code>#counter</code> fragment. In
+    hypersig.ts, <code>execute</code> returns a number, and the HTML comes from
+    <code>counter</code>, which renders again in every page that shows it
+    because it subscribes to <code>counterChanged()</code>.
+  </p>
+</section>
+
+<section id="search">
+  <h2>Active search</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;input
+  type="search"
+  name="q"
+  hx-post="/search"
+  hx-trigger="input changed delay:300ms"
+  hx-target="#results"
+/&gt;
+&lt;ul id="results"&gt;&lt;/ul&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const resultsChanged = topic("search", (sessionId: string) =&gt; sessionId);
+const queries = new Map&lt;string, string&gt;();
+
+const search = hypersig.action("search", {
+  input: v.object({ q: v.pipe(v.string(), v.maxLength(100)) }),
+  output: v.null(),
+  authorize: () =&gt; true,
+  async execute({ q }, { sessionId }) {
+    queries.set(sessionId, q);
+    await hypersig.publish(resultsChanged(sessionId));
+    return null;
+  },
+});
+
+const results = hypersig.live({
+  name: "search-results",
+  subscribe: (_params, { sessionId }) =&gt; [resultsChanged(sessionId)],
+  authorize: () =&gt; true,
+  load: (_params, { sessionId }) =&gt; findContacts(queries.get(sessionId) ?? ""),
+  render: (contacts) =&gt; (
+    &lt;ul&gt;
+      {contacts.map((name) =&gt; (
+        &lt;li&gt;{name}&lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  ),
+});
+
+const searchBox = signals({ q: "" }, { name: "search-box" });
+const searchDelay = timer({ name: "search-delay" });
+
+function SearchInput() {
+  const s = searchBox.with({});
+  return (
+    &lt;label {...s.init()}&gt;
+      Search
+      &lt;input
+        type="search"
+        {...s.bindValue(s.q)}
+        {...on.input([searchDelay.after(300, [search.call({ q: s.q })])])}
+      /&gt;
+    &lt;/label&gt;
+  );
+}</code></pre>
+  </figure>
+  <p>
+    The Action stores the query on the server and publishes a Topic keyed by the
+    session, so the results follow the session's latest query in each of its
+    tabs. <code>searchDelay.after(300, ...)</code> cancels the previous
+    reservation on every input, as <code>delay:300ms</code> does. To filter
+    items that are already on the page without a request, bind
+    <code>bindShow</code> to an expression such as
+    <code>lit(name).includes(s.q)</code> instead.
+  </p>
+</section>
+
+<section id="pending">
+  <h2>Loading indicators</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;button hx-post="/notes" hx-indicator="#spinner"&gt;Add&lt;/button&gt;
+&lt;span id="spinner" class="htmx-indicator"&gt;Saving…&lt;/span&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts (CSS)</figcaption>
+    <pre><code>/* The runtime sets data-hs-pending on the form or button that is sending. */
+form[data-hs-pending] button {
+  opacity: 0.55;
+}</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts (signals)</figcaption>
+    <pre><code>const noteForm = signals({ text: "" }, { name: "note-form" });
+
+function NoteForm() {
+  const f = noteForm.with({});
+  return (
+    &lt;form {...f.init()} {...addNote.form({ resetOnSuccess: true })}&gt;
+      &lt;input {...f.bindValue(f.text)} name={addNote.field("text")} /&gt;
+      &lt;button type="submit" {...f.bindAttr({ disabled: addNote.pending() })}&gt;
+        Add
+      &lt;/button&gt;
+      &lt;span {...f.bindShow(addNote.pending())}&gt;Saving…&lt;/span&gt;
+    &lt;/form&gt;
+  );
+}</code></pre>
+  </figure>
+  <p>
+    <code>data-hs-pending</code> stays until the last request from that control
+    ends, even when a Live View update arrives first. Values on the page change
+    when the committed update arrives, not when the request is sent.
+  </p>
+</section>
+
+<section id="oob">
+  <h2>Out-of-band swaps</h2>
+  <figure class="example">
+    <figcaption>htmx</figcaption>
+    <pre><code>&lt;!-- response to POST /notes --&gt;
+&lt;li&gt;New note&lt;/li&gt;
+&lt;span id="note-count" hx-swap-oob="true"&gt;3 notes&lt;/span&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const addNote = hypersig.action("add-note", {
+  input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
+  output: v.null(),
+  authorize: () =&gt; true,
+  async execute({ text }) {
+    await saveNote(text);
+    await hypersig.publish(notesChanged());
+    return null;
+  },
+});
+
+// Both views subscribe to notesChanged(), so both render again.
+const noteCount = hypersig.live({
+  name: "note-count",
+  subscribe: () =&gt; [notesChanged()],
+  authorize: () =&gt; true,
+  load: () =&gt; readNoteCount(),
+  render: (n) =&gt; &lt;span&gt;{n} notes&lt;/span&gt;,
+});</code></pre>
+  </figure>
+  <p>
+    The Action does not need to know which parts of the page show notes. A note
+    list view and <code>noteCount</code> both subscribe to
+    <code>notesChanged()</code>, and a background job that publishes the same
+    Topic updates them too.
+  </p>
+</section>
+
+<section id="forms">
+  <h2>Forms and validation errors</h2>
+  <pre><code>&lt;form {...addNote.form({ resetOnSuccess: true })}&gt;
+  &lt;input name={addNote.field("text")} /&gt;
+  &lt;p {...addNote.fieldError("text")}&gt;&lt;/p&gt;
+  &lt;button type="submit"&gt;Add&lt;/button&gt;
+  &lt;p role="alert" {...errorOutlet()}&gt;&lt;/p&gt;
+&lt;/form&gt;</code></pre>
+  <p>
+    <code>addNote.field("text")</code> checks the name against the input schema.
+    The server validates the submission; the runtime writes a field's message
+    into the element marked with <code>fieldError</code> and an Action's failure
+    into <code>errorOutlet()</code>. To accept a form posted without JavaScript,
+    define <code>formResponse</code> on the Action to render a page or redirect.
+  </p>
+</section>
+
+<section id="alpine">
+  <h2>Client-side state instead of Alpine.js</h2>
+  <figure class="example">
+    <figcaption>htmx with Alpine.js</figcaption>
+    <pre><code>&lt;div x-data="{ open: false }"&gt;
+  &lt;button @click="open = !open" :aria-expanded="open"&gt;Menu&lt;/button&gt;
+  &lt;nav x-show="open"&gt;…&lt;/nav&gt;
+&lt;/div&gt;</code></pre>
+  </figure>
+  <figure class="example">
+    <figcaption>hypersig.ts</figcaption>
+    <pre><code>const menu = signals({ open: false }, { name: "menu" });
+
+function Menu() {
+  const m = menu.with({});
+  return (
+    &lt;div {...m.init()}&gt;
+      &lt;button
+        type="button"
+        {...m.bindAttr({ "aria-expanded": m.open })}
+        {...on.click([m.open.toggle()])}
+      &gt;
+        Menu
+      &lt;/button&gt;
+      &lt;nav {...m.bindShow(m.open)}&gt;…&lt;/nav&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+  </figure>
+  <p>
+    Signal expressions are built with typed methods and travel as data in
+    attributes. The server evaluates the bindings for the first paint, so the
+    menu renders closed before the runtime starts.
+    <a href="../reference/#signals">Browser signals</a>
+  </p>
+</section>
+
+<section id="links">
+  <h2>Links instead of hx-boost</h2>
+  <pre><code>const links = hc&lt;typeof app&gt;("/");
+const href = links.contacts[":id"].$path({ param: { id: "42" } });
+// &lt;a href={href}&gt;Contact&lt;/a&gt; loads the page from the server.</code></pre>
+  <p>
+    Each page is a full server render. Hono checks the path and query types when
+    the link is built. <a href="../reference/#typed-links">Typed links</a>
+  </p>
+</section>
+
+<section id="csp">
+  <h2>Content Security Policy</h2>
+  <p>
+    htmx evaluates <code>hx-on</code> handlers, trigger filters, and
+    <code>js:</code> values with <code>eval</code>, so a policy without
+    <code>'unsafe-eval'</code> needs <code>htmx.config.allowEval = false</code>,
+    which turns those features off. The standard Alpine.js build also needs
+    <code>'unsafe-eval'</code>.
+  </p>
+  <p>
+    The hypersig.ts runtime is one script served from your origin. Signal
+    expressions and statements are JSON that it interprets, so pages work under
+    <code>script-src 'self'</code> without <code>'unsafe-eval'</code> or inline
+    scripts. Live View HTML is sanitized with DOMPurify before it enters the
+    page. The examples send
+    <code>default-src 'none'; script-src 'self'; connect-src 'self'</code>.
+  </p>
+</section>
+
+<section id="differences">
+  <h2>What works differently</h2>
+  <ul>
+    <li>
+      Live updates need JavaScript and an open SSE connection. Without them the
+      page shows its server-rendered HTML, and a form posted natively gets an
+      HTML response only from an Action that defines <code>formResponse</code>;
+      any other Action answers with JSON.
+    </li>
+    <li>
+      An update replaces a whole Live View. Split the page into views by what
+      changes together, and keep large lists that rarely change outside the
+      frequently updated view.
+    </li>
+    <li>
+      Views load from server state. A value that exists only in one request,
+      such as a search query, has to be stored on the server, as in the active
+      search example.
+    </li>
+    <li>
+      Each Live View and Action checks access itself with
+      <code>authorize</code>. <code>hypersig.page()</code> answers 401 when
+      <code>authenticate</code> returns <code>null</code>, so give anonymous
+      visitors a session too, each with its own id.
+    </li>
+  </ul>
+  <p>
+    <a href="../concepts/">Core concepts</a> ·
+    <a href="../limits/">Performance and limits</a>
+  </p>
+</section>
