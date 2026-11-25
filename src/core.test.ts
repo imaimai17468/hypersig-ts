@@ -1515,6 +1515,7 @@ it("asks the browser to reconnect at a random time in the last tenth of maxStrea
       const page = await counter.runtime.openPage(token, counterKeys, viewer);
       if (page.status !== "open") throw new Error("Expected an open page");
       const connection = recordingConnection();
+      const openedAt = Date.now();
       let ended = false;
       const live = page
         .connect(connection, () => viewer)
@@ -1525,8 +1526,10 @@ it("asks the browser to reconnect at a random time in the last tenth of maxStrea
       expect(ended).toBe(false);
       expect(connection.messages).toEqual(["update", "ready"]);
       await vi.advanceTimersByTimeAsync(1);
-      expect(ended).toBe(true);
+      // Sealing the renewed token takes real asynchronous work, not fake
+      // time, so the stream ends without the clock moving past the deadline.
       await live;
+      expect(Date.now() - openedAt).toBe(endsAt);
       expect(connection.signal.aborted).toBe(true);
       expect(connection.messages).toEqual(["update", "ready", "reconnect"]);
     }
@@ -1726,6 +1729,7 @@ it("ends a stream at its lifetime without a token when renewing it stalls", asyn
     const page = await counter.runtime.openPage(token, counterKeys, viewer);
     if (page.status !== "open") throw new Error("Expected an open page");
     const connection = recordingConnection();
+    const openedAt = Date.now();
     let stalled = false;
     let settle: (user: Principal) => void = () => {};
     let ended = false;
@@ -1746,8 +1750,9 @@ it("ends a stream at its lifetime without a token when renewing it stalls", asyn
     await vi.advanceTimersByTimeAsync(1 + 499);
     expect(ended).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
-    expect(ended).toBe(true);
     await live;
+    expect(Date.now() - openedAt).toBe(1_400);
+    expect(ended).toBe(true);
     expect(connection.received.at(-1)).toEqual({ type: "reconnect" });
 
     // A renewal that settles after the stream ended sends nothing more.
