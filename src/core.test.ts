@@ -1536,6 +1536,62 @@ it("asks the browser to reconnect at a random time in the last tenth of maxStrea
     expect(() => counterRuntime(store, { maxStreamMs })).toThrow(RangeError);
 });
 
+it("keeps streaming and unregisters a stream whose displaced stream fails to close", async () => {
+  const store = { count: 0 };
+  const counter = counterRuntime(store);
+  const token = await renderCounter(counter);
+  const open = async () => {
+    const page = await counter.runtime.openPage(token, counterKeys, viewer);
+    if (page.status !== "open") throw new Error("Expected an open page");
+    return page;
+  };
+  const failing = recordingConnection();
+  const failingLive = (await open()).connect(
+    {
+      ...failing,
+      close() {
+        failing.close();
+        throw new Error("close failed");
+      },
+    },
+    () => viewer
+  );
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const replacement = recordingConnection();
+    let closes = 0;
+    const replacementLive = (await open()).connect(
+      {
+        ...replacement,
+        close() {
+          closes++;
+          replacement.close();
+        },
+      },
+      () => viewer
+    );
+    await expect(failingLive).rejects.toThrow("close failed");
+    await vi.waitFor(() => {
+      expect(replacement.messages).toEqual(["update", "ready"]);
+    });
+    replacement.close();
+    await replacementLive;
+    const closed = closes;
+
+    // A stream that ended no longer holds the page, so a new one replaces nothing.
+    const next = recordingConnection();
+    const nextLive = (await open()).connect(next, () => viewer);
+    await vi.waitFor(() => {
+      expect(next.messages).toEqual(["update", "ready"]);
+    });
+    expect(closes).toBe(closed);
+    next.close();
+    await nextLive;
+  } finally {
+    errors.mockRestore();
+  }
+});
+
 it("closes a session's oldest stream beyond maxStreamsPerSession", async () => {
   const store = { count: 0 };
   const counter = counterRuntime(store);

@@ -366,16 +366,21 @@ export function createLiveRuntime<
               else stop({ type: "evicted" });
             },
           };
-          for (const { stream: displaced, reason } of streams.add(stream)) {
-            streams.remove(displaced);
-            displaced.end(reason);
-          }
-          const deadline = setTimeout(
-            () => stop({ type: "reconnect" }),
-            streamLifetime(maxStreamMs, Math.random())
-          );
+          let deadline: ReturnType<typeof setTimeout> | undefined;
           let version = 0;
           try {
+            for (const { stream: displaced, reason } of streams.add(stream)) {
+              streams.remove(displaced);
+              try {
+                displaced.end(reason);
+              } catch (error) {
+                console.error(error);
+              }
+            }
+            deadline = setTimeout(
+              () => stop({ type: "reconnect" }),
+              streamLifetime(maxStreamMs, Math.random())
+            );
             await streamPage(
               connection,
               {
