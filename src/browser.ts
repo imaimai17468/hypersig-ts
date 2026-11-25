@@ -7,6 +7,7 @@ import {
   streamParams,
 } from "./protocol.js";
 import type { HtmlUpdate } from "./protocol.js";
+import { claimReload } from "./reload-budget.js";
 import { sanitizeFragment } from "./sanitize.js";
 import type { SendResult, SignalRuntime } from "./signal-runtime.js";
 import { isOwnedChild, startSignals } from "./signal-runtime.js";
@@ -219,7 +220,8 @@ function updateViews(
     source.addEventListener(events.reset, () => {
       if (source !== connection) return;
       source.close();
-      if (preserveDrafts(draftScope)) location.reload();
+      if (preserveDrafts(draftScope) && claimReload(Date.now()))
+        location.reload();
       else {
         clearViews();
         setStatus("reload-required");

@@ -181,3 +181,61 @@ it("keeps a nested view of an update out of the children of an owned element", a
   expect(find(".real").innerHTML).toBe("<p>new</p>");
   expect(find(".forged").innerHTML).toBe("");
 });
+
+/** Loads a page with a draft form and a view at `time`. */
+async function loadResetPage(time: number) {
+  vi.setSystemTime(time);
+  await loadPage(
+    `<form data-hs-draft-form="memo"><textarea name="body" data-hs-draft>saved</textarea></form>` +
+      `<div id="cart" data-hs-view="cart">cart</div>`
+  );
+}
+
+/** Loads the page and has the server reset the stream at `time`. */
+async function resetAt(time: number) {
+  await loadResetPage(time);
+  latestSource().emit(events.reset);
+}
+
+it("stops reloading after three resets within a minute", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  await resetAt(0);
+  await resetAt(1_000);
+  await resetAt(2_000);
+  expect(reloads).toBe(3);
+  expect(document.documentElement.dataset.hsConnection).not.toBe(
+    "reload-required"
+  );
+
+  await loadResetPage(59_999);
+  const draft = find("textarea");
+  if (!(draft instanceof HTMLTextAreaElement)) throw new Error("No draft");
+  draft.value = "edited";
+  latestSource().emit(events.reset);
+  expect(reloads).toBe(3);
+  expect(document.documentElement.dataset.hsConnection).toBe("reload-required");
+  expect(find("#cart").innerHTML).toBe("");
+  expect(draft.value).toBe("edited");
+
+  await resetAt(60_000);
+  expect(reloads).toBe(4);
+});
+
+it("asks for a reload when it cannot count reloads in session storage", async () => {
+  await loadPage(`<div id="cart" data-hs-view="cart">cart</div>`);
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("Storage is disabled");
+  });
+  latestSource().emit(events.reset);
+
+  expect(reloads).toBe(0);
+  expect(document.documentElement.dataset.hsConnection).toBe("reload-required");
+});
+
+it("reloads when the saved reload times are malformed", async () => {
+  await loadPage(`<div data-hs-view="cart"></div>`);
+  sessionStorage.setItem("hypersig:reset-reloads", "{");
+  latestSource().emit(events.reset);
+
+  expect(reloads).toBe(1);
+});
