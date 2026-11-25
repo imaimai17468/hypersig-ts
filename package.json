@@ -25,7 +25,8 @@
   "files": [
     "dist/*.js",
     "dist/*.d.ts",
-    "dist/*.map"
+    "dist/*.map",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "sideEffects": [
